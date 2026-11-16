@@ -2,18 +2,23 @@
 # BasedOS early init. The kernel unpacks its built-in (stock) initramfs and then
 # this one on top. boot.scr passes rdinit=/basedos/init, so stock's /init stays
 # untouched: if BasedOS can't come up, we hand over to it and stock boots.
+#
+# Boot attempts are counted on p2 (basedos-data/boot-attempts) before the root is
+# chosen, and rcS deletes the count once userspace is up. Boots that never reach
+# rcS keep counting: from the 4th the other rootfs slot is used, from the 6th
+# stock boots. The count stays until rcS (or you) deletes it.
 bb=/basedos/busybox
 log() { echo "basedos-init: $*" > /dev/kmsg; }
 
-$bb mkdir -p /proc /sys /dev /newroot /p1
+$bb mkdir -p /proc /sys /dev /newroot /p1 /p2
 $bb mount -t proc proc /proc
 $bb mount -t sysfs sys /sys
 $bb mount -t devtmpfs dev /dev 2>/dev/null
 
 fallback() {
 	log "$1; booting stock instead"
-	$bb umount /newroot /p1 2>/dev/null
-	$bb umount /sys /proc 2>/dev/null
+	$bb umount /newroot /p1 /p2 2>/dev/null
+	$bb umount /dev /sys /proc 2>/dev/null
 	exec /init
 }
 
@@ -22,13 +27,44 @@ i=0
 while [ ! -b /dev/mmcblk0p1 ] && [ $i -lt 50 ]; do $bb usleep 100000; i=$((i + 1)); done
 $bb mount -t vfat -o ro,noatime /dev/mmcblk0p1 /p1 || fallback "can't mount eMMC p1"
 
-slot=$($bb cat /p1/basedos/slot 2>/dev/null)
-root=/p1/basedos/rootfs${slot:+-$slot}.squashfs
-[ -f "$root" ] || fallback "no $root"
-$bb mount -t squashfs -o ro,loop "$root" /newroot || fallback "can't mount $root"
-[ -x /newroot/sbin/init ] || fallback "$root has no /sbin/init"
+attempts=0
+if $bb mount -t ext4 -o noatime /dev/mmcblk0p2 /p2 2>/dev/null; then
+	$bb mkdir -p /p2/basedos-data
+	attempts=$($bb cat /p2/basedos-data/boot-attempts 2>/dev/null)
+	case "$attempts" in ''|*[!0-9]*) attempts=0 ;; esac
+	attempts=$((attempts + 1))
+	echo "$attempts" > /p2/basedos-data/boot-attempts
+	$bb sync
+	$bb umount /p2
+else
+	log "can't mount eMMC p2; boot attempts not counted"
+fi
+[ "$attempts" -ge 6 ] && fallback "BasedOS did not reach rcS in the last $((attempts - 1)) boots"
 
-log "root $root"
+# Slot "b" is rootfs-b.squashfs; anything else (none, empty, garbage) is rootfs.squashfs.
+slot=$($bb head -c 2 /p1/basedos/slot 2>/dev/null | $bb tr -d '\n')
+[ "$slot" = b ] || slot=""
+other=b; [ "$slot" = b ] && other=""
+if [ "$attempts" -ge 4 ] && [ -f "/p1/basedos/rootfs${other:+-$other}.squashfs" ]; then
+	log "boot attempt $attempts without reaching rcS: trying the other slot"
+	slot=$other
+fi
+
+for s in "$slot" "$other"; do
+	root=/p1/basedos/rootfs${s:+-$s}.squashfs
+	[ -f "$root" ] || { log "no $root"; continue; }
+	# /sbin/init is an absolute link to /usr/bin/busybox, which would resolve against this
+	# initramfs (it has a busybox too), so check the real file inside the new root.
+	if $bb mount -t squashfs -o ro,loop "$root" /newroot && [ -x /newroot/usr/bin/busybox ]; then
+		break
+	fi
+	log "$root does not mount or has no /sbin/init"
+	$bb umount /newroot 2>/dev/null
+	root=""
+done
+[ -n "$root" ] || fallback "no usable rootfs"
+
+log "root $root (boot attempt $attempts)"
 $bb mkdir -p /newroot/boot 2>/dev/null
 $bb mount --move /p1 /newroot/boot 2>/dev/null || $bb mount -o bind /p1 /newroot/boot
 $bb mount --move /dev /newroot/dev

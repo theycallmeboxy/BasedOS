@@ -21,6 +21,8 @@ mkdir -p /run/p2
 if mount -t ext4 -o noatime /dev/mmcblk0p2 /run/p2; then
 	mkdir -p /run/p2/basedos-data
 	mount --bind /run/p2/basedos-data /data
+	# Userspace is up: this boot counts as good (the initrd counts attempts that don't get here).
+	rm -f /data/boot-attempts
 else
 	log "can't mount p2; /data is RAM only"
 	mount -t tmpfs tmpfs /data

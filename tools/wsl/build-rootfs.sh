@@ -48,7 +48,7 @@ echo "$n busybox links"
 echo "--- overlay"
 cp -a "$REPO/overlay/." "$OUT/"
 find "$OUT/etc" "$OUT/usr/lib/basedos" "$OUT/usr/share/udhcpc" -type f -exec chmod 644 {} +
-chmod 755 etc/init.d/* usr/sbin/mount-frontend usr/sbin/frontend-session usr/sbin/basedos-pwrkey usr/share/udhcpc/default.script
+chmod 755 etc/init.d/* usr/sbin/mount-frontend usr/sbin/frontend-session usr/sbin/basedos-pwrkey usr/sbin/basedos-keyheld usr/share/udhcpc/default.script
 chmod 600 etc/shadow
 chmod 700 root
 ln -sf /run/resolv.conf etc/resolv.conf

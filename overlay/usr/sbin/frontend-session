@@ -7,9 +7,42 @@
 #   .tmp_update/updater        (MinUI/NextUI updater)
 # spruce comes before .tmp_update because spruce cards also carry a Miyoo
 # .tmp_update for other devices.
+#
+# Safeguards:
+#   - Hold Select while powering on: maintenance mode. No frontend; SSH and Wi-Fi only.
+#   - A frontend that exits within 15 s, five times in a row, is not restarted again until
+#     the next boot (no hot loop draining the battery and writing to the card).
 export PATH=/usr/bin:/usr/sbin
 . /usr/lib/basedos/functions
 SD=/mnt/SDCARD
+STATE=/run/basedos
+
+stay_down() {
+	say "$1"
+	while :; do sleep 3600; done
+}
+
+# First session of this boot only: a held Select means maintenance mode.
+if [ ! -f $STATE/session-checked ]; then
+	touch $STATE/session-checked
+	if basedos-keyheld gkd_atom_joypad 314 2>/dev/null; then
+		touch $STATE/maintenance
+		log "Select held at boot: maintenance mode"
+	fi
+fi
+[ -f $STATE/maintenance ] &&
+	stay_down "maintenance mode (Select held at boot): no frontend; SSH is up once Wi-Fi is. Reboot to leave."
+
+# How long did the last frontend run? Five short runs in a row stop the respawning.
+if [ -f $STATE/session-start ]; then
+	ran=$(( $(cut -d. -f1 /proc/uptime) - $(cat $STATE/session-start) ))
+	short=$(cat $STATE/short-exits 2>/dev/null || echo 0)
+	if [ "$ran" -lt 15 ]; then short=$((short + 1)); else short=0; fi
+	echo "$short" > $STATE/short-exits
+	log "frontend exited after ${ran} s (short exits in a row: $short)"
+	[ "$short" -ge 5 ] &&
+		stay_down "the frontend keeps exiting (5 times within 15 s); not restarting it. Logs: /data/basedos.log and the card. Reboot to try again."
+fi
 
 # Quiet retries; one message per session, and only after 15 s without a card.
 i=0
@@ -27,6 +60,7 @@ rm -f /run/basedos/said-nocard
 
 cd "$SD" || exit 1
 mark frontend
+cut -d. -f1 /proc/uptime > $STATE/session-start
 if [ -f System/frontend ]; then
 	say "starting System/frontend"
 	exec /lib/ld-linux-aarch64.so.1 "$SD/System/frontend" > /tmp/frontend.log 2>&1

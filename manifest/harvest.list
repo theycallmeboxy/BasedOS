@@ -63,3 +63,13 @@
 /usr/lib/libnss_files.so.2
 /usr/lib/libnss_dns.so.2
 /usr/lib/libresolv.so.2
+
+## frontend compatibility: libraries spruce's own card binaries (flip/bin python3.10, flip/lib,
+## App/PyUI/dll) expect from the base. Found by tools/needs-check.py against a spruce card.
+/usr/lib/libutil.so.1
+/usr/lib/librt.so.1
+/usr/lib/libtinfo.so.6
+/usr/lib/libfontconfig.so.1
+/usr/lib/libfreetype.so.6
+/usr/lib/libsndfile.so.1
+/usr/lib/libvorbisenc.so.2

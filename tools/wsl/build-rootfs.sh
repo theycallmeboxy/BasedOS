@@ -24,6 +24,14 @@ echo "--- harvest"
 python3 "$REPO/tools/harvest.py" "$W/stock-root" "$REPO/manifest/harvest.list" "$OUT"
 mv "$W/harvest-report.txt" "$W/harvest-report.txt" 2>/dev/null || true
 
+# ROCKNIX's alsa.conf loads /storage/.config/asound.conf instead of ~/.asoundrc, and its
+# alsa.conf.d makes PipeWire the default PCM. BasedOS runs no PipeWire, and frontends (spruce's
+# asound-setup.sh) write ~/.asoundrc, so put upstream alsa-lib's behaviour back.
+grep -q '"/storage/.config/asound.conf"' usr/share/alsa/alsa.conf ||
+	{ echo "alsa.conf no longer has the ROCKNIX hook line; check it" >&2; exit 1; }
+sed -i 's#"/storage/.config/asound.conf"#"~/.asoundrc"#' usr/share/alsa/alsa.conf
+rm -f usr/share/alsa/alsa.conf.d/50-pipewire.conf usr/share/alsa/alsa.conf.d/99-pipewire-default.conf
+
 echo "--- busybox"
 install -m 755 "$BB" usr/bin/busybox
 n=0

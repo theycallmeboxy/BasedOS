@@ -1,0 +1,21 @@
+#!/bin/sh
+# udhcpc event script: configure wlan0 and DNS.
+case "$1" in
+deconfig)
+	ifconfig "$interface" 0.0.0.0
+	;;
+bound|renew)
+	ifconfig "$interface" "$ip" netmask "${subnet:-255.255.255.0}" ${broadcast:+broadcast $broadcast}
+	if [ -n "$router" ]; then
+		while route del default gw 0.0.0.0 dev "$interface" 2>/dev/null; do :; done
+		for r in $router; do route add default gw "$r" dev "$interface"; break; done
+	fi
+	: > /run/resolv.conf
+	[ -n "$domain" ] && echo "search $domain" >> /run/resolv.conf
+	for d in $dns; do echo "nameserver $d" >> /run/resolv.conf; done
+	echo "[$(cut -d' ' -f1 /proc/uptime)] udhcpc: $1 $ip on $interface" >> /data/basedos.log
+	cut -d' ' -f1 /proc/uptime > /run/basedos/mark-ip
+	echo "BasedOS: $ip on $interface" > /dev/tty0 2>/dev/null
+	;;
+esac
+exit 0

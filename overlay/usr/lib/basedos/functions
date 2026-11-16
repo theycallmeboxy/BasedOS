@@ -1,0 +1,19 @@
+# Shared helpers for BasedOS scripts. Sourced, not run.
+set -a
+. /etc/baseos-release
+set +a
+
+BASEDOS_LOG=/data/basedos.log
+
+# log "message": one line, tagged with uptime and the calling script.
+log() {
+	_l="[$(cut -d' ' -f1 /proc/uptime)] ${0##*/}: $*"
+	if [ -d /data ] && [ -w /data ]; then echo "$_l" >> "$BASEDOS_LOG"; else echo "$_l" >> /run/basedos/early.log; fi
+	echo "$_l" > /dev/kmsg 2>/dev/null
+}
+
+# say "message": also show it on the screen's text console (until a frontend draws).
+say() { log "$*"; echo "BasedOS: $*" > /dev/tty0 2>/dev/null; }
+
+# mark name: record when a boot step happened (/run/basedos/mark-<name> holds the uptime).
+mark() { cut -d' ' -f1 /proc/uptime > "/run/basedos/mark-$1"; }

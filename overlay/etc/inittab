@@ -1,0 +1,5 @@
+::sysinit:/etc/init.d/rcS
+::respawn:/sbin/frontend-session
+ttyFIQ0::respawn:/sbin/getty -L 1500000 ttyFIQ0 vt100
+::ctrlaltdel:/sbin/reboot
+::shutdown:/etc/init.d/rcK

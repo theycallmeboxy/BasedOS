@@ -1,0 +1,64 @@
+# What BasedOS takes from the stock rootfs (the SYSTEM squashfs of a known
+# build, see stock-builds.txt). One path per line:
+#   /stock/path              copied to the same place (a directory recursively; symlinks kept)
+#   /stock/path => /dest     copied to a different place
+# Libraries that these need (ELF DT_NEEDED) are added automatically by
+# tools/harvest.py, which fails if one can't be found.
+
+## core: glibc's loader (the closure check adds libc and friends)
+/usr/lib/ld-linux-aarch64.so.1
+
+## ssh (dev access; keys live on /data)
+/usr/sbin/sshd
+/usr/bin/ssh-keygen
+/usr/lib/openssh/sftp-server
+
+## wifi: Broadcom AP6256/AP6255 (bcmdhd is the kernel's only module)
+/usr/bin/wpa_supplicant
+/usr/bin/wpa_passphrase
+/usr/lib/kernel-overlays/base/lib/modules => /usr/lib/modules
+/usr/lib/kernel-overlays/base/lib/firmware => /usr/lib/firmware
+
+## filesystems: create and check /data (ext4), check the card (vfat, exfat)
+/usr/sbin/mke2fs
+/usr/sbin/mkfs.ext4
+/usr/sbin/e2fsck
+/usr/sbin/fsck.ext4
+/usr/sbin/resize2fs
+/usr/sbin/fsck.fat
+/usr/sbin/fsck.vfat
+/usr/sbin/fsck.exfat
+
+## GPU: libmali (Bifrost G52, wayland-gbm build) under the standard names.
+## Stock bind-mounts these at runtime ("gpudriver"); BasedOS installs them directly.
+/usr/lib/libmali.so.1.9.0
+/usr/lib/libmali.so.1
+/usr/lib/libmali.so
+/usr/lib/libmali-hook.so.1.9.0
+/usr/lib/libmali-hook.so.1
+/usr/lib/mali/libEGL.so.1 => /usr/lib/libEGL.so.1
+/usr/lib/mali/libGLESv1_CM.so.1 => /usr/lib/libGLESv1_CM.so.1
+/usr/lib/mali/libGLESv2.so.2 => /usr/lib/libGLESv2.so.2
+/usr/lib/mali/libgbm.so.1 => /usr/lib/libgbm.so.1
+/usr/lib/mali/libwayland-egl.so.1 => /usr/lib/libwayland-egl.so.1
+/usr/lib/glesonly/libSDL2-2.0.so.0.3200.6 => /usr/lib/libSDL2-2.0.so.0
+
+## audio: ALSA (ES9018K2M DAC; controls "Master", "Capture")
+/usr/bin/amixer
+/usr/bin/aplay
+/usr/share/alsa
+
+## input and display helpers
+/usr/bin/evtest
+
+## python 3.11 (spruce's PyUI and helper scripts)
+/usr/bin/python3.11
+/usr/bin/python3
+/usr/lib/python3.11
+
+## loaded at runtime with dlopen(), so the DT_NEEDED closure can't see them
+/usr/lib/libdrm.so.2
+/usr/lib/libudev.so.1
+/usr/lib/libnss_files.so.2
+/usr/lib/libnss_dns.so.2
+/usr/lib/libresolv.so.2

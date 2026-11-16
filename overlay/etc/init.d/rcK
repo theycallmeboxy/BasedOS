@@ -1,0 +1,10 @@
+#!/bin/sh
+# BasedOS shutdown (BusyBox init runs this before reboot/poweroff).
+. /usr/lib/basedos/functions
+log "shutting down"
+killall -q sshd wpa_supplicant udhcpc
+sync
+umount /mnt/SDCARD 2>/dev/null || umount -l /mnt/SDCARD 2>/dev/null
+umount /data 2>/dev/null
+umount /run/p2 2>/dev/null || mount -o remount,ro /run/p2 2>/dev/null
+sync

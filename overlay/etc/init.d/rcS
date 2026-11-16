@@ -1,0 +1,43 @@
+#!/bin/sh
+# BasedOS system start (BusyBox init sysinit). Brings up the minimum, mounts the
+# card, then frontend-session (respawned by init) takes over.
+export PATH=/usr/bin:/usr/sbin
+. /usr/lib/basedos/functions
+
+mount -t proc proc /proc
+mount -t sysfs sys /sys
+mkdir -p /dev/pts /dev/shm
+mount -t devpts devpts /dev/pts
+mount -t tmpfs -o mode=1777 tmpfs /dev/shm
+mount -t tmpfs -o mode=755,size=64m tmpfs /run
+mount -t tmpfs -o mode=1777 tmpfs /tmp
+mount -t tmpfs -o mode=755 tmpfs /var
+mkdir -p /run/basedos /var/log /var/run /var/lib /var/empty /var/tmp
+mark rcS-start
+
+# /data: v0 lives in a folder on eMMC p2, next to stock's /storage, so stock
+# still boots unchanged. (A dedicated p2 comes with the installer.)
+mkdir -p /run/p2
+if mount -t ext4 -o noatime /dev/mmcblk0p2 /run/p2; then
+	mkdir -p /run/p2/basedos-data
+	mount --bind /run/p2/basedos-data /data
+else
+	log "can't mount p2; /data is RAM only"
+	mount -t tmpfs tmpfs /data
+fi
+say "boot $(cat /proc/sys/kernel/random/boot_id | cut -c1-8): BasedOS $BASEOS_VERSION ($BASEOS_BUILD)"
+
+hostname -F /etc/hostname
+[ -f /data/machine-id ] || cat /proc/sys/kernel/random/uuid | tr -d - > /data/machine-id
+ln -sf /data/machine-id /run/machine-id
+echo /sbin/mdev > /proc/sys/kernel/hotplug
+mdev -s
+ifconfig lo 127.0.0.1 up
+
+# Card first: the frontend is what the user is waiting for.
+/usr/sbin/mount-frontend
+
+# Everything slow goes to the background.
+/etc/init.d/network &
+/etc/init.d/sshd &
+mark rcS-done

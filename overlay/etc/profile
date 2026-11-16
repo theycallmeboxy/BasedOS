@@ -1,0 +1,4 @@
+export PATH=/usr/bin:/usr/sbin
+export HOME=/root
+export PS1='\h:\w\$ '
+set -a; . /etc/baseos-release; set +a

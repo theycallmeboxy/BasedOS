@@ -1,0 +1,38 @@
+#!/bin/sh
+# Respawned by init. Finds the frontend on the card and execs it, with every
+# /etc/baseos-release key in the environment. First match wins:
+#   System/frontend            (NextUI-style binary, run through ld.so)
+#   System/launch_frontend.sh
+#   spruce/scripts/runtime.sh  (spruceOS)
+#   .tmp_update/updater        (MinUI/NextUI updater)
+# spruce comes before .tmp_update because spruce cards also carry a Miyoo
+# .tmp_update for other devices.
+export PATH=/usr/bin:/usr/sbin
+. /usr/lib/basedos/functions
+SD=/mnt/SDCARD
+
+i=0
+until /usr/sbin/mount-frontend 2>/dev/null; do
+	i=$((i + 1))
+	[ $i -ge 30 ] && { say "no card after 15 s; retrying in 5 s"; sleep 5; exit 1; }
+	sleep 0.5
+done
+
+cd "$SD" || exit 1
+mark frontend
+if [ -f System/frontend ]; then
+	say "starting System/frontend"
+	exec /lib/ld-linux-aarch64.so.1 "$SD/System/frontend" > /tmp/frontend.log 2>&1
+elif [ -f System/launch_frontend.sh ]; then
+	say "starting System/launch_frontend.sh"
+	exec /bin/sh "$SD/System/launch_frontend.sh"
+elif [ -f spruce/scripts/runtime.sh ]; then
+	say "starting spruce"
+	exec /bin/sh "$SD/spruce/scripts/runtime.sh"
+elif [ -f .tmp_update/updater ]; then
+	say "starting .tmp_update/updater"
+	exec /bin/sh "$SD/.tmp_update/updater"
+fi
+say "no frontend on the card; retrying in 5 s"
+sleep 5
+exit 1

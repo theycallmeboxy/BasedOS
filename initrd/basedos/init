@@ -1,0 +1,36 @@
+#!/basedos/busybox sh
+# BasedOS early init. The kernel unpacks its built-in (stock) initramfs and then
+# this one on top. boot.scr passes rdinit=/basedos/init, so stock's /init stays
+# untouched: if BasedOS can't come up, we hand over to it and stock boots.
+bb=/basedos/busybox
+log() { echo "basedos-init: $*" > /dev/kmsg; }
+
+$bb mkdir -p /proc /sys /dev /newroot /p1
+$bb mount -t proc proc /proc
+$bb mount -t sysfs sys /sys
+$bb mount -t devtmpfs dev /dev 2>/dev/null
+
+fallback() {
+	log "$1; booting stock instead"
+	$bb umount /newroot /p1 2>/dev/null
+	$bb umount /sys /proc 2>/dev/null
+	exec /init
+}
+
+# p1 of the eMMC (mmcblk0 is the eMMC by DT alias). Give it up to 5 s.
+i=0
+while [ ! -b /dev/mmcblk0p1 ] && [ $i -lt 50 ]; do $bb usleep 100000; i=$((i + 1)); done
+$bb mount -t vfat -o ro,noatime /dev/mmcblk0p1 /p1 || fallback "can't mount eMMC p1"
+
+slot=$($bb cat /p1/basedos/slot 2>/dev/null)
+root=/p1/basedos/rootfs${slot:+-$slot}.squashfs
+[ -f "$root" ] || fallback "no $root"
+$bb mount -t squashfs -o ro,loop "$root" /newroot || fallback "can't mount $root"
+[ -x /newroot/sbin/init ] || fallback "$root has no /sbin/init"
+
+log "root $root"
+$bb mkdir -p /newroot/boot 2>/dev/null
+$bb mount --move /p1 /newroot/boot 2>/dev/null || $bb mount -o bind /p1 /newroot/boot
+$bb mount --move /dev /newroot/dev
+$bb umount /sys /proc
+exec $bb switch_root /newroot /sbin/init

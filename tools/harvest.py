@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+"""Copy the harvest list out of an unpacked stock rootfs, plus every library
+those files need (a closed set), into a staging tree.
+
+  harvest.py <stock root> <manifest/harvest.list> <staging root>
+
+Run it on a filesystem with real symlinks (WSL's ext4, not /mnt/c).
+Fails if any DT_NEEDED can't be found, like baseos-my355's prepare_stock.py.
+Writes <staging>/../harvest-report.txt listing what was copied and why.
+"""
+import os
+import shutil
+import struct
+import sys
+
+LIBDIRS = ("/usr/lib",)
+
+
+def elf_needed(path):
+    try:
+        with open(path, "rb") as f:
+            b = f.read()
+    except OSError:
+        return None
+    if b[:4] != b"\x7fELF" or b[4] != 2:
+        return None
+    phoff, = struct.unpack_from("<Q", b, 0x20)
+    phentsize, phnum = struct.unpack_from("<HH", b, 0x36)
+    dyn = None
+    loads = []
+    for i in range(phnum):
+        p_type, _, p_off, p_vaddr, _, p_filesz = struct.unpack_from("<IIQQQQ", b, phoff + i * phentsize)
+        if p_type == 2:
+            dyn = (p_off, p_filesz)
+        elif p_type == 1:
+            loads.append((p_vaddr, p_off, p_filesz))
+    if not dyn:
+        return []
+    needed, strtab = [], None
+    for o in range(dyn[0], dyn[0] + dyn[1], 16):
+        tag, val = struct.unpack_from("<qQ", b, o)
+        if tag == 0:
+            break
+        if tag == 1:
+            needed.append(val)
+        elif tag == 5:
+            strtab = val
+    if strtab is None:
+        return []
+    for vaddr, off, size in loads:
+        if vaddr <= strtab < vaddr + size:
+            base = strtab - vaddr + off
+            break
+    else:
+        return []
+    return [b[base + n:b.index(b"\0", base + n)].decode() for n in needed]
+
+
+class Harvest:
+    def __init__(self, stock, dest):
+        self.stock, self.dest, self.why = stock, dest, {}
+
+    def s(self, p):
+        return os.path.join(self.stock, p.lstrip("/"))
+
+    def d(self, p):
+        return os.path.join(self.dest, p.lstrip("/"))
+
+    def resolve(self, p, depth=0):
+        """Follow a stock-side symlink chain (absolute links stay inside the stock root)."""
+        full = self.s(p)
+        if depth > 20 or not os.path.islink(full):
+            return p
+        t = os.readlink(full)
+        nxt = t if t.startswith("/") else os.path.normpath(os.path.join(os.path.dirname(p), t))
+        return self.resolve(nxt, depth + 1)
+
+    def copy(self, src, dst, why):
+        full = self.s(src)
+        if os.path.isdir(full) and not os.path.islink(full):
+            for root, dirs, files in os.walk(full):
+                rel = os.path.relpath(root, full)
+                for n in dirs + files:
+                    sub = os.path.normpath(os.path.join(src, rel, n))
+                    if os.path.islink(self.s(sub)) or not os.path.isdir(self.s(sub)):
+                        self.copy(sub, os.path.normpath(os.path.join(dst, rel, n)), why)
+            return
+        out = self.d(dst)
+        if os.path.lexists(out):
+            return
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        if os.path.islink(full) and src == dst:
+            os.symlink(os.readlink(full), out)
+            self.why[dst] = why + " (symlink)"
+            real = self.resolve(src)
+            self.copy(real, real, why)
+        else:
+            real = self.resolve(src)
+            if not os.path.exists(self.s(real)):
+                sys.exit(f"missing in stock: {src} ({why})")
+            shutil.copy2(self.s(real), out, follow_symlinks=True)
+            self.why[dst] = why
+
+    def find_lib(self, name):
+        for d in LIBDIRS:
+            p = f"{d}/{name}"
+            if os.path.lexists(self.s(p)):
+                return p
+        return None
+
+    def close(self):
+        done, missing = set(), []
+        while True:
+            todo = [p for p in list(self.why) if p not in done]
+            if not todo:
+                break
+            for p in todo:
+                done.add(p)
+                full = self.d(p)
+                if os.path.islink(full) or not os.path.isfile(full):
+                    continue
+                for lib in elf_needed(full) or []:
+                    if any(os.path.lexists(self.d(f"{d}/{lib}")) for d in LIBDIRS):
+                        continue
+                    src = self.find_lib(lib)
+                    if not src:
+                        missing.append(f"{lib} (needed by {p})")
+                        continue
+                    self.copy(src, src, f"needed by {p}")
+        return missing
+
+
+def main():
+    if len(sys.argv) != 4:
+        sys.exit(__doc__)
+    stock, listfile, dest = sys.argv[1:]
+    h = Harvest(stock, dest)
+    for line in open(listfile, encoding="utf-8"):
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        src, _, dst = (x.strip() for x in line.partition("=>"))
+        h.copy(src, dst or src, "listed")
+    missing = h.close()
+    report = os.path.join(os.path.dirname(os.path.abspath(dest)), "harvest-report.txt")
+    with open(report, "w", encoding="utf-8") as r:
+        for p in sorted(h.why):
+            r.write(f"{p}\t{h.why[p]}\n")
+    size = sum(os.path.getsize(h.d(p)) for p in h.why if not os.path.islink(h.d(p)))
+    print(f"harvested {len(h.why)} paths, {size / 2**20:.1f} MiB; report: {report}")
+    if missing:
+        sys.exit("UNRESOLVED:\n  " + "\n  ".join(sorted(set(missing))))
+
+
+if __name__ == "__main__":
+    main()

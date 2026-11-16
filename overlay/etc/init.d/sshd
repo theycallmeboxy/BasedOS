@@ -1,0 +1,9 @@
+#!/bin/sh
+# OpenSSH (harvested). Host keys persist in /data/ssh.
+. /usr/lib/basedos/functions
+mkdir -p /data/ssh /var/empty /run/sshd
+chmod 700 /data/ssh
+for t in ed25519 rsa; do
+	[ -f /data/ssh/ssh_host_${t}_key ] || ssh-keygen -q -t $t -N "" -f /data/ssh/ssh_host_${t}_key
+done
+/usr/sbin/sshd -f /etc/ssh/sshd_config && log "sshd started" || log "sshd failed"

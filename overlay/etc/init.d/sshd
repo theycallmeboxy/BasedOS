@@ -6,4 +6,4 @@ chmod 700 /data/ssh
 for t in ed25519 rsa; do
 	[ -f /data/ssh/ssh_host_${t}_key ] || ssh-keygen -q -t $t -N "" -f /data/ssh/ssh_host_${t}_key
 done
-/usr/sbin/sshd -f /etc/ssh/sshd_config && log "sshd started" || log "sshd failed"
+/usr/sbin/sshd -f /etc/ssh/sshd_config -E /data/sshd.log && log "sshd started" || log "sshd failed (see /data/sshd.log)"

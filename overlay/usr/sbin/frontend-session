@@ -11,12 +11,19 @@ export PATH=/usr/bin:/usr/sbin
 . /usr/lib/basedos/functions
 SD=/mnt/SDCARD
 
+# Quiet retries; one message per session, and only after 15 s without a card.
 i=0
-until /usr/sbin/mount-frontend 2>/dev/null; do
+until QUIET=1 /usr/sbin/mount-frontend 2>/dev/null; do
 	i=$((i + 1))
-	[ $i -ge 30 ] && { say "no card after 15 s; retrying in 5 s"; sleep 5; exit 1; }
+	if [ $i -ge 30 ]; then
+		[ -f /run/basedos/said-nocard ] || say "no card in the slot (waiting for one)"
+		touch /run/basedos/said-nocard
+		sleep 5
+		exit 1
+	fi
 	sleep 0.5
 done
+rm -f /run/basedos/said-nocard
 
 cd "$SD" || exit 1
 mark frontend

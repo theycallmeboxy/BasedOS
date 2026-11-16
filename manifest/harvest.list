@@ -12,6 +12,7 @@
 /usr/sbin/sshd
 /usr/bin/ssh-keygen
 /usr/lib/openssh/sftp-server
+/usr/lib/openssh/sshd-session
 
 ## wifi: Broadcom AP6256/AP6255 (bcmdhd is the kernel's only module)
 /usr/bin/wpa_supplicant

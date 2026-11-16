@@ -6,6 +6,5 @@ PermitRootLogin yes
 PasswordAuthentication yes
 PermitEmptyPasswords yes
 KbdInteractiveAuthentication no
-UsePAM no
 UseDNS no
 Subsystem sftp /usr/lib/openssh/sftp-server

@@ -183,6 +183,14 @@ Physical button → code, from an `evtest` run where each button was pressed in 
   59 s early. spruce's `device_woke_via_timer` allows 10 s, so the GKD platform rounds wake
   alarms up to a whole minute. With "Shutdown after sleeping", the device then sleeps, wakes on
   the RTC and powers off cleanly (`rcK` ran, and the card was clean on the next mount).
+- **Every resume reports a power-key press**, the RTC wake included. The rk805 pwrkey node
+  (event0) emits KEY_POWER down/up as the system wakes, though nobody pressed it. This is likely
+  the Rockchip BSP waking Android userspace. spruce ignores it after its own sleeps (its
+  post-wake cooldown), but a suspend started outside spruce is followed by spruce going straight
+  back to sleep. Seen 2026-11-16: an RTC wake at 22:12:49 logged power_key_down/up in
+  spruce.log. Test suspends through spruce (tap power), not with a raw `echo mem`.
+- Deep sleep evidence: `PM: suspend entry (deep)`, CPUs 1-7 taken down through PSCI
+  (`psci: CPUn killed`) before the firmware's system suspend, `suspend_stats/success` counting up.
 - The kernel has a `reboot-mode` node (`syscon@26024000/reboot-mode`: normal, loader, bootloader,
   recovery, fastboot, ums, winusb, charge, quiescent, watchdog), so `reboot loader` and others
   should work. Not tried yet. (Earlier searches missed it: BusyBox `find` doesn't follow the

@@ -25,7 +25,7 @@ stay_down() {
 # First session of this boot only: a held Select means maintenance mode.
 if [ ! -f $STATE/session-checked ]; then
 	touch $STATE/session-checked
-	if basedos-keyheld gkd_atom_joypad 314 2>/dev/null; then
+	if key_held gkd_atom_joypad 314; then
 		touch $STATE/maintenance
 		log "Select held at boot: maintenance mode"
 	fi

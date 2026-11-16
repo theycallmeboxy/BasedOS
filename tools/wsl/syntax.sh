@@ -4,5 +4,4 @@ rc=0
 for f in initrd/basedos/init overlay/etc/init.d/* overlay/usr/sbin/mount-frontend overlay/usr/sbin/frontend-session overlay/usr/sbin/basedos-pwrkey overlay/usr/lib/basedos/functions overlay/usr/share/udhcpc/default.script tools/install-dev.sh tools/dev/update-basedos.sh; do
 	dash -n "$f" || { echo "SYNTAX: $f"; rc=1; }
 done
-python3 -m py_compile overlay/usr/sbin/basedos-keyheld && echo "py ok"
 exit $rc

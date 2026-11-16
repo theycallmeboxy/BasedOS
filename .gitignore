@@ -1,0 +1,6 @@
+work/
+prepared/
+*.img
+*.bosupd
+*.squashfs
+*.cpio*

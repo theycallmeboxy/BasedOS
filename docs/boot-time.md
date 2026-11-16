@@ -21,6 +21,14 @@ Measured on the unit, 2026-11-16 (BasedOS b8121f5 plus the loglevel change, spru
   the console was not the bottleneck. BasedOS keeps `loglevel=4` anyway, because it also keeps
   kernel chatter off the screen. Warnings and worse are still shown.
 
+## Safeguard cost
+
+The boot-attempt counter (the initrd mounts p2, counts and unmounts) and the maintenance-mode key
+check (`evtest --query`, 0.04 s; a Python EVIOCGKEY check took 0.18 s and was replaced) add about
+0.2 s before the frontend starts: `frontend` at 1.88 s of uptime, against 1.65 s without them.
+The kernel's own time to `/basedos/init` varies by up to about 0.7 s from boot to boot (2.97 to
+3.69 s seen), which is more than all of BasedOS's userspace.
+
 ## What would need a kernel rebuild
 
 The stock kernel is used as it is (no source for GKD's build), so these wait for a BasedOS kernel:

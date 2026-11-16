@@ -1,5 +1,24 @@
 # BasedOS plan
 
+## Status
+
+**v0 boots on the device (2026-11-16, build `61371a3`), installed next to stock** with
+`tools/install-dev.sh`. Verified:
+- `rcS` starts at 1.58 s after the kernel, `sshd` at 1.79 s, `wlan0` at 2.17 s, and
+  the DHCP lease arrives at 10.1 s (Wi-Fi association dominates). RAM in use: 67 MB.
+- Root is the read-only squashfs on p1. `/data` is `basedos-data/` on p2, and
+  stock's `/storage` is untouched. `/mnt/SDCARD` exists, with `/mnt/sdcard`
+  pointing to it.
+- Wi-Fi uses the network copied from stock's connman. SSH uses stock's host
+  keys, so the fingerprints are the same.
+- `frontend-session` waits for a card quietly and prints one on-screen notice.
+
+Not yet tried: the frontend handoff with a real card, RTC time (`hwclock`),
+sleep and power key, audio, and the display from a frontend.
+
+Fixed during bring-up: OpenSSH 9.8 needs `/usr/lib/openssh/sshd-session`
+(added to the harvest list), and stock's sshd has no PAM (`UsePAM` removed).
+
 ## Starting point (verified on the device, 2026-11-16)
 
 - **Device:** RK3576S, 2 GB RAM, 16 GB eMMC (`mmcblk0`), one SD slot (`mmcblk1`),

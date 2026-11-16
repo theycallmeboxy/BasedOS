@@ -28,6 +28,7 @@ fi
 say "boot $(cat /proc/sys/kernel/random/boot_id | cut -c1-8): BasedOS $BASEOS_VERSION ($BASEOS_BUILD)"
 
 hostname -F /etc/hostname
+hwclock -u -s 2>/dev/null || log "no RTC time"
 [ -f /data/machine-id ] || cat /proc/sys/kernel/random/uuid | tr -d - > /data/machine-id
 ln -sf /data/machine-id /run/machine-id
 echo /sbin/mdev > /proc/sys/kernel/hotplug

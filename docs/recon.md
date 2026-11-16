@@ -172,6 +172,22 @@ Physical button → code, from an `evtest` run where each button was pressed in 
 - Recovery modes (tested, see recovery.md): hold **Menu + Home** at power-on for U-Boot USB mass storage of the whole eMMC (`2207:0010`), or **Volume Down** for maskrom (straight to the boot ROM, apparently a hardware maskrom key) (`2207:350E`). Use a USB-A to C cable. Long-press power to exit.
 - The USB-C controller (`usb@23000000`) is OTG with a UDC present, so it can act as a USB device (needed for Rockchip maskrom recovery).
 
+## Sleep (verified on BasedOS, 2026-11-16)
+
+- `mem_sleep` = `s2idle [deep]`. Deep suspend (`echo mem > /sys/power/state`) enters and exits
+  cleanly. The display and Wi-Fi (bcmdhd, same lease) come back, and the power button wakes it.
+- Deep-sleep wake mask: `rockchip-suspend/rockchip,wakeup-config = 0x100`. The PMIC
+  (`pmic@23`, GPIO0_A6) and the RTC (`hym8563@51`, GPIO0_A5, `wakeup-source`) both sit on
+  always-on GPIO0, and both wake the board.
+- The **hym8563 alarm has minute resolution**: it fires at the start of the target minute, up to
+  59 s early. spruce's `device_woke_via_timer` allows 10 s, so the GKD platform rounds wake
+  alarms up to a whole minute. With "Shutdown after sleeping", the device then sleeps, wakes on
+  the RTC and powers off cleanly (`rcK` ran, and the card was clean on the next mount).
+- The kernel has a `reboot-mode` node (`syscon@26024000/reboot-mode`: normal, loader, bootloader,
+  recovery, fastboot, ums, winusb, charge, quiescent, watchdog), so `reboot loader` and others
+  should work. Not tried yet. (Earlier searches missed it: BusyBox `find` doesn't follow the
+  `/proc/device-tree` symlink, so search `/sys/firmware/devicetree/base` instead.)
+
 ## Incident during recon
 
 While checking `ra64.universal`, Git Bash rewrote the remote path `/tmp/spruce-probe/...`

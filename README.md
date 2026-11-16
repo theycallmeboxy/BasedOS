@@ -22,7 +22,10 @@ Not ready for general use.
 
 | Path | What |
 |---|---|
+| [docs/user-guide.md](docs/user-guide.md) | **start here**: install, everyday use, safeguards, recovery |
+| [docs/spruce-on-gkd.md](docs/spruce-on-gkd.md) | spruce support: the kit, status, what's left |
 | [docs/plan.md](docs/plan.md) | design, conventions, status |
+| [docs/boot-time.md](docs/boot-time.md), [docs/power.md](docs/power.md) | measurements |
 | [docs/recovery.md](docs/recovery.md) | eMMC backup, rescue SD card, USB disk mode, maskrom, full restore (all tested) |
 | [docs/recon.md](docs/recon.md) | hardware and stock-firmware notes |
 | [docs/spruce-handoff.md](docs/spruce-handoff.md) | what spruce needs to run on BasedOS |
@@ -35,7 +38,5 @@ Not ready for general use.
 
 ## License
 
-MIT for everything in this repository (see `LICENSE`). Builds pull in
-third-party software under its own licenses (Alpine's BusyBox, GPL-2.0), along
-with files from your own device's stock firmware. Neither is part of this
-repository or published with it.
+MIT for everything in this repository (see `LICENSE`). Credits, third-party parts and why
+built images are never published: [NOTICE.md](NOTICE.md).

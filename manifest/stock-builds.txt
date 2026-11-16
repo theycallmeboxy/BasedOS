@@ -1,6 +1,6 @@
 # Stock GKD 350H Ultra builds BasedOS can harvest from: sha256 and the name to
 # store each file under. Hashes only; the files themselves are never committed.
-# Source: the spruce repo's docs/gkd350h-ultra/backup-restore.md "Known stock builds".
+# Source: docs/recovery.md, "Known stock builds".
 
 [rocknix-20260613-c8ed06c]
 6fcfbd235c5e921116b7254da77f02c6171b33fe8b174ebac8daa25bd784eab0 Image

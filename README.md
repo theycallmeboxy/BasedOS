@@ -15,4 +15,27 @@ Frontends detect it the same way they detect BaseOS: `/etc/baseos-release`,
 GPU driver, Wi-Fi firmware and C library come from your own device's stock
 firmware, harvested during installation. See [docs/plan.md](docs/plan.md).
 
-Status: planning and v0 bring-up. Not ready for use.
+Status: v0 boots on the device (installed next to stock, for developers).
+Not ready for general use.
+
+## What's here
+
+| Path | What |
+|---|---|
+| [docs/plan.md](docs/plan.md) | design, conventions, status |
+| [docs/recovery.md](docs/recovery.md) | eMMC backup, rescue SD card, USB disk mode, maskrom, full restore (all tested) |
+| [docs/recon.md](docs/recon.md) | hardware and stock-firmware notes |
+| [docs/spruce-handoff.md](docs/spruce-handoff.md) | what spruce needs to run on BasedOS |
+| `overlay/`, `initrd/` | BasedOS's own init, scripts and config |
+| `manifest/` | the stock harvest list and known stock-build fingerprints |
+| `tools/` | prepare-stock, harvest, rootfs and boot-file builders, dev install |
+| `tools/dev/` | SSH helper, recon script, eMMC backup |
+| `tools/rescue/` | rescue SD card built on the device from its own files |
+| `tools/maskrom/` | builds the RK3576 maskrom USB loader from Rockchip's `rkbin` |
+
+## License
+
+MIT for everything in this repository (see `LICENSE`). Builds pull in
+third-party software under its own licenses (Alpine's BusyBox, GPL-2.0), along
+with files from your own device's stock firmware. Neither is part of this
+repository or published with it.

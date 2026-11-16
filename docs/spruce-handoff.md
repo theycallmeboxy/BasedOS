@@ -36,5 +36,5 @@
    SDL2 2.32 GLES-only build. Find out why PyUI exits immediately: missing
    Python modules (sdl2, PIL), its 64-bit launcher path, or the display.
 4. Input: `gkd_atom_joypad` (event3), plus gpio-keys for volume and the rk805
-   power key. See the spruce repo's `docs/gkd350h-ultra/recon.md`.
+   power key. See `docs/recon.md`.
 5. A guard against tight `principal.sh` loops would help on any platform.

@@ -33,8 +33,7 @@ Fixed during bring-up: OpenSSH 9.8 needs `/usr/lib/openssh/sshd-session`
   FIT at 8 MiB. U-Boot runs `boot.scr` from p1 (vfat). The SPL and U-Boot both
   try the SD card first. BasedOS never touches sectors 0 to 32767 except the
   MBR partition table.
-- **Recovery is proven on this unit** (see the spruce repo's
-  `docs/gkd350h-ultra/backup-restore.md`): a rescue SD card, U-Boot USB disk mode
+- **Recovery is proven on this unit** (see [recovery.md](recovery.md)): a rescue SD card, U-Boot USB disk mode
   (Menu+Home), and maskrom (Volume Down) with a full 15.6 GB restore.
 
 ## Conventions

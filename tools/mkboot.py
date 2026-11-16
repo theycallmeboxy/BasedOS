@@ -65,6 +65,11 @@ def bootscr(stock, out):
     if s.count('setenv bootargs "') != 2 or s.count("booti ${kernel_addr_r} - ${fdt_addr_r}") != 1:
         sys.exit("stock boot.scr isn't the expected 20260613 one")
     s = s.replace('net.iframes=0"', 'net.iframes=0 rdinit=/basedos/init"')
+    # Stock's loglevel=7 undoes "quiet": every boot message goes to the serial console and the
+    # framebuffer console as it is printed. Warnings and worse still do.
+    if s.count("loglevel=7") != 2:
+        sys.exit("stock boot.scr isn't the expected one (loglevel=7 twice)")
+    s = s.replace("loglevel=7", "loglevel=4")
     s = s.replace("booti ${kernel_addr_r} - ${fdt_addr_r}",
                   "load mmc 0:1 ${ramdisk_addr_r} basedos/initrd.uimg\n"
                   "booti ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r}")

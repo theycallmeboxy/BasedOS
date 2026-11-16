@@ -32,7 +32,7 @@ spruce update.
 | Wi-Fi | BasedOS manages it; spruce's switch takes the link up/down; networks added in spruce are saved to the card but not yet joined |
 | Bluetooth | not brought up on BasedOS |
 | PPSSPP, DraStic, Mupen64Plus, Flycast, YabaSanshiro, ScummVM, DSperate | not set up for this platform yet (see below) |
-| Emulator lists (`Emu/*/config.json`) | the GKD is in none yet |
+| Emulator lists (`Emu/*/config.json`) | `BASEDOS` is listed wherever the choice is a RetroArch core (next to `OAKMOSS_A133P`); Dreamcast and N64 now show. Not yet run on the unit. Standalone-default systems (PSP, NDS, NDSI, ScummVM, 3DS, J2ME, CoCo, Ports) and Media left out |
 | 32-bit RetroArch and cores | not available (BasedOS has only the aarch64 loader) |
 
 ## Still to do for spruce's onboarding checklist (CONTRIBUTING.md)
@@ -43,8 +43,8 @@ spruce update.
   case), `Emu/NDS/config/drastic-GKD350HUltra.cfg` and its `.bak`, and screen rotation.
 - Mupen64Plus `MUPEN_PAD_TABLE` and `InputAutoCfg-<table>.ini`; Flycast `FLYCAST_PAD_MAP`;
   YabaSanshiro `SATURN_PAD_TABLE` and keymap; ScummVM target and ini; DSperate wiring.
-- Device lists in `Emu/*/config.json` (or a third `device_names` token that existing entries
-  match, if dArkMoss's choices suit this base).
+- Device lists in `Emu/*/config.json` for the standalone emulators, once each runs on BasedOS.
+  NDS shows on every device and defaults to DSperate, which has no `basedos` case yet.
 - A PyUI system json of its own (the dArkMoss Pixel 2's is borrowed) and
   `App/ButtonReader/devices/GKD350HUltra.json`.
 - Apps with per-family cases: FileManagement, Gallery, PixelReader, Netplay.

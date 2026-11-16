@@ -1,34 +1,70 @@
 #!/bin/sh
-# Mount the frontend card (the SD slot) on /mnt/SDCARD. Exit 0 when mounted.
-# vfat first, then exFAT; one fsck.fat -a and retry if vfat refuses.
+# Mount the frontend card (the SD slot, controller 2a310000.mmc) on /mnt/SDCARD. Exit 0 when
+# mounted. QUIET=1 keeps "no card" out of the log (frontend-session polls with it).
 . /usr/lib/basedos/functions
 SD=/mnt/SDCARD
-grep -q " $SD " /proc/mounts && exit 0
 
-dev=""
-for d in /dev/mmcblk1p1 /dev/mmcblk1; do [ -b "$d" ] && { dev=$d; break; }; done
-[ -n "$dev" ] || { [ -n "${QUIET:-}" ] || log "no card in the slot"; exit 1; }
+# Already mounted: fine if its device still exists. A pulled card leaves a stale mount behind,
+# which is dropped so a reinserted card can be mounted again.
+cur=$(awk -v m="$SD" '$2 == m { print $1; exit }' /proc/mounts)
+if [ -n "$cur" ]; then
+	[ -b "$cur" ] && exit 0
+	log "card $cur is gone; dropping its mount"
+	umount -l "$SD" 2>/dev/null
+fi
+
+disk=""
+for b in /sys/block/mmcblk*; do
+	case "$(readlink -f "$b")" in */2a310000.mmc/*) disk=${b##*/}; break ;; esac
+done
+[ -n "$disk" ] || { [ -n "${QUIET:-}" ] || log "no card in the slot"; exit 1; }
+# The whole-disk node appears a moment before its partitions: use the disk itself only when it
+# has no partition table at all.
+if [ -b "/dev/${disk}p1" ]; then
+	dev=/dev/${disk}p1
+elif [ -n "$(ls -d /sys/block/$disk/${disk}p* 2>/dev/null)" ]; then
+	exit 1
+else
+	sleep 0.3
+	[ -b "/dev/${disk}p1" ] && dev=/dev/${disk}p1 || dev=/dev/$disk
+fi
+grep -q "^$dev " /proc/mounts && { log "$dev is already mounted elsewhere; not touching it"; exit 1; }
+
+type=$(blkid "$dev" 2>/dev/null | sed -n 's/.* TYPE="\([^"]*\)".*/\1/p')
+cid=$(cat /sys/block/$disk/device/cid 2>/dev/null)
+checked=/run/basedos/fsck-$cid
 
 # A FAT32 card that wasn't unmounted cleanly still has bit 0 of the boot sector's state byte
-# (0x41) set, as Linux's vfat leaves it while mounted. Repair it before use.
+# (0x41) set, as Linux's vfat leaves it while mounted.
 fat_dirty() {
 	[ "$(dd if="$1" bs=1 skip=82 count=5 2>/dev/null)" = FAT32 ] || return 1
 	[ $(( $(dd if="$1" bs=1 skip=65 count=1 2>/dev/null | hexdump -e '1/1 "%u"') % 2 )) -eq 1 ]
 }
-if fat_dirty "$dev"; then
-	say "card was not unmounted cleanly; checking it"
-	if fsck.fat -a "$dev" >> "$BASEDOS_LOG" 2>&1; then log "fsck.fat: no errors"; else log "fsck.fat exited $? (repairs logged above)"; fi
-fi
+# Repair once per insertion (per card ID), with the checker for its filesystem; its output goes
+# to a per-card file in /run, and only a summary to the log on the eMMC.
+repair() {
+	[ -e "$checked" ] && return 1
+	touch "$checked"
+	case "$type" in
+		vfat) say "checking the card ($1)"; fsck.fat -a "$dev" > "$checked" 2>&1 ;;
+		exfat) say "checking the card ($1)"; fsck.exfat -y "$dev" > "$checked" 2>&1 ;;
+		*) log "card $dev is ${type:-unformatted}: not vfat or exFAT"; return 1 ;;
+	esac
+	log "card check ($type) exit $?: $(tail -1 "$checked")"
+}
+
+[ "$type" = vfat ] && fat_dirty "$dev" && repair "not unmounted cleanly"
 
 try() {
-	mount -t vfat -o rw,noatime,utf8,shortname=mixed,errors=continue "$dev" "$SD" 2>/dev/null ||
-	mount -t exfat -o rw,noatime,iocharset=utf8 "$dev" "$SD" 2>/dev/null
+	case "$type" in
+		vfat) mount -t vfat -o rw,noatime,utf8,shortname=mixed,errors=continue "$dev" "$SD" ;;
+		exfat) mount -t exfat -o rw,noatime,iocharset=utf8 "$dev" "$SD" ;;
+		*) return 1 ;;
+	esac 2>/dev/null
 }
 if ! try; then
-	log "mount of $dev failed; running fsck.fat -a"
-	fsck.fat -a "$dev" >> "$BASEDOS_LOG" 2>&1
-	try || { log "can't mount $dev"; exit 1; }
+	repair "it would not mount" && try || { log "can't mount $dev (${type:-no filesystem})"; exit 1; }
 fi
-say "card $dev on $SD ($(grep " $SD " /proc/mounts | cut -d' ' -f3))"
+say "card $dev on $SD ($type)"
 mark card
 exit 0

@@ -22,7 +22,6 @@ ln -s SDCARD mnt/sdcard
 
 echo "--- harvest"
 python3 "$REPO/tools/harvest.py" "$W/stock-root" "$REPO/manifest/harvest.list" "$OUT"
-mv "$W/harvest-report.txt" "$W/harvest-report.txt" 2>/dev/null || true
 
 # ROCKNIX's alsa.conf loads /storage/.config/asound.conf instead of ~/.asoundrc, and its
 # alsa.conf.d makes PipeWire the default PCM. BasedOS runs no PipeWire, and frontends (spruce's
@@ -49,7 +48,10 @@ echo "--- overlay"
 cp -a "$REPO/overlay/." "$OUT/"
 find "$OUT/etc" "$OUT/usr/lib/basedos" "$OUT/usr/share/udhcpc" -type f -exec chmod 644 {} +
 chmod 755 etc/init.d/* usr/sbin/mount-frontend usr/sbin/frontend-session usr/sbin/basedos-pwrkey usr/share/udhcpc/default.script
-chmod 600 etc/shadow
+# Accounts are on /data (rcS seeds them from these defaults), so a frontend can add users.
+chmod 644 usr/share/basedos/accounts/passwd usr/share/basedos/accounts/group
+chmod 600 usr/share/basedos/accounts/shadow
+for f in passwd group shadow; do ln -sf /data/etc/$f etc/$f; done
 chmod 700 root
 ln -sf /run/resolv.conf etc/resolv.conf
 ln -sf /run/machine-id etc/machine-id

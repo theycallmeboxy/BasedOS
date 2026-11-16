@@ -13,7 +13,7 @@ while [ ! -e /sys/class/net/wlan0 ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1))
 mark wlan0
 
 mkdir -p /run/wpa_supplicant
-wpa_supplicant -B -i wlan0 -D nl80211,wext -c "$conf" -P /run/wpa_supplicant.pid -s ||
+wpa_supplicant -B -i wlan0 -D nl80211,wext -c "$conf" -P /run/wpa_supplicant.pid -f /run/basedos/wpa_supplicant.log ||
 	{ log "wpa_supplicant failed"; exit 1; }
 udhcpc -i wlan0 -b -R -x hostname:"$(hostname)" -p /run/udhcpc.pid -s /usr/share/udhcpc/default.script
-log "network started"
+log "wpa_supplicant and udhcpc started (the lease is logged when it arrives)"

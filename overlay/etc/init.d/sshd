@@ -3,7 +3,12 @@
 . /usr/lib/basedos/functions
 mkdir -p /data/ssh /var/empty /run/sshd
 chmod 700 /data/ssh
+# A key cut short by a power loss would never be regenerated, so check each one and write new
+# keys under a temporary name first.
 for t in ed25519 rsa; do
-	[ -f /data/ssh/ssh_host_${t}_key ] || ssh-keygen -q -t $t -N "" -f /data/ssh/ssh_host_${t}_key
+	k=/data/ssh/ssh_host_${t}_key
+	ssh-keygen -l -f "$k" >/dev/null 2>&1 && continue
+	rm -f "$k" "$k.pub" "$k.tmp" "$k.tmp.pub"
+	ssh-keygen -q -t $t -N "" -f "$k.tmp" && mv "$k.tmp.pub" "$k.pub" && mv "$k.tmp" "$k" && sync
 done
 /usr/sbin/sshd -f /etc/ssh/sshd_config -E /data/sshd.log && log "sshd started" || log "sshd failed (see /data/sshd.log)"

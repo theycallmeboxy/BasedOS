@@ -48,7 +48,10 @@ class Fat32:
 
     def chain(self, c):
         out = []
+        limit = len(self.fat) // 4
         while 2 <= c < 0x0FFFFFF8:
+            if len(out) > limit:
+                sys.exit("FAT cluster chain loops; the image is damaged")
             out.append(c)
             c = struct.unpack_from("<I", self.fat, c * 4)[0] & 0x0FFFFFFF
         return out
@@ -70,6 +73,8 @@ class Fat32:
             want = min(left, n * self.cl)
             while want:
                 buf = self.f.read(min(want, 8 << 20))
+                if not buf:
+                    sys.exit("the image ends inside a file; it is truncated")
                 h.update(buf)
                 if out:
                     out.write(buf)

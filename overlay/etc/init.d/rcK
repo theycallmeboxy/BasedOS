@@ -1,10 +1,29 @@
 #!/bin/sh
-# BasedOS shutdown (BusyBox init runs this before reboot/poweroff).
+# BasedOS shutdown (BusyBox init runs this before reboot/poweroff, and before it signals any
+# process itself). Stop everything first, so the frontend and emulators have let go of the
+# card and saved, then sync and unmount. A filesystem that still won't unmount is remounted
+# read-only instead (vfat clears its dirty bit on a read-only remount); never a lazy unmount,
+# which would detach it while writes are still in flight.
 . /usr/lib/basedos/functions
 log "shutting down"
-killall -q sshd wpa_supplicant udhcpc evtest basedos-pwrkey
+
+# SIGTERM to every process except init and this script's own session (killall5 spares those).
+killall5 -15
+i=0
+while [ $i -lt 30 ] && pgrep -f "/mnt/SDCARD/" >/dev/null 2>&1; do sleep 0.1; i=$((i + 1)); done
+pgrep -f "/mnt/SDCARD/" >/dev/null 2>&1 && log "frontend still running after 3 s; killing it"
+killall5 -9
 sync
-umount /mnt/SDCARD 2>/dev/null || umount -l /mnt/SDCARD 2>/dev/null
-umount /data 2>/dev/null
-umount /run/p2 2>/dev/null || mount -o remount,ro /run/p2 2>/dev/null
+
+for m in /mnt/SDCARD /data /run/p2; do
+	grep -q " $m " /proc/mounts || continue
+	if umount "$m" 2>/dev/null; then
+		continue
+	elif mount -o remount,ro "$m" 2>/dev/null; then
+		log "$m busy: remounted read-only"
+	else
+		log "$m could not be unmounted or remounted read-only"
+	fi
+done
+mount -o remount,ro /boot 2>/dev/null
 sync

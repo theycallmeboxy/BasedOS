@@ -20,9 +20,21 @@ P1=$(awk '$1 == "/dev/mmcblk0p1" { print $2; exit }' /proc/mounts)
 rw() { mount -o remount,rw $P1; }
 ro() { sync; mount -o remount,ro $P1; }
 
+# put <src> <dst>: replace dst so that a power cut at any point leaves either the old or the
+# new file, never a short one: write dst.new, sync, re-read it from the card (not the page
+# cache), then rename over dst and sync again.
+put() {
+	cp "$1" "$2.new" || die "copy to $2.new failed"
+	sync
+	echo 3 > /proc/sys/vm/drop_caches
+	[ "$(md5sum < "$1")" = "$(md5sum < "$2.new")" ] || { rm -f "$2.new"; die "$2.new does not match $1"; }
+	mv "$2.new" "$2" || die "rename to $2 failed"
+	sync
+}
+
 if [ "${1:-}" = revert ]; then
 	[ -f $P1/basedos/boot.scr.stock ] || die "no saved stock boot.scr"
-	rw; cp $P1/basedos/boot.scr.stock $P1/boot.scr; ro
+	rw; put $P1/basedos/boot.scr.stock $P1/boot.scr; ro
 	echo "stock boot.scr restored; reboot to boot stock"
 	exit 0
 fi
@@ -35,15 +47,16 @@ for f in rootfs.squashfs initrd.uimg boot.scr; do [ -s "$SRC/$f" ] || die "missi
 rw
 trap ro EXIT
 mkdir -p $P1/basedos
-[ -f $P1/basedos/boot.scr.stock ] || cp $P1/boot.scr $P1/basedos/boot.scr.stock
-cp "$SRC/rootfs.squashfs" $P1/basedos/rootfs.squashfs.new && mv $P1/basedos/rootfs.squashfs.new $P1/basedos/rootfs.squashfs
-cp "$SRC/initrd.uimg" $P1/basedos/initrd.uimg
-cp "$SRC/boot.scr" $P1/boot.scr
-sync
-for f in rootfs.squashfs initrd.uimg; do
-	[ "$(md5sum < "$SRC/$f")" = "$(md5sum < $P1/basedos/$f)" ] || die "$f copy mismatch"
-done
-[ "$(md5sum < "$SRC/boot.scr")" = "$(md5sum < $P1/boot.scr)" ] || die "boot.scr copy mismatch"
+if [ ! -f $P1/basedos/boot.scr.stock ]; then
+	# Never save BasedOS's own script as "stock": revert would then be a no-op.
+	dd if=$P1/boot.scr bs=72 skip=1 2>/dev/null | grep -q "BasedOS" &&
+		die "boot.scr is already BasedOS's and there is no saved stock copy"
+	put $P1/boot.scr $P1/basedos/boot.scr.stock
+fi
+# The rootfs and initrd first; boot.scr, which switches the device over, only once both verify.
+put "$SRC/rootfs.squashfs" $P1/basedos/rootfs.squashfs
+put "$SRC/initrd.uimg" $P1/basedos/initrd.uimg
+put "$SRC/boot.scr" $P1/boot.scr
 echo "p1: $(ls $P1/basedos | tr '\n' ' ')"
 
 mkdir -p $DATA/ssh
@@ -58,10 +71,22 @@ if [ ! -f $DATA/wpa_supplicant.conf ]; then
 	{
 		echo "ctrl_interface=/run/wpa_supplicant"
 		echo "update_config=0"
+		# connman stores the SSID as hex (SSID=) and the passphrase in clear. Write the SSID as
+		# hex and the key as wpa_passphrase's 64-hex PSK, both unquoted, so quotes or
+		# backslashes in either can't break the file. Open networks get key_mgmt=NONE.
 		for s in /storage/.cache/connman/wifi_*/settings; do
 			[ -f "$s" ] || continue
-			awk -F= '/^Name=/{n=substr($0,6)} /^Passphrase=/{p=substr($0,12)}
-				END{ if (n != "" && p != "") printf "network={\n\tssid=\"%s\"\n\tpsk=\"%s\"\n}\n", n, p }' "$s"
+			name=$(sed -n 's/^Name=//p' "$s" | head -1)
+			ssid=$(sed -n 's/^SSID=//p' "$s" | head -1)
+			pass=$(sed -n 's/^Passphrase=//p' "$s" | head -1)
+			[ -n "$ssid" ] || continue
+			if [ -n "$pass" ]; then
+				psk=$(wpa_passphrase "$name" "$pass" | sed -n 's/^[[:space:]]*psk=\([0-9a-f]\{64\}\)$/\1/p')
+				[ -n "$psk" ] || { echo "skipping $name: wpa_passphrase failed" >&2; continue; }
+				printf 'network={\n\tssid=%s\n\tpsk=%s\n}\n' "$ssid" "$psk"
+			else
+				printf 'network={\n\tssid=%s\n\tkey_mgmt=NONE\n}\n' "$ssid"
+			fi
 		done
 	} > $DATA/wpa_supplicant.conf
 	echo "wpa_supplicant.conf: $(grep -c 'network=' $DATA/wpa_supplicant.conf) network(s) from connman"

@@ -90,10 +90,12 @@ class Harvest:
             return
         os.makedirs(os.path.dirname(out), exist_ok=True)
         if os.path.islink(full) and src == dst:
-            os.symlink(os.readlink(full), out)
+            t = os.readlink(full)
+            os.symlink(t, out)
             self.why[dst] = why + " (symlink)"
-            real = self.resolve(src)
-            self.copy(real, real, why)
+            # Follow one hop at a time, so every link in a chain a -> b -> c is copied too.
+            nxt = t if t.startswith("/") else os.path.normpath(os.path.join(os.path.dirname(src), t))
+            self.copy(nxt, nxt, why)
         else:
             real = self.resolve(src)
             if not os.path.exists(self.s(real)):

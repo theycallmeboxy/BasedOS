@@ -5,3 +5,4 @@ prepared/
 *.squashfs
 *.cpio*
 out/
+__pycache__/

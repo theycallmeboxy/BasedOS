@@ -64,16 +64,27 @@ def bootscr(stock, out):
     s = data[8:8 + slen].decode()
     if s.count('setenv bootargs "') != 2 or s.count("booti ${kernel_addr_r} - ${fdt_addr_r}") != 1:
         sys.exit("stock boot.scr isn't the expected 20260613 one")
-    s = s.replace('net.iframes=0"', 'net.iframes=0 rdinit=/basedos/init"')
     # Stock's loglevel=7 undoes "quiet": every boot message goes to the serial console and the
     # framebuffer console as it is printed. Warnings and worse still do.
     if s.count("loglevel=7") != 2:
         sys.exit("stock boot.scr isn't the expected one (loglevel=7 twice)")
     s = s.replace("loglevel=7", "loglevel=4")
+    # Stock picks bootargs and the DTB; then BasedOS adds its initrd. booti only returns when it
+    # fails (e.g. the ramdisk's CRC), and load fails when the file is missing: either way, put
+    # stock's bootargs back and boot stock's kernel without the initrd, so a bad or missing
+    # initrd can never leave the eMMC unbootable. (This U-Boot has no iminfo to check first.)
     s = s.replace("booti ${kernel_addr_r} - ${fdt_addr_r}",
-                  "load mmc 0:1 ${ramdisk_addr_r} basedos/initrd.uimg\n"
-                  "booti ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r}")
-    s = "# BasedOS: stock's boot script plus the BasedOS initrd (rdinit=/basedos/init)\n" + s
+                  "setenv stock_bootargs \"${bootargs}\"\n"
+                  "setenv bootargs \"${bootargs} rdinit=/basedos/init\"\n"
+                  "if load mmc 0:1 ${ramdisk_addr_r} basedos/initrd.uimg; then\n"
+                  "booti ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r}\n"
+                  "fi\n"
+                  "echo \"BasedOS initrd missing or rejected: booting stock\"\n"
+                  "setenv bootargs \"${stock_bootargs}\"\n"
+                  "booti ${kernel_addr_r} - ${fdt_addr_r}")
+    if s.count("rdinit=/basedos/init") != 1 or s.count("booti ") != 2:
+        sys.exit("boot.scr rewrite didn't land as expected")
+    s = "# BasedOS: stock's boot script plus the BasedOS initrd (rdinit=/basedos/init), stock fallback\n" + s
     body = s.encode()
     data = struct.pack(">II", len(body), 0xFFFFFFFF) + body
     with open(out, "xb") as f:

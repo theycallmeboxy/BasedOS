@@ -42,14 +42,14 @@ Fixed during bring-up: OpenSSH 9.8 needs `/usr/lib/openssh/sshd-session`
 |---|---|---|
 | Card mount | `/mnt/SDCARD` is the real mount. `/mnt/sdcard` is a symlink to it. | my355; spruce's own path |
 | Card choice | The SD slot (`mmcblk1p1`). vfat, then exFAT. Run `fsck.fat -a` on failure. | h700 |
-| Entry points, first match wins | `System/frontend`, `System/launch_frontend.sh`, `.tmp_update/updater`, `spruce/scripts/runtime.sh` | h700 (spruce path), my355 (updater) |
+| Entry points, first match wins | `System/frontend`, `System/launch_frontend.sh`, `spruce/scripts/runtime.sh`, `.tmp_update/updater` (spruce cards carry a Miyoo `.tmp_update` too, so spruce comes first) | h700 (spruce path), my355 (updater) |
 | Environment | Every key in `/etc/baseos-release` is exported to the frontend. | h700 |
 | `/etc/baseos-release` | `BASEOS=1`, `BASEOS_NAME=BasedOS`, `BASEOS_PLATFORM=rk3576`, `BASEOS_TARGET=gkd350hultra`, `BASEOS_DEVICE=gkd350hultra`, `BASEOS_MODEL="GKD 350H Ultra"`, `BASEOS_MODEL_STRING=GKD350HUltra`, `BASEOS_PANEL_ROTATION_CCW=270` (to verify), `BASEOS_WIFI=true`, `BASEOS_BLUETOOTH=false`, `BASEOS_VERSION`, `BASEOS_BUILD` | union of both |
 | `/etc/os-release` | `ID=basedos`, `NAME="BasedOS"` | both |
 | Init | BusyBox init: `rcS` sysinit, `frontend-session` respawn, `rcK` shutdown. No udev; devtmpfs only. | both |
 | Writable state | `/data` on p2 (ext4): keys, logs, machine-id, update state. tmpfs `/run`, `/tmp`, `/var`. Root is read-only. | my355 |
 | Updates | `baseos-gkd350hultra-<ver>.bosupd` at the card root, `format=baseos-update/2` (tar plus manifest) | my355 (spruce looks for `baseos-<target>-*.bosupd`) |
-| Logs | `/data/basedos.log`, mirrored to the card | both |
+| Logs | `/data/basedos.log` (mirroring to the card is not done yet) | both |
 
 ## eMMC layout
 
@@ -66,7 +66,7 @@ A/B for updates comes later: two rootfs files on p1 (`rootfs-a`, `rootfs-b`), an
 ## Boot flow
 
 1. U-Boot runs BasedOS's `boot.scr`, which loads `Image`, the DTB and `basedos-initrd.img`, then `booti` with the initrd.
-2. The kernel unpacks its built-in initramfs and then ours over it, so our `/init` replaces stock's. Our `/init` mounts p1 read-only, loop-mounts `rootfs.squashfs`, mounts p2 on `/data`, mounts tmpfs dirs, then `switch_root`s and execs `/sbin/init`.
+2. The kernel unpacks its built-in initramfs and then ours over it, so our `/init` replaces stock's. Our `/basedos/init` counts the boot on p2, mounts p1 read-only, loop-mounts the chosen slot's squashfs (falling back to the other slot, then to stock), then `switch_root`s and execs `/sbin/init`. `rcS` mounts p2 on `/data` and the tmpfs dirs.
 3. BusyBox init runs `rcS`: proc/sys/devpts, splash, the Wi-Fi module and firmware, dbus if needed, `/data` setup, the card mount, a pending update, then sshd in the background.
 4. `frontend-session` (respawned) runs the frontend probe. With no card or frontend, it shows a splash and retries.
 

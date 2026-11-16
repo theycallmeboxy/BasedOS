@@ -1,0 +1,30 @@
+#!/bin/sh
+# Hold power for 5 s: sync, unmount the card and power off cleanly. Runs for the whole session,
+# so a hung frontend never leaves the hardware cut (about 10 s on the PMIC) as the only way out.
+# Shorter presses are left to the frontend.
+. /usr/lib/basedos/functions
+HOLD=5
+
+node=""
+for d in /sys/class/input/event*; do
+	case "$(cat "$d/device/name" 2>/dev/null)" in
+		*pwrkey*) node="/dev/input/${d##*/}"; break ;;
+	esac
+done
+[ -n "$node" ] || { log "no power key node; long-press shutdown disabled"; exit 0; }
+log "watching $node (hold ${HOLD} s to power off)"
+
+evtest "$node" 2>/dev/null | while read -r line; do
+	case "$line" in
+	*"(KEY_POWER), value 1"*)
+		touch /run/basedos/pwrkey-held
+		( sleep $HOLD
+		  [ -f /run/basedos/pwrkey-held ] || exit 0
+		  say "power held ${HOLD} s: shutting down"
+		  poweroff ) &
+		;;
+	*"(KEY_POWER), value 0"*)
+		rm -f /run/basedos/pwrkey-held
+		;;
+	esac
+done

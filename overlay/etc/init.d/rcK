@@ -2,7 +2,7 @@
 # BasedOS shutdown (BusyBox init runs this before reboot/poweroff).
 . /usr/lib/basedos/functions
 log "shutting down"
-killall -q sshd wpa_supplicant udhcpc
+killall -q sshd wpa_supplicant udhcpc evtest basedos-pwrkey
 sync
 umount /mnt/SDCARD 2>/dev/null || umount -l /mnt/SDCARD 2>/dev/null
 umount /data 2>/dev/null

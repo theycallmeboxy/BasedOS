@@ -27,17 +27,20 @@ The A72 is about 1.85x faster at the same clock and costs about 9x the extra pow
 the same work for about a fifth of the energy. (A Python busy loop on one core; real emulators
 are memory-heavier, so take the ratio as a direction, not a constant.)
 
-## What spruce does with it
+## What spruce does with it (and the Wi-Fi catch)
 
-The GKD platform keeps spruce's usual three modes and changes one thing:
+The A53-only powersave this suggests was tried and **reverted**: with cpus 4-7 offline the unit
+dropped off the network, three separate times (spruce running as an H700 with cores "0123", the
+power probe's A53-only runs, and the menu in A53-only powersave). The likely cause is the Broadcom
+driver: its worker thread or the SDIO interrupt is tied to a big core. Not verified yet. So every
+mode keeps all eight cores online for now.
 
-- **Powersave** (menu, light emulators): A53 cluster only (`DEVICE_MIN_CORES_ONLINE=0123`),
-  408 to 1416 MHz.
-- **Smart** (most games): all eight cores. The kernel's scheduler moves heavy threads to the A72s.
-- **Performance and overclock**: all eight cores at the top OPPs.
-
-`cores_online` brings the A72s back as soon as the mode changes, so a game launched from the menu
-gets the whole chip.
+To pick it up again:
+1. With the A72s online, record `grep -E "dhd|mmc2" /proc/interrupts` and the CPU affinity of the
+   `dhd_dpc` / `dhd_rxf` threads (`/proc/<pid>/status`, `Cpus_allowed_list`).
+2. Take one A72 offline at a time and see which one drops Wi-Fi.
+3. If it's affinity, pin the IRQ and threads to an A53 at boot (BasedOS `network` script), then
+   retry A53-only powersave.
 
 ## Sleep
 

@@ -66,7 +66,8 @@ spruce writes one set of governor and frequency values per mode to both clusters
 (`cpu_control_functions.sh`: `cpu0` and `cpu4`). Each cluster clamps a request to its own range:
 asked for 2208 MHz, the A53s settle at 2016 and the A72s run at 2208 (checked on the unit).
 
-Measured on battery, backlight 25, Castlevania DoS in DSperate (BasedOS 8d85e0b, Vulkan present),
+Measured on battery, backlight raw 25 (level 1 of 10: PyUI's screensaver dim, left on because the
+games were started from SSH over the screensaver), Castlevania DoS in DSperate (BasedOS 8d85e0b, Vulkan present),
 settings applied live, 24 s averages. Performance first and last, 5 mW apart:
 
 | Setup | Draw | DS speed |
@@ -77,8 +78,8 @@ settings applied live, 24 s averages. Performance first and last, 5 mW apart:
 | schedutil, A72s capped at 1416 | 1502 mW | 59.1 fps |
 | schedutil, DDR held at 528 | 1442 mW | 59.1 fps |
 
-An earlier Performance reading at a brighter backlight was 3.1 W: the panel outweighs every CPU
-setting. DS is a light load (one A53 thread at about a third busy), so this ranks the modes'
+An earlier Performance reading at full backlight (level 10, raw 255) was 3.1 W: the panel
+outweighs every CPU setting by far. DS is a light load (one A53 thread at about a third busy), so this ranks the modes'
 overhead, not their headroom; a heavy game (PSP, N64, Dreamcast) is still to measure.
 
 What the kernel offers: energy-aware scheduling is on (`sched_energy_aware` 1; capacities A53 442,

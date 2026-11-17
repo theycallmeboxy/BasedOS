@@ -49,9 +49,51 @@ Deep sleep (suspend to RAM) is used; see `recon.md` for the evidence and the RTC
 The deep-sleep draw itself hasn't been measured yet: that needs a long sleep and a before/after
 battery reading, or a USB power meter.
 
+## spruce's CPU modes on this board (2026-11-16)
+
+spruce writes one set of governor and frequency values per mode to both clusters
+(`cpu_control_functions.sh`: `cpu0` and `cpu4`). Each cluster clamps a request to its own range:
+asked for 2208 MHz, the A53s settle at 2016 and the A72s run at 2208 (checked on the unit).
+
+Measured on battery, backlight 25, Castlevania DoS in DSperate (BasedOS 8d85e0b, Vulkan present),
+settings applied live, 24 s averages. Performance first and last, 5 mW apart:
+
+| Setup | Draw | DS speed |
+|---|---|---|
+| spruce Performance (all at 2016, GPU 900, DDR dmc_ondemand) | 1600 mW | 59.1 fps |
+| spruce Smart (A53 ondemand, A72 conservative, GPU simple_ondemand) | 1462 mW | 59.1 fps |
+| schedutil on both clusters (energy-aware scheduling active) | 1506 mW | 59.1 fps |
+| schedutil, A72s capped at 1416 | 1502 mW | 59.1 fps |
+| schedutil, DDR held at 528 | 1442 mW | 59.1 fps |
+
+An earlier Performance reading at a brighter backlight was 3.1 W: the panel outweighs every CPU
+setting. DS is a light load (one A53 thread at about a third busy), so this ranks the modes'
+overhead, not their headroom; a heavy game (PSP, N64, Dreamcast) is still to measure.
+
+What the kernel offers: energy-aware scheduling is on (`sched_energy_aware` 1; capacities A53 442,
+A72 1024) but only works under schedutil, which spruce's modes don't use; per-task uclamp; cpuidle
+WFI and cpu-sleep on both clusters; no cgroups mounted. Thermal: the little-core zone trips at 75
+and 85 °C, the big core at 115 °C. The DMC offers dmc_ondemand, powersave, performance, userspace
+at 528/1068/1560/2112 MHz.
+
+## Levers, and what to use
+
+All of these stay inside the GKD's own files (its cfg and .sh, and BasedOS); spruce's shared code
+is not touched.
+
+| Lever | Where | Verdict |
+|---|---|---|
+| Smart as spruce does it | spruce | keep: lowest of the tested CPU setups on DS |
+| schedutil / energy-aware scheduling | would need a GKD `set_smart` override (as the Miyoo Mini has) | no: costs more than spruce's Smart on DS; revisit with a heavy game |
+| A72 at its 2208 MHz top in Performance | `CPU_PERF_MAX_FREQ=2208000` in the GKD cfg | yes: the A53s clamp to 2016 by themselves; Performance then equals Overclock (2208 is the A72's stock top, nothing above it) |
+| DDR following the mode | spruce's opt-in `DRAM_*` in the GKD cfg (as the Flip and Miniloong) | yes: powersave in Powersave, dmc_ondemand in Smart, performance in Performance/Overclock |
+| Parking the A72s in Powersave | cfg core strings | not yet: Wi-Fi drops (above) |
+| DSperate's threads on the A53s | `DS_PIN` / launch affinity | not needed: 4.7 ms of a 16.7 ms frame |
+| Idle sleep (idlemon) input | `set_event_arg_for_idlemon` in the GKD .sh | yes: missing today, so idle sleep can't see input on the GKD |
+| Panel brightness | user | the biggest single draw; nothing to change |
+
 ## Ideas not tried yet
 
-- The GPU (300 to 900 MHz) and DDR (528 to 2112 MHz) governors in powersave. spruce sets GPU
-  limits per mode (`GPU_*` in the cfg); the DMC is left to the kernel's `dmc_ondemand`.
-- Panel brightness is the biggest single idle draw; nothing to change there beyond the user's level.
+- A heavy game per mode (PSP, N64, Dreamcast), with and without the DDR at the top.
 - Wi-Fi power save (`iw`/`wpa_supplicant` `ps`) when idle in the menu.
+- The deep-sleep draw (above).

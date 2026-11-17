@@ -44,6 +44,14 @@
 /usr/lib/mali/libwayland-egl.so.1 => /usr/lib/libwayland-egl.so.1
 /usr/lib/glesonly/libSDL2-2.0.so.0.3200.6 => /usr/lib/libSDL2-2.0.so.0
 
+## GPU: Vulkan, the Khronos loader and Arm's Mali Vulkan driver for the G52 (stock's own pair).
+## spruce's DSperate draws through it: without it, it scales and turns the picture on the CPU,
+## too slow on this 1440x1600 portrait panel (2.4 fps; 59 fps with it, measured 2026-11-16).
+## Stock's panfrost_icd json is left out: it names Mesa's PanVK, which BasedOS doesn't carry.
+/usr/lib/libvulkan.so.1
+/usr/lib/libMaliVulkan.so.1
+/usr/share/vulkan/icd.d/mali.json
+
 ## audio: ALSA (ES9018K2M DAC; controls "Master", "Capture")
 /usr/bin/amixer
 /usr/bin/aplay

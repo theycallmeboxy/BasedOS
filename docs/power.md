@@ -105,6 +105,43 @@ Each mode sets CPU, GPU and DMC together, through spruce's shared functions:
 
 The GPU governors come from dArkMossCommon.cfg and match the Flip's and the Smart Pro S's grouping.
 
+## A72 clock steps, 1800 to 2304 MHz (2026-11-17)
+
+**Heat in a real game.** Sega Rally Championship (YabaSanshiro, attract mode, about 1.25 A72 cores
+busy) in Overclock at 2208 MHz for 40 minutes: no throttling, temperatures levelled off at about
+47 C (peak 48; the little-core zone's passive trips are at 75 and 85 C, the big-core zone has only
+the 115 C critical trip), about 2.28 W, 59 fps. In Performance (2016) on the warm device: about
+2.22 W and 1-2 C cooler, same fps. `tools/dev/thermal-log.sh` logs it.
+
+**Steps past the table.** `tools/oc/add-a72-steps.py` adds two A72 steps to a decompiled copy of
+the handheld DTB (`rk3576-gkd-atom.dtb`): 2112 MHz, the A72 top of Rockchip's own RK3576S table,
+with that row's voltages, and 2304 MHz at each level's 2208 voltage plus 37.5 mV (925 mV here,
+GammaOS's voltage for 2304 on the RG Vita Pro's RK3576). The firmware (BL31 v1.20) accepts 2112;
+for 2304 it keeps reporting 2208 (`scmi_armclkb` in `clk_summary`), but at 925 mV the A72s run
+4.4% faster than at 2208, as 2304 would (sha256 timing), presumably the PVTPLL running faster at
+the higher voltage. On this unit the test DTB is installed (stock copy in
+`/boot/basedos/rk3576-gkd-atom.dtb.stock`); BasedOS's build still ships stock's, and spruce's
+Overclock still asks for 2208.
+
+**Cost per step.** `tools/dev/clock-sweep.sh`: all four A72s saturated with sha256, on battery,
+20 s per step, two rounds in opposite order (averages below). CPU power is the total minus the
+1.11 W the device drew unloaded at the end; backlight raw 25.
+
+| A72 MHz | mV | Total draw | Throughput | CPU power | CPU energy per MiB | Big core |
+|---|---|---|---|---|---|---|
+| 1800 | 762.5 | 2.53 W | 288 MiB/s | 1.41 W | 4.9 mJ | ~47 C |
+| 2016 | 825 | 2.94 W | 316 MiB/s | 1.83 W | 5.8 mJ | ~50 C |
+| 2112 | 862.5 | 3.30 W | 332 MiB/s | 2.19 W | 6.6 mJ | ~52 C |
+| 2208 | 887.5 | 3.50 W | 346 MiB/s | 2.38 W | 6.9 mJ | ~53 C |
+| 2304 | 925 | 3.93 W | 359 MiB/s | 2.82 W | 7.9 mJ | ~56 C |
+
+From 1800: speed 100 / 110 / 116 / 120 / 125, CPU power 100 / 130 / 155 / 169 / 200, energy per
+unit of work 100 / 118 / 134 / 140 / 160. Step by step: 2016 -> 2112 costs +20% CPU power for +5%
+speed (the S table's voltage is conservative), 2112 -> 2208 only +9% for +4%, 2208 -> 2304 +18%
+for +4%. At full load on the 18.5 Wh battery that's about 7.3 / 6.3 / 5.6 / 5.3 / 4.7 hours; in a
+game that doesn't saturate the CPU the difference shrinks to tens of milliwatts (Sega Rally: about
+60 mW between 2016 and 2208).
+
 ## Sleep
 
 Deep sleep (suspend to RAM) is used; see `recon.md` for the evidence and the RTC wake details.
@@ -154,6 +191,13 @@ is not touched.
 | DSperate's threads on the A53s | `DS_PIN` / launch affinity | not needed: 4.7 ms of a 16.7 ms frame |
 | Idle sleep (idlemon) input | `set_event_arg_for_idlemon` in the 350H Ultra .sh | done 2026-11-17: the pad's js node (`set_idlemon_to_pad`, as on the H700 BaseOS) |
 | Panel brightness | user | the biggest single draw; nothing to change |
+
+## To do
+
+- **Align Smart's ceiling with Performance's clock** once the Performance clock is settled
+  (2016, or 2112/2208 from the clock sweep). The Smart Pro S sets no `CPU_SMART_MAX_FREQ`, so
+  its Smart scales up to its Performance clock; the 350H Ultra caps Smart at 1800 below
+  Performance's 2016 (dArkMossCommon's value). Then drop or match `CPU_SMART_MAX_FREQ`.
 
 ## Ideas not tried yet
 

@@ -31,6 +31,24 @@ grep -q '"/storage/.config/asound.conf"' usr/share/alsa/alsa.conf ||
 sed -i 's#"/storage/.config/asound.conf"#"~/.asoundrc"#' usr/share/alsa/alsa.conf
 rm -f usr/share/alsa/alsa.conf.d/50-pipewire.conf usr/share/alsa/alsa.conf.d/99-pipewire-default.conf
 
+echo "--- sdl2"
+# BasedOS's own SDL2 and librga (tools/sdl2/build.sh), in place of stock's SDL2.
+S=$REPO/prepared/sdl2
+SDL=$(cd "$S" && ls libSDL2-2.0.so.0.*.*) RGA=$(cd "$S" && ls librga.so.*.*.*)
+install -m 755 "$S/$SDL" "$S/$RGA" usr/lib/
+ln -sf "$SDL" usr/lib/libSDL2-2.0.so.0
+ln -sf "$RGA" usr/lib/librga.so.1
+python3 - "$REPO/tools" "$OUT/usr/lib" "$SDL" "$RGA" <<'EOF'
+import os, sys
+sys.path.insert(0, sys.argv[1])
+from harvest import elf_needed
+lib = sys.argv[2]
+missing = [n for f in sys.argv[3:] for n in elf_needed(os.path.join(lib, f)) if not os.path.exists(os.path.join(lib, n))]
+if missing:
+    sys.exit("sdl2: missing " + " ".join(sorted(set(missing))))
+EOF
+grep -h '^sha256\|  lib' "$S/libSDL2.build-info" | head -3
+
 echo "--- busybox"
 install -m 755 "$BB" usr/bin/busybox
 n=0

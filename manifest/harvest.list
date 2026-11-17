@@ -42,7 +42,8 @@
 /usr/lib/mali/libGLESv2.so.2 => /usr/lib/libGLESv2.so.2
 /usr/lib/mali/libgbm.so.1 => /usr/lib/libgbm.so.1
 /usr/lib/mali/libwayland-egl.so.1 => /usr/lib/libwayland-egl.so.1
-/usr/lib/glesonly/libSDL2-2.0.so.0.3200.6 => /usr/lib/libSDL2-2.0.so.0
+## SDL2 is not stock's: tools/sdl2/build.sh builds dArkMoss's rotating SDL2 (RGA turns the DSI
+## panel to 1600x1440) and librga, and build-rootfs.sh installs them from prepared/sdl2.
 
 ## GPU: Vulkan, the Khronos loader and Arm's Mali Vulkan driver for the G52 (stock's own pair).
 ## spruce's DSperate draws through it: without it, it scales and turns the picture on the CPU,

@@ -50,9 +50,10 @@ maximum). The 350H Ultra's `cores_online` (spruce's plus one step) drops the A72
 parking them, and the A53s then scale from 408 again. While the A72s run at 2016, any online A53
 sits at 1800 or more for the same reason.
 
-**Wi-Fi.** Three earlier tests dropped Wi-Fi with the A72s offline; none of it reproduced
-2026-11-16: A72s off 4 min idle with the A53s at 408 MHz, the A53s (cpu0 too) off 30 s, and 15 min
-idle in the menu in Smart (266 of 273 pings answered, no outage over 10 s).
+**Wi-Fi.** Parking does not affect Wi-Fi (2026-11-16): A72s off 4 min idle with the A53s at
+408 MHz, the A53s (cpu0 too) off 30 s, and 15 min idle in the menu in Smart (266 of 273 pings
+answered, no outage over 10 s). Wi-Fi dropped three times in earlier idle tests; the cause is
+unknown and hasn't come back.
 
 ## Sleep
 

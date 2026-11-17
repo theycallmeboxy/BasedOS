@@ -31,7 +31,8 @@ spruce update.
 | RetroArch | works: games run upright and full screen through spruce's launcher (NES `fceumm`, PS `pcsx_rearmed`). The pad goes through `linuxraw` (`/dev/input/js0`), since the `udev` driver needs udevd. Every button, the stick and the hotkeys (Select + B/R/L/Left/Right/R2/X/Y) checked in PadTest. L3 bound but not tested |
 | Wi-Fi | BasedOS manages it; spruce's switch takes the link up/down; networks added in spruce are saved to the card but not yet joined |
 | Bluetooth | not brought up on BasedOS |
-| PPSSPP, DraStic, Mupen64Plus, Flycast, YabaSanshiro, ScummVM, DSperate | not set up for this platform yet (see below) |
+| NDS (DSperate, spruce's default) | works: Castlevania DoS at 59 fps, upright (DS_ROTATE from the cfg's DISPLAY_ROTATION). Needs BasedOS 8d85e0b or later: it draws through the Mali Vulkan driver, without which it scales on the CPU at 2.4 fps. DSperate pins itself to cores 0-3 (the A53s); fine here (4.7 ms of the 16.7 ms frame), revisit for 3D-heavy games. Controls not yet confirmed |
+| PPSSPP, DraStic, Mupen64Plus, Flycast, YabaSanshiro, ScummVM | not set up for this platform yet (see below) |
 | Emulator lists (`Emu/*/config.json`) | `BASEDOS` is listed wherever the choice is a RetroArch core (next to `OAKMOSS_A133P`); Dreamcast and N64 now show. On the unit, spruce's launcher resolves each to its RetroArch core; PS played (PadTest), the rest need games on the card. Standalone-default systems (PSP, NDS, NDSI, ScummVM, 3DS, J2ME, CoCo, Ports) and Media left out |
 | 32-bit RetroArch and cores | not available (BasedOS has only the aarch64 loader) |
 

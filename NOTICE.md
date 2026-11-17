@@ -29,7 +29,8 @@ A BasedOS image built with these tools contains:
 |---|---|---|---|
 | BasedOS scripts and config (`overlay/`, `initrd/`) | this repo | MIT | yes |
 | BusyBox (`busybox-static`, aarch64) | Alpine Linux v3.20, downloaded at build time | GPL-2.0 | no |
-| Kernel, DTBs, libmali, Wi-Fi firmware and module, glibc, SDL2, Python, OpenSSH, ALSA, ... | the user's own stock firmware (harvested from their backup) | various: GPL, LGPL, proprietary (libmali, Broadcom firmware) | no, hashes only (`manifest/`) |
+| SDL2 2.32.10 with ArkOS's SDL2 patches (christianhaitian/rk3566_core_builds, MIT; copies in `tools/sdl2/patches/`), and librga 1.10.5 (Rockchip, JeffyCN/mirrors linux-rga-multi) | built from source by `tools/sdl2/build.sh` | zlib (SDL), MIT (patches), Apache-2.0 (librga) | patches and build script only |
+| Kernel, DTBs, libmali, Wi-Fi firmware and module, glibc, Python, OpenSSH, ALSA, ... | the user's own stock firmware (harvested from their backup) | various: GPL, LGPL, proprietary (libmali, Broadcom firmware) | no, hashes only (`manifest/`) |
 
 Because of the vendor parts, **built images are personal and must not be published.** The
 BasedOS releases this repo makes carry only its own files and tools, and every device builds the

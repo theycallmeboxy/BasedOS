@@ -25,7 +25,8 @@ Not a fork of any distribution (dArkMoss, ROCKNIX or otherwise). It's three thin
 | Part | Where it comes from |
 |---|---|
 | Bootloader, kernel, DTBs | stock ROCKNIX (build `c8ed06c`), unchanged: the only ones that support this board |
-| Userland: glibc, Mali GPU (GLES, GBM, Vulkan), SDL2, ALSA, Python, sshd, wpa_supplicant, Wi-Fi driver and firmware | copied from stock's rootfs: only what [manifest/harvest.list](manifest/harvest.list) names, plus the libraries those need |
+| Userland: glibc, Mali GPU (GLES, GBM, Vulkan), ALSA, Python, sshd, wpa_supplicant, Wi-Fi driver and firmware | copied from stock's rootfs: only what [manifest/harvest.list](manifest/harvest.list) names, plus the libraries those need |
+| SDL2 and librga | built from source by [tools/sdl2/build.sh](tools/sdl2/build.sh): dArkMoss's rotating SDL2 (SDL 2.32.10, ArkOS's patches, the RGA turns the panel so apps see 1600x1440) and Rockchip's librga 1.10.5 |
 | BusyBox (shell and core tools) | Alpine's static aarch64 build |
 | Init, boot scripts, card mount, frontend start, power key | BasedOS's own ([initrd/](initrd/), [overlay/](overlay/)) |
 

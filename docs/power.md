@@ -27,21 +27,32 @@ The A72 is about 1.85x faster at the same clock and costs about 9x the extra pow
 the same work for about a fifth of the energy. (A Python busy loop on one core; real emulators
 are memory-heavier, so take the ratio as a direction, not a constant.)
 
-## What spruce does with it (and the Wi-Fi catch)
+## What spruce does with it: one cluster per mode
 
-The A53-only powersave this suggests was tried and **reverted**: with cpus 4-7 offline the unit
-dropped off the network, three separate times (spruce running as an H700 with cores "0123", the
-power probe's A53-only runs, and the menu in A53-only powersave). The likely cause is the Broadcom
-driver: its worker thread or the SDIO interrupt is tied to a big core. Not verified yet. The driver itself survives:
-on 2026-11-16 switching Wi-Fi off and on in spruce brought the unit back while the A53-only cfg
-was still on the card. So every mode keeps all eight cores online for now.
+Since fork commit de775cb9 each spruce CPU mode uses one cluster, all eight only in Overclock:
 
-To pick it up again:
-1. With the A72s online, record `grep -E "dhd|mmc2" /proc/interrupts` and the CPU affinity of the
-   `dhd_dpc` / `dhd_rxf` threads (`/proc/<pid>/status`, `Cpus_allowed_list`).
-2. Take one A72 offline at a time and see which one drops Wi-Fi.
-3. If it's affinity, pin the IRQ and threads to an A53 at boot (BasedOS `network` script), then
-   retry A53-only powersave.
+| Mode | Cores | Clocks |
+|---|---|---|
+| Powersave (the menu's screensaver) | A53s (0-3) | conservative, 408-1416 MHz |
+| Smart (the menu, most games) | A53s (0-3) | ondemand, 408-1800 MHz |
+| Performance | A72s (4-7) | 2016 MHz |
+| Overclock | all eight | 2208 MHz (the A53s clamp to 2016) |
+
+The values are in the GKD's cfg; Performance's core list needs a GKD `set_performance` (spruce's
+takes `DEVICE_MAX_CORES_ONLINE`, which Overclock keeps for all eight), as the Miyoo Mini overrides
+its own. Parking either cluster works, cpu0 included (every interrupt moves to cpu4).
+
+**The shared CCI.** The CPU OPP tables carry `rockchip,opp-shared-cci`: the clusters share the
+interconnect, and the driver holds the A53 policy's minimum at the level the A72s last asked for.
+Parked while at 2016 MHz, the A72s left the A53s unable to go below 1800 MHz until a reboot
+(writes to `scaling_min_freq` return 0 and change nothing; the shown minimum just follows the
+maximum). The GKD's `cores_online` (spruce's plus one step) drops the A72s to 408 MHz before
+parking them, and the A53s then scale from 408 again. While the A72s run at 2016, any online A53
+sits at 1800 or more for the same reason.
+
+**Wi-Fi.** Three earlier tests dropped Wi-Fi with the A72s offline; none of it reproduced
+2026-11-16: A72s off 4 min idle with the A53s at 408 MHz, the A53s (cpu0 too) off 30 s, and 15 min
+idle in the menu in Smart (266 of 273 pings answered, no outage over 10 s).
 
 ## Sleep
 
@@ -85,9 +96,9 @@ is not touched.
 |---|---|---|
 | Smart as spruce does it | spruce | keep: lowest of the tested CPU setups on DS |
 | schedutil / energy-aware scheduling | would need a GKD `set_smart` override (as the Miyoo Mini has) | no: costs more than spruce's Smart on DS; revisit with a heavy game |
-| A72 at its 2208 MHz top in Performance | `CPU_PERF_MAX_FREQ=2208000` in the GKD cfg | yes: the A53s clamp to 2016 by themselves; Performance then equals Overclock (2208 is the A72's stock top, nothing above it) |
+| A72 at its 2208 MHz top | Overclock's `CPU_OVERCLOCK_MAX_FREQ` | already: Overclock asks 2208 and the A53s clamp to 2016; Performance stays 2016 |
 | DDR following the mode | spruce's opt-in `DRAM_*` in the GKD cfg (as the Flip and Miniloong) | yes: powersave in Powersave, dmc_ondemand in Smart, performance in Performance/Overclock |
-| Parking the A72s in Powersave | cfg core strings | not yet: Wi-Fi drops (above) |
+| Parking a cluster per mode | cfg core strings, a GKD `set_performance` and `cores_online` | done (above) |
 | DSperate's threads on the A53s | `DS_PIN` / launch affinity | not needed: 4.7 ms of a 16.7 ms frame |
 | Idle sleep (idlemon) input | `set_event_arg_for_idlemon` in the GKD .sh | yes: missing today, so idle sleep can't see input on the GKD |
 | Panel brightness | user | the biggest single draw; nothing to change |

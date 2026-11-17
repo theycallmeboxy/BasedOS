@@ -28,11 +28,11 @@ spruce update.
 | Clean shutdown from spruce | strict stage 2 plus session shield, as on the H700 BaseOS |
 | SSH (spruce's), Samba user | spruce login added |
 | CPU modes | powersave on the A53 cluster only; smart and performance on all 8 cores |
-| RetroArch | runs (GLES via SDL, udev pad profile, rotation and size set); games' aspect and in-game hotkeys not yet checked |
+| RetroArch | works: games run upright and full screen through spruce's launcher (NES `fceumm`, PS `pcsx_rearmed`). The pad goes through `linuxraw` (`/dev/input/js0`), since the `udev` driver needs udevd. Every button, the stick and the hotkeys (Select + B/R/L/Left/Right/R2/X/Y) checked in PadTest. L3 bound but not tested |
 | Wi-Fi | BasedOS manages it; spruce's switch takes the link up/down; networks added in spruce are saved to the card but not yet joined |
 | Bluetooth | not brought up on BasedOS |
 | PPSSPP, DraStic, Mupen64Plus, Flycast, YabaSanshiro, ScummVM, DSperate | not set up for this platform yet (see below) |
-| Emulator lists (`Emu/*/config.json`) | `BASEDOS` is listed wherever the choice is a RetroArch core (next to `OAKMOSS_A133P`); Dreamcast and N64 now show. Not yet run on the unit. Standalone-default systems (PSP, NDS, NDSI, ScummVM, 3DS, J2ME, CoCo, Ports) and Media left out |
+| Emulator lists (`Emu/*/config.json`) | `BASEDOS` is listed wherever the choice is a RetroArch core (next to `OAKMOSS_A133P`); Dreamcast and N64 now show. On the unit, spruce's launcher resolves each to its RetroArch core; PS played (PadTest), the rest need games on the card. Standalone-default systems (PSP, NDS, NDSI, ScummVM, 3DS, J2ME, CoCo, Ports) and Media left out |
 | 32-bit RetroArch and cores | not available (BasedOS has only the aarch64 loader) |
 
 ## Still to do for spruce's onboarding checklist (CONTRIBUTING.md)
@@ -48,4 +48,6 @@ spruce update.
 - A PyUI system json of its own (the dArkMoss Pixel 2's is borrowed) and
   `App/ButtonReader/devices/GKD350HUltra.json`.
 - Apps with per-family cases: FileManagement, Gallery, PixelReader, Netplay.
-- Validation: clean install and upgrade, a game per emulator, RetroArch hotkeys.
+- Validation: clean install and upgrade, a game per emulator.
+- PS games: spruce's own `PCSX-ReARMed.rmp` remap (every device) makes port 1 a digital pad and
+  drives the D-pad from the left stick; set a DualShock per game for analog. Not a GKD issue.

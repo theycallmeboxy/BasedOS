@@ -32,8 +32,9 @@ are memory-heavier, so take the ratio as a direction, not a constant.)
 The A53-only powersave this suggests was tried and **reverted**: with cpus 4-7 offline the unit
 dropped off the network, three separate times (spruce running as an H700 with cores "0123", the
 power probe's A53-only runs, and the menu in A53-only powersave). The likely cause is the Broadcom
-driver: its worker thread or the SDIO interrupt is tied to a big core. Not verified yet. So every
-mode keeps all eight cores online for now.
+driver: its worker thread or the SDIO interrupt is tied to a big core. Not verified yet. The driver itself survives:
+on 2026-11-16 switching Wi-Fi off and on in spruce brought the unit back while the A53-only cfg
+was still on the card. So every mode keeps all eight cores online for now.
 
 To pick it up again:
 1. With the A72s online, record `grep -E "dhd|mmc2" /proc/interrupts` and the CPU affinity of the

@@ -23,7 +23,7 @@ spruce update.
 | Detection, platform files | done |
 | PyUI menu (1600x1440, rotated) | works |
 | Buttons, stick, volume rocker | work (codes measured) |
-| Audio (UI sounds, volume) | works (DAC "Digital" control). Open: games may not start at the menu's volume (reported 2026-11-17, not checked yet; at that point the saved level was 7 and Digital read 200/255, 78%) |
+| Audio (UI sounds, volume) | works (DAC "Digital" control). Games starting at another volume (reported 2026-11-17) didn't show in the log: the level was 0 from boot to the game, and every change after went through `set_volume` |
 | Sleep / wake / shutdown after sleep | works (deep sleep, RTC wake) |
 | Clean shutdown from spruce | strict stage 2 plus session shield, as on the H700 BaseOS |
 | SSH (spruce's), Samba user | spruce login added |

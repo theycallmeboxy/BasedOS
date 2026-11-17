@@ -99,10 +99,10 @@ is not touched.
 | Smart as spruce does it | spruce | keep: lowest of the tested CPU setups on DS |
 | schedutil / energy-aware scheduling | would need a 350H Ultra `set_smart` override (as the Miyoo Mini has) | no: costs more than spruce's Smart on DS; revisit with a heavy game |
 | A72 at its 2208 MHz top | Overclock's `CPU_OVERCLOCK_MAX_FREQ` | already: Overclock asks 2208 and the A53s clamp to 2016; Performance stays 2016 |
-| DDR following the mode | spruce's opt-in `DRAM_*` in the 350H Ultra cfg (as the Flip and Miniloong) | yes: powersave in Powersave, dmc_ondemand in Smart, performance in Performance/Overclock |
+| DDR following the mode | spruce's opt-in `DRAM_*` in the 350H Ultra cfg (as the Flip and Miniloong) | done 2026-11-17: powersave (528 MHz) in Powersave, dmc_ondemand in Smart, performance (2112 MHz) in Performance/Overclock, checked on the unit |
 | Parking a cluster per mode | cfg core strings, a 350H Ultra `set_performance` and `cores_online` | done (above) |
 | DSperate's threads on the A53s | `DS_PIN` / launch affinity | not needed: 4.7 ms of a 16.7 ms frame |
-| Idle sleep (idlemon) input | `set_event_arg_for_idlemon` in the 350H Ultra .sh | yes: missing today, so idle sleep can't see input on the 350H Ultra |
+| Idle sleep (idlemon) input | `set_event_arg_for_idlemon` in the 350H Ultra .sh | done 2026-11-17: the pad's js node (`set_idlemon_to_pad`, as on the H700 BaseOS) |
 | Panel brightness | user | the biggest single draw; nothing to change |
 
 ## Ideas not tried yet

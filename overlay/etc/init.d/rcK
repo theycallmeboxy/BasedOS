@@ -15,11 +15,27 @@ pgrep -f "/mnt/SDCARD/" >/dev/null 2>&1 && log "frontend still running after 3 s
 killall5 -9
 sync
 
+# Mounts inside a filesystem (spruce bind-mounts its python over the card's MainUI) keep it busy,
+# so those go first, deepest first. Killed processes take a moment to let go of their files, so
+# each step is retried for up to 3 s before falling back.
+retry() {
+	n=0
+	while [ $n -lt 30 ]; do
+		"$@" 2>/dev/null && return 0
+		sleep 0.1
+		n=$((n + 1))
+	done
+	return 1
+}
+
 for m in /mnt/SDCARD /data /run/p2; do
 	grep -q " $m " /proc/mounts || continue
-	if umount "$m" 2>/dev/null; then
+	for sub in $(awk -v m="$m/" 'index($2, m) == 1 { print $2 }' /proc/mounts | sort -r); do
+		retry umount "$sub" || log "$sub could not be unmounted"
+	done
+	if retry umount "$m"; then
 		continue
-	elif mount -o remount,ro "$m" 2>/dev/null; then
+	elif retry mount -o remount,ro "$m"; then
 		log "$m busy: remounted read-only"
 	else
 		log "$m could not be unmounted or remounted read-only"

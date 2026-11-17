@@ -67,6 +67,38 @@ sits at 1800 or more for the same reason.
 answered, no outage over 10 s). Wi-Fi dropped three times in earlier idle tests; the cause is
 unknown and hasn't come back.
 
+## The low-power presets: A53s or A72s turned down? (2026-11-17)
+
+`tools/dev/lowpower-ab.sh` runs each configuration in turn, on battery, two rounds in alternating
+order, 25 s each, with PyUI's CPU-mode command moved aside so the screensaver can't switch modes
+mid-run. Backlight raw 25 (low), BasedOS d4a2a34, DMC as each preset sets it.
+
+| Workload | A53s (ondemand 408-1800) | A72s (ondemand 408-1800) | A72s, Smart Pro S style (conservative 1008-2016) |
+|---|---|---|---|
+| Menu idle, Smart | 1019 / 1023 mW | 1031 / 1032 mW | 1043 / 1041 mW |
+| Menu idle, Powersave (conservative 408-1416) | 1021 / 1012 mW | 1033 / 1022 mW | |
+| DS (Castlevania DoS), Smart | 1293 / 1275 mW, 59.1 fps | 1333 / 1333 mW, 59.1 fps | 1328 / 1327 mW, 59.1 fps |
+| PSP (Burnout Legends attract mode), Smart | 1332 / 1317 mW | 1355 / 1353 mW | 1339 / 1339 mW |
+
+The A53s save 10-20 mW in the menu (1-2%), about 45 mW on DS (3.5%) and 20-35 mW on PSP (2%): the
+panel and the rest of the board dominate, and at a brighter backlight the share is smaller still.
+The A72s did the same work at lower clocks (DS: about 1.2-1.3 GHz against the A53s' 1.3-1.4). On
+PSP the A53s averaged 1.4-1.6 GHz of their 1.8 ceiling in an attract-mode scene; PPSSPP logs no
+fps, so their headroom in heavier scenes is not measured.
+
+## Knobs per mode
+
+Each mode sets CPU, GPU and DMC together, through spruce's shared functions:
+
+| Mode | CPU | GPU (Mali-G52, 300-900 MHz) | DMC |
+|---|---|---|---|
+| Powersave | A53s, conservative 408-1416 | left as it was (spruce's `set_powersave` doesn't touch the GPU; only the Flip overrides it) | powersave (528) |
+| Smart | A53s, ondemand 408-1800 (dArkMossCommon's `CPU_SMART_GOVENOR`) | simple_ondemand, cap 900 | dmc_ondemand |
+| Performance | A72s, performance 2016 | performance (900) | performance (2112) |
+| Overclock | A72s, performance 2208 | performance (900; no higher step) | performance (2112) |
+
+The GPU governors come from dArkMossCommon.cfg and match the Flip's and the Smart Pro S's grouping.
+
 ## Sleep
 
 Deep sleep (suspend to RAM) is used; see `recon.md` for the evidence and the RTC wake details.

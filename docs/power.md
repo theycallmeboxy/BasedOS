@@ -27,25 +27,26 @@ The A72 is about 1.85x faster at the same clock and costs about 9x the extra pow
 the same work for about a fifth of the energy. (A Python busy loop on one core; real emulators
 are memory-heavier, so take the ratio as a direction, not a constant.)
 
-## What spruce does with it: four cores per mode
+## What spruce does with it: the A72s in every mode
 
-Every spruce CPU mode runs one cluster and parks the other, as the TrimUI Smart Pro S does (spruce's
-8-core big.LITTLE reference: it runs cores 4-7 in every mode, with the other unit offline). Unlike
-the Smart Pro S, whose two clusters are the same Cortex-A55, ours differ, so the light modes use
-the A53s:
+Every spruce CPU mode runs the A72s and keeps the A53s parked, as the TrimUI Smart Pro S does
+(spruce's 8-core big.LITTLE reference: it runs cores 4-7 everywhere, menu included, with the other
+unit offline). The A53s would do the light modes for slightly less energy (see the A/B below), not
+enough to justify a second cluster in the modes:
 
 | Mode | Cores | Clocks |
 |---|---|---|
-| Powersave (the menu's screensaver) | A53s (0-3) | conservative, 408-1416 MHz |
-| Smart (the menu, most games) | A53s (0-3) | ondemand, 408-1800 MHz |
+| Powersave (the menu's screensaver) | A72s (4-7) | conservative, 408-1416 MHz |
+| Smart (the menu, most games) | A72s (4-7) | conservative, 408-1800 MHz, spruce's Smart tuning |
 | Performance | A72s (4-7) | 2016 MHz |
 | Overclock | A72s (4-7) | 2208 MHz |
 
-The values are in the 350H Ultra's cfg, and spruce's own mode functions apply them. The one
-override is `cores_online` (below), which also brings the wanted cores up before parking the
-others: spruce's single walk over cpu0-7 would reach cpu3 as the last core online when switching
-from the A53s to the A72s, and the kernel won't park the last core. Parking either cluster works,
-cpu0 included (every interrupt moves to cpu4).
+The values are in the 350H Ultra's cfg, and spruce's own mode functions apply them, with no
+350H Ultra overrides. `set_smart` sets `conservative` on cpu4's policy (dArkMossCommon's
+`CPU_SMART_GOVENOR` only reaches cpu0's), and the cfg points `CONSERVATIVE_POLICY_DIR` at
+`policy4/conservative` so spruce's thresholds land on the A72s. cpu0 is parked too: every
+interrupt moves to cpu4, and spruce's writes to cpu0's cpufreq fail harmlessly. Checked after a
+reboot: boot ends in Smart on 4-7.
 
 **The clock ceiling.** The chip is an RK3576S. Rockchip's cpufreq driver
 (`rk3576_cpu_get_soc_info`) gives an RK3576S the S table (A72 2112, A53 1920 MHz) only when its
@@ -58,9 +59,9 @@ long Overclock holds 2208 under a heavy game hasn't been measured yet.
 interconnect, and the driver holds the A53 policy's minimum at the level the A72s last asked for.
 Parked while at 2016 MHz, the A72s left the A53s unable to go below 1800 MHz until a reboot
 (writes to `scaling_min_freq` return 0 and change nothing; the shown minimum just follows the
-maximum). The 350H Ultra's `cores_online` (spruce's plus one step) drops the A72s to 408 MHz before
-parking them, and the A53s then scale from 408 again. While the A72s run at 2016, any online A53
-sits at 1800 or more for the same reason.
+maximum); parked from 408 MHz they didn't. With the A72s in every mode they are never parked, so
+this no longer comes up. Anything that runs the A53s again would need to drop the A72s to 408
+before parking them.
 
 **Wi-Fi.** Parking does not affect Wi-Fi (2026-11-16): A72s off 4 min idle with the A53s at
 408 MHz, the A53s (cpu0 too) off 30 s, and 15 min idle in the menu in Smart (266 of 273 pings
@@ -82,6 +83,11 @@ mid-run. Backlight raw 25 (low), BasedOS d4a2a34, DMC as each preset sets it.
 
 The A53s save 10-20 mW in the menu (1-2%), about 45 mW on DS (3.5%) and 20-35 mW on PSP (2%): the
 panel and the rest of the board dominate, and at a brighter backlight the share is smaller still.
+On the 5000 mAh battery (about 18.5 Wh at 3.7 V) that's about 12 minutes of a full charge in the
+menu, 18 on PSP and 32 on DS at this backlight; at full brightness (about 1.5 W more for the
+panel) DS is about 6.6 h against 6.5. For the same work the A72s used more energy even at lower
+clocks: DS's draw above the menu was about 263 mW on the A53s and 301 mW on the A72s (14% more),
+PSP's 304 against 322 mW (6%). Decision: the A72s in every mode (above).
 The A72s did the same work at lower clocks (DS: about 1.2-1.3 GHz against the A53s' 1.3-1.4). On
 PSP the A53s averaged 1.4-1.6 GHz of their 1.8 ceiling in an attract-mode scene; PPSSPP logs no
 fps, so their headroom in heavier scenes is not measured.
@@ -92,8 +98,8 @@ Each mode sets CPU, GPU and DMC together, through spruce's shared functions:
 
 | Mode | CPU | GPU (Mali-G52, 300-900 MHz) | DMC |
 |---|---|---|---|
-| Powersave | A53s, conservative 408-1416 | left as it was (spruce's `set_powersave` doesn't touch the GPU; only the Flip overrides it) | powersave (528) |
-| Smart | A53s, ondemand 408-1800 (dArkMossCommon's `CPU_SMART_GOVENOR`) | simple_ondemand, cap 900 | dmc_ondemand |
+| Powersave | A72s, conservative 408-1416 | left as it was (spruce's `set_powersave` doesn't touch the GPU; only the Flip overrides it) | powersave (528) |
+| Smart | A72s, conservative 408-1800 | simple_ondemand, cap 900 | dmc_ondemand |
 | Performance | A72s, performance 2016 | performance (900) | performance (2112) |
 | Overclock | A72s, performance 2208 | performance (900; no higher step) | performance (2112) |
 
@@ -144,7 +150,7 @@ is not touched.
 | schedutil / energy-aware scheduling | would need a 350H Ultra `set_smart` override (as the Miyoo Mini has) | no: costs more than spruce's Smart on DS; revisit with a heavy game |
 | A72 at its 2208 MHz top | Overclock's `CPU_OVERCLOCK_MAX_FREQ` | already: Overclock runs the A72s at 2208, Performance at 2016; to measure: thermals with no fan |
 | DDR following the mode | spruce's opt-in `DRAM_*` in the 350H Ultra cfg (as the Flip and Miniloong) | done 2026-11-17: powersave (528 MHz) in Powersave, dmc_ondemand in Smart, performance (2112 MHz) in Performance/Overclock, checked on the unit |
-| Parking a cluster per mode | cfg core strings and a `cores_online` override | done (above): four cores per mode, as on the Smart Pro S |
+| Parking a cluster | cfg core strings | done (above): the A72s in every mode, as on the Smart Pro S |
 | DSperate's threads on the A53s | `DS_PIN` / launch affinity | not needed: 4.7 ms of a 16.7 ms frame |
 | Idle sleep (idlemon) input | `set_event_arg_for_idlemon` in the 350H Ultra .sh | done 2026-11-17: the pad's js node (`set_idlemon_to_pad`, as on the H700 BaseOS) |
 | Panel brightness | user | the biggest single draw; nothing to change |

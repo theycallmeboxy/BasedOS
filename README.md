@@ -15,8 +15,34 @@ Frontends detect it the same way they detect BaseOS: `/etc/baseos-release`,
 GPU driver, Wi-Fi firmware and C library come from your own device's stock
 firmware, harvested during installation. See [docs/plan.md](docs/plan.md).
 
-Status: v0 boots on the device (installed next to stock, for developers).
+Status: runs spruce on the device (installed next to stock, for developers).
 Not ready for general use.
+
+## What it is
+
+Not a fork of any distribution (dArkMoss, ROCKNIX or otherwise). It's three things put together:
+
+| Part | Where it comes from |
+|---|---|
+| Bootloader, kernel, DTBs | stock ROCKNIX (build `c8ed06c`), unchanged: the only ones that support this board |
+| Userland: glibc, Mali GPU (GLES, GBM, Vulkan), SDL2, ALSA, Python, sshd, wpa_supplicant, Wi-Fi driver and firmware | copied from stock's rootfs: only what [manifest/harvest.list](manifest/harvest.list) names, plus the libraries those need |
+| BusyBox (shell and core tools) | Alpine's static aarch64 build |
+| Init, boot scripts, card mount, frontend start, power key | BasedOS's own ([initrd/](initrd/), [overlay/](overlay/)) |
+
+On the eMMC (stock's partition layout; the bootloader area is never written):
+
+| Partition | Holds |
+|---|---|
+| p1 vfat `BASEDOS` | `boot.scr`, kernel, DTBs, `basedos-initrd.img`, and two read-only root images: slot A `rootfs.squashfs`, slot B `rootfs-b.squashfs` |
+| p2 ext4 `BASEDOS-DATA` | `/data`: SSH keys, Wi-Fi config, logs, boot counter |
+
+Boot: U-Boot runs `boot.scr` → kernel plus BasedOS's initrd → the initrd mounts the chosen slot
+(falling back to the other after failed boots, then to stock) → BusyBox init → `rcS` (Wi-Fi,
+`/data`, card, sshd) → `frontend-session` finds the frontend on the card (spruce's `runtime.sh`)
+and starts it, again if it exits.
+
+What it leaves out on purpose: systemd, udev, NetworkManager, Wayland/sway, a desktop. The
+frontend draws straight to the display (KMS). Boot to SSH in about 2 s; 67 MB of RAM in use.
 
 ## What's here
 
@@ -32,7 +58,7 @@ Not ready for general use.
 | `overlay/`, `initrd/` | BasedOS's own init, scripts and config |
 | `manifest/` | the stock harvest list and known stock-build fingerprints |
 | `tools/` | prepare-stock, harvest, rootfs and boot-file builders, dev install |
-| `tools/dev/` | SSH helper, recon script, eMMC backup |
+| `tools/dev/` | SSH helper, rootfs slot update, recon, power and screenshot probes, eMMC backup |
 | `tools/rescue/` | rescue SD card built on the device from its own files |
 | `tools/maskrom/` | builds the RK3576 maskrom USB loader from Rockchip's `rkbin` |
 

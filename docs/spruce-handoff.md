@@ -9,7 +9,7 @@
 ## spruce side (from `Saves/spruce/spruce.log` on the card)
 
 - Platform detection picked `AnbernicXX640480`, the default of the H700 branch.
-  The GKD's A53 cores report part `0xd03`, the case for unknown targets.
+  The 350H Ultra's A53 cores report part `0xd03`, the case for unknown targets.
 - Firstboot ran ("Installing spruce 4.6.1") and completed. It found nothing to
   extract, because PortMaster and the themes were current. "Realtime message
   listener never appeared after 15s."
@@ -17,7 +17,7 @@
   a log, so it exits before Python starts or fails to launch at all. Each pass
   logs "Missing post_pyui_exit function".
 - Each pass ran H700's `set_performance`: "Setting cores online: 0123", "CPU
-  Mode now locked to PERFORMANCE: 0123 @ 1512000". On the GKD that takes the
+  Mode now locked to PERFORMANCE: 0123 @ 1512000". On the 350H Ultra that takes the
   four A72 cores (4 to 7) **offline**. ZRAM was enabled (1 GB).
 - Result: the screen went black (no PyUI), and the device stopped answering on
   the network (SSH timed out, pings were lost) until a forced power-off.
@@ -27,7 +27,7 @@
 ## What the spruce platform needs (input for the spruce repo)
 
 1. Detection before the CPU-ID case: `BASEOS_TARGET=gkd350hultra` in
-   `/etc/baseos-release` gives a GKD platform, following the existing
+   `/etc/baseos-release` gives a 350H Ultra platform, following the existing
    `SPRUCE_BASEOS` pattern. `baseos_repo()` gets a mapping for it.
 2. CPU control for the 4+4 RK3576S (policy0 cpus 0 to 3 up to 2016 MHz,
    policy4 cpus 4 to 7 up to 2208 MHz). It must never take cores 4 to 7 offline.

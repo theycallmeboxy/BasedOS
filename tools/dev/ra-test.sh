@@ -1,5 +1,5 @@
 #!/bin/sh
-# Start spruce's RetroArch on the GKD the way spruce does (its HOME, its platform config), with a
+# Start spruce's RetroArch on the 350H Ultra the way spruce does (its HOME, its platform config), with a
 # core that boots without content, for display/input/audio checks. Run on the device:
 #   ra-test.sh <core name, e.g. dosbox_pure> [seconds]
 # Needs the display free (no PyUI): stop it first. Logs to /tmp/ra-test.log.

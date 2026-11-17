@@ -1,8 +1,8 @@
 # BasedOS user guide (GKD 350H Ultra)
 
-BasedOS is a small operating system that lives on the GKD's internal storage (eMMC) and starts
+BasedOS is a small operating system that lives on the 350H Ultra's internal storage (eMMC) and starts
 **spruce** from your SD card. Your spruce card stays a normal spruce card: you can move it
-between the GKD and your other spruce devices.
+between the 350H Ultra and your other spruce devices.
 
 > **Status: early.** BasedOS is installed next to the stock firmware, by a developer install
 > (below). There is no one-click installer yet. Read "Recovery" before you start.
@@ -13,7 +13,7 @@ between the GKD and your other spruce devices.
   refused: BasedOS is built from your device's own files and checks them).
 - A full backup of the eMMC (see [recovery.md](recovery.md)). It is also where BasedOS's
   build takes your device's own files from.
-- A spruce card (FAT32 or exFAT) with spruce plus the GKD kit (see
+- A spruce card (FAT32 or exFAT) with spruce plus the 350H Ultra kit (see
   [spruce-on-gkd.md](spruce-on-gkd.md)).
 - A PC with Python 3 and WSL (Ubuntu) for building. The scripts are in `tools/`.
 
@@ -25,7 +25,7 @@ between the GKD and your other spruce devices.
 3. In WSL: unpack them (`tools/wsl/unpack-stock.sh`) and build the rootfs (`tools/wsl/build.sh`).
 4. Make the boot files: `python tools/mkboot.py initrd prepared/alpine/busybox.static out/initrd.uimg`
    and `python tools/mkboot.py bootscr prepared/<build>/boot.scr out/boot.scr`.
-5. With the GKD running stock and reachable over SSH, copy `out/` to `/tmp` on the device and run
+5. With the 350H Ultra running stock and reachable over SSH, copy `out/` to `/tmp` on the device and run
    `tools/install-dev.sh /tmp/<dir>` there. It adds BasedOS's files to the boot partition, keeps
    stock's boot script, copies your Wi-Fi network and SSH keys, and leaves stock untouched.
 6. Reboot. BasedOS starts, then spruce from the card.

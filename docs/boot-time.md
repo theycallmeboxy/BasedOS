@@ -1,7 +1,7 @@
 # Boot time
 
 Measured on the unit, 2026-11-16 (BasedOS b8121f5 plus the loglevel change, spruce nightly
-4.6.1-20261115 with the GKD platform). The kernel's printk clock starts before Linux, so its
+4.6.1-20261115 with the 350H Ultra platform). The kernel's printk clock starts before Linux, so its
 "Booting Linux" line shows how long the boot ROM, SPL, TF-A and U-Boot took.
 
 | Stage | Time | Where it goes |

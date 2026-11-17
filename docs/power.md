@@ -38,7 +38,7 @@ Since fork commit de775cb9 each spruce CPU mode uses one cluster, all eight only
 | Performance | A72s (4-7) | 2016 MHz |
 | Overclock | all eight | 2208 MHz (the A53s clamp to 2016) |
 
-The values are in the GKD's cfg; Performance's core list needs a GKD `set_performance` (spruce's
+The values are in the 350H Ultra's cfg; Performance's core list needs a 350H Ultra `set_performance` (spruce's
 takes `DEVICE_MAX_CORES_ONLINE`, which Overclock keeps for all eight), as the Miyoo Mini overrides
 its own. Parking either cluster works, cpu0 included (every interrupt moves to cpu4).
 
@@ -46,7 +46,7 @@ its own. Parking either cluster works, cpu0 included (every interrupt moves to c
 interconnect, and the driver holds the A53 policy's minimum at the level the A72s last asked for.
 Parked while at 2016 MHz, the A72s left the A53s unable to go below 1800 MHz until a reboot
 (writes to `scaling_min_freq` return 0 and change nothing; the shown minimum just follows the
-maximum). The GKD's `cores_online` (spruce's plus one step) drops the A72s to 408 MHz before
+maximum). The 350H Ultra's `cores_online` (spruce's plus one step) drops the A72s to 408 MHz before
 parking them, and the A53s then scale from 408 again. While the A72s run at 2016, any online A53
 sits at 1800 or more for the same reason.
 
@@ -90,18 +90,18 @@ at 528/1068/1560/2112 MHz.
 
 ## Levers, and what to use
 
-All of these stay inside the GKD's own files (its cfg and .sh, and BasedOS); spruce's shared code
+All of these stay inside the 350H Ultra's own files (its cfg and .sh, and BasedOS); spruce's shared code
 is not touched.
 
 | Lever | Where | Verdict |
 |---|---|---|
 | Smart as spruce does it | spruce | keep: lowest of the tested CPU setups on DS |
-| schedutil / energy-aware scheduling | would need a GKD `set_smart` override (as the Miyoo Mini has) | no: costs more than spruce's Smart on DS; revisit with a heavy game |
+| schedutil / energy-aware scheduling | would need a 350H Ultra `set_smart` override (as the Miyoo Mini has) | no: costs more than spruce's Smart on DS; revisit with a heavy game |
 | A72 at its 2208 MHz top | Overclock's `CPU_OVERCLOCK_MAX_FREQ` | already: Overclock asks 2208 and the A53s clamp to 2016; Performance stays 2016 |
-| DDR following the mode | spruce's opt-in `DRAM_*` in the GKD cfg (as the Flip and Miniloong) | yes: powersave in Powersave, dmc_ondemand in Smart, performance in Performance/Overclock |
-| Parking a cluster per mode | cfg core strings, a GKD `set_performance` and `cores_online` | done (above) |
+| DDR following the mode | spruce's opt-in `DRAM_*` in the 350H Ultra cfg (as the Flip and Miniloong) | yes: powersave in Powersave, dmc_ondemand in Smart, performance in Performance/Overclock |
+| Parking a cluster per mode | cfg core strings, a 350H Ultra `set_performance` and `cores_online` | done (above) |
 | DSperate's threads on the A53s | `DS_PIN` / launch affinity | not needed: 4.7 ms of a 16.7 ms frame |
-| Idle sleep (idlemon) input | `set_event_arg_for_idlemon` in the GKD .sh | yes: missing today, so idle sleep can't see input on the GKD |
+| Idle sleep (idlemon) input | `set_event_arg_for_idlemon` in the 350H Ultra .sh | yes: missing today, so idle sleep can't see input on the 350H Ultra |
 | Panel brightness | user | the biggest single draw; nothing to change |
 
 ## Ideas not tried yet

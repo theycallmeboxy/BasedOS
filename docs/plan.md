@@ -90,7 +90,7 @@ The harvest source is either the backup image (`mmcblk0.img`: FAT p1, then its `
 - **v0:** boots to BusyBox init. SSH over Wi-Fi, the card mounted at `/mnt/SDCARD`, frontend probe, splash. No updates, no A/B. Success means BasedOS hands off to a test frontend, then to spruce, whatever spruce does after that.
 - **v1:** power key handling, battery and charging, sleep, audio routing, a USB gadget (adb or storage), `.bosupd` with A/B and trial boots, boot log on the card.
 - **v2:** the installer card for users, boot time work, NextUI.
-- **spruce side** (in the spruce repo, in parallel): a `BASEOS_TARGET=gkd350hultra` platform checked before the CPU-ID case (the GKD's `0xd03` cores would otherwise match H700), a PyUI rotation like the RG28XX, and RetroArch on KMS/GBM.
+- **spruce side** (in the spruce repo, in parallel): a `BASEOS_TARGET=gkd350hultra` platform checked before the CPU-ID case (the 350H Ultra's `0xd03` cores would otherwise match H700), a PyUI rotation like the RG28XX, and RetroArch on KMS/GBM.
 
 ## Open questions
 

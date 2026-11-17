@@ -180,7 +180,7 @@ Physical button → code, from an `evtest` run where each button was pressed in 
   (`pmic@23`, GPIO0_A6) and the RTC (`hym8563@51`, GPIO0_A5, `wakeup-source`) both sit on
   always-on GPIO0, and both wake the board.
 - The **hym8563 alarm has minute resolution**: it fires at the start of the target minute, up to
-  59 s early. spruce's `device_woke_via_timer` allows 10 s, so the GKD platform rounds wake
+  59 s early. spruce's `device_woke_via_timer` allows 10 s, so the 350H Ultra platform rounds wake
   alarms up to a whole minute. With "Shutdown after sleeping", the device then sleeps, wakes on
   the RTC and powers off cleanly (`rcK` ran, and the card was clean on the next mount).
 - **Every resume reports a power-key press**, the RTC wake included. The rk805 pwrkey node

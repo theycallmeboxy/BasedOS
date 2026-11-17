@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the spruce-for-GKD kit from the spruce fork: an overlay zip (unzip over a spruce card),
+"""Build the spruce-for-350H-Ultra kit from the spruce fork: an overlay zip (unzip over a spruce card),
 the same change as git patches, and release notes.
 
   spruce-kit.py <spruce repo> <out dir> [--branch gkd350h-ultra] [--base origin/Development]
@@ -77,7 +77,7 @@ at the root of the card. An older nightly can mix old and new versions of the sa
 
 1. Install the spruce nightly on the card as usual (extract it to the root of a FAT32 card).
 2. Unzip `{os.path.basename(zpath)}` to the root of the card and let it overwrite.
-3. Put the card in the GKD (BasedOS installed) and power on.
+3. Put the card in the 350H Ultra (BasedOS installed) and power on.
 
 After a spruce update, unzip the kit again (or a newer one): an update puts spruce's own files back.
 

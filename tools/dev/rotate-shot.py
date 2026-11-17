@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn a native 1440x1600 drm-screenshot.py PNG the way the GKD is held (90 deg clockwise),
+"""Turn a native 1440x1600 drm-screenshot.py PNG the way the 350H Ultra is held (90 deg clockwise),
 at half size, with no image libraries:  rotate-shot.py in.png out.png"""
 import struct, sys, zlib
 d = open(sys.argv[1], 'rb').read(); p = 8; idat = b''

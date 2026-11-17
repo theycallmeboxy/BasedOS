@@ -200,12 +200,12 @@ with nothing on the device working except the boot ROM.
    item: Address `0x00000000`, Path `mmcblk0.img` (the raw image). Tick only
    that row, tick **Write by Address**, and click **Run**. RKDevTool accepted
    this from the maskrom state without a Loader row.
-4. It takes about 10 to 15 minutes for 15.6 GB, then RKDevTool resets the GKD.
+4. It takes about 10 to 15 minutes for 15.6 GB, then RKDevTool resets the 350H Ultra.
    Usbplug addresses are absolute: `0x0` is sector 0, with no `0x2000` offset
    (that offset only applies to U-Boot's rockusb mode).
 
 How it was verified: the rescue card was in the slot when RKDevTool reset the
-GKD, so the GKD booted from the card and the eMMC stayed unmounted. Then
+350H Ultra, so it booted from the card and the eMMC stayed unmounted. Then
 `dd if=/dev/mmcblk1 bs=4M | md5sum` gave `7212628781e28398546546f4ed634ae8`,
 the backup's md5. Then stock booted from the eMMC with the card out.
 
@@ -214,9 +214,9 @@ USB, shut down, pull the card, then power on.
 
 ## Recovery modes (tested 2026-11-16)
 
-Use a **USB-A to USB-C** cable to the PC. With a C-to-C cable, the GKD showed
+Use a **USB-A to USB-C** cable to the PC. With a C-to-C cable, the 350H Ultra showed
 "USB mode" but Windows never saw it, because U-Boot doesn't negotiate USB-C
-roles. To leave any of these modes, **long-press power**: the GKD reboots,
+roles. To leave any of these modes, **long-press power**: the 350H Ultra reboots,
 and the LEDs flash a pattern.
 
 | Hold at power-on | Mode | What the PC sees | Tested |

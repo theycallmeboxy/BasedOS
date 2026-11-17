@@ -27,20 +27,32 @@ The A72 is about 1.85x faster at the same clock and costs about 9x the extra pow
 the same work for about a fifth of the energy. (A Python busy loop on one core; real emulators
 are memory-heavier, so take the ratio as a direction, not a constant.)
 
-## What spruce does with it: one cluster per mode
+## What spruce does with it: four cores per mode
 
-Since fork commit de775cb9 each spruce CPU mode uses one cluster, all eight only in Overclock:
+Every spruce CPU mode runs one cluster and parks the other, as the TrimUI Smart Pro S does (spruce's
+8-core big.LITTLE reference: it runs cores 4-7 in every mode, with the other unit offline). Unlike
+the Smart Pro S, whose two clusters are the same Cortex-A55, ours differ, so the light modes use
+the A53s:
 
 | Mode | Cores | Clocks |
 |---|---|---|
 | Powersave (the menu's screensaver) | A53s (0-3) | conservative, 408-1416 MHz |
 | Smart (the menu, most games) | A53s (0-3) | ondemand, 408-1800 MHz |
 | Performance | A72s (4-7) | 2016 MHz |
-| Overclock | all eight | 2208 MHz (the A53s clamp to 2016) |
+| Overclock | A72s (4-7) | 2208 MHz |
 
-The values are in the 350H Ultra's cfg; Performance's core list needs a 350H Ultra `set_performance` (spruce's
-takes `DEVICE_MAX_CORES_ONLINE`, which Overclock keeps for all eight), as the Miyoo Mini overrides
-its own. Parking either cluster works, cpu0 included (every interrupt moves to cpu4).
+The values are in the 350H Ultra's cfg, and spruce's own mode functions apply them. The one
+override is `cores_online` (below), which also brings the wanted cores up before parking the
+others: spruce's single walk over cpu0-7 would reach cpu3 as the last core online when switching
+from the A53s to the A72s, and the kernel won't park the last core. Parking either cluster works,
+cpu0 included (every interrupt moves to cpu4).
+
+**The clock ceiling.** The chip is an RK3576S. Rockchip's cpufreq driver
+(`rk3576_cpu_get_soc_info`) gives an RK3576S the S table (A72 2112, A53 1920 MHz) only when its
+`test_version` fuse is 0; otherwise it uses the standard RK3576 table and logs `bin=0 (3)`, as
+this unit does at boot. So 2208 (A72) and 2016 (A53) are the top of the table the vendor's driver
+picks for this chip. There's no fan: the little-core thermal zone trips at 75 and 85 C, and how
+long Overclock holds 2208 under a heavy game hasn't been measured yet.
 
 **The shared CCI.** The CPU OPP tables carry `rockchip,opp-shared-cci`: the clusters share the
 interconnect, and the driver holds the A53 policy's minimum at the level the A72s last asked for.
@@ -98,9 +110,9 @@ is not touched.
 |---|---|---|
 | Smart as spruce does it | spruce | keep: lowest of the tested CPU setups on DS |
 | schedutil / energy-aware scheduling | would need a 350H Ultra `set_smart` override (as the Miyoo Mini has) | no: costs more than spruce's Smart on DS; revisit with a heavy game |
-| A72 at its 2208 MHz top | Overclock's `CPU_OVERCLOCK_MAX_FREQ` | already: Overclock asks 2208 and the A53s clamp to 2016; Performance stays 2016 |
+| A72 at its 2208 MHz top | Overclock's `CPU_OVERCLOCK_MAX_FREQ` | already: Overclock runs the A72s at 2208, Performance at 2016; to measure: thermals with no fan |
 | DDR following the mode | spruce's opt-in `DRAM_*` in the 350H Ultra cfg (as the Flip and Miniloong) | done 2026-11-17: powersave (528 MHz) in Powersave, dmc_ondemand in Smart, performance (2112 MHz) in Performance/Overclock, checked on the unit |
-| Parking a cluster per mode | cfg core strings, a 350H Ultra `set_performance` and `cores_online` | done (above) |
+| Parking a cluster per mode | cfg core strings and a `cores_online` override | done (above): four cores per mode, as on the Smart Pro S |
 | DSperate's threads on the A53s | `DS_PIN` / launch affinity | not needed: 4.7 ms of a 16.7 ms frame |
 | Idle sleep (idlemon) input | `set_event_arg_for_idlemon` in the 350H Ultra .sh | done 2026-11-17: the pad's js node (`set_idlemon_to_pad`, as on the H700 BaseOS) |
 | Panel brightness | user | the biggest single draw; nothing to change |

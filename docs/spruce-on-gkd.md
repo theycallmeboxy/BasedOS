@@ -28,7 +28,7 @@ spruce update.
 | Sleep / wake / shutdown after sleep | works (deep sleep, RTC wake) |
 | Clean shutdown from spruce | strict stage 2 plus session shield, as on the H700 BaseOS |
 | SSH (spruce's), Samba user | spruce login added |
-| CPU modes | one cluster per mode: Powersave and Smart on the A53s, Performance on the A72s, Overclock on all eight (see power.md) |
+| CPU modes | four cores per mode, the other cluster parked, as on the TrimUI Smart Pro S: Powersave and Smart on the A53s, Performance (2016) and Overclock (2208) on the A72s (see power.md) |
 | RetroArch | works: games run upright (`video_rotation = "0"`, it draws through the rotating SDL) and full screen through spruce's launcher (NES `fceumm`, PS `pcsx_rearmed`). The pad goes through `linuxraw` (`/dev/input/js0`), since the `udev` driver needs udevd. Every button, the stick and the hotkeys (Select + B/R/L/Left/Right/R2/X/Y) checked in PadTest. L3 bound but not tested |
 | Wi-Fi | BasedOS manages it; spruce's switch takes the link up/down; networks added in spruce are saved to the card but not yet joined |
 | Bluetooth | not brought up on BasedOS |

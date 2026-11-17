@@ -36,8 +36,8 @@ enough to justify a second cluster in the modes:
 
 | Mode | Cores | Clocks |
 |---|---|---|
-| Powersave (the menu's screensaver) | A72s (4-7) | conservative, 408-1416 MHz |
-| Smart (the menu, most games) | A72s (4-7) | conservative, 408-1800 MHz, spruce's Smart tuning |
+| Powersave (the menu's screensaver) | A72s (4-7) | conservative, 408-1416 MHz: every A72 step from 408 to 1416 runs at the 712.5 mV floor (the kernel's energy model marks 600, 816 and 1200 inefficient), so 1416 is the fastest clock at the lowest voltage |
+| Smart (the menu, most games) | A72s (4-7) | conservative, 408-2016 MHz (Performance's top, as on the Smart Pro S), spruce's Smart tuning |
 | Performance | A72s (4-7) | 2016 MHz |
 | Overclock | A72s (4-7) | 2208 MHz |
 
@@ -99,7 +99,7 @@ Each mode sets CPU, GPU and DMC together, through spruce's shared functions:
 | Mode | CPU | GPU (Mali-G52, 300-900 MHz) | DMC |
 |---|---|---|---|
 | Powersave | A72s, conservative 408-1416 | left as it was (spruce's `set_powersave` doesn't touch the GPU; only the Flip overrides it) | powersave (528) |
-| Smart | A72s, conservative 408-1800 | simple_ondemand, cap 900 | dmc_ondemand |
+| Smart | A72s, conservative 408-2016 | simple_ondemand, cap 900 | dmc_ondemand |
 | Performance | A72s, performance 2016 | performance (900) | performance (2112) |
 | Overclock | A72s, performance 2208 | performance (900; no higher step) | performance (2112) |
 
@@ -119,9 +119,8 @@ with that row's voltages, and 2304 MHz at each level's 2208 voltage plus 37.5 mV
 GammaOS's voltage for 2304 on the RG Vita Pro's RK3576). The firmware (BL31 v1.20) accepts 2112;
 for 2304 it keeps reporting 2208 (`scmi_armclkb` in `clk_summary`), but at 925 mV the A72s run
 4.4% faster than at 2208, as 2304 would (sha256 timing), presumably the PVTPLL running faster at
-the higher voltage. On this unit the test DTB is installed (stock copy in
-`/boot/basedos/rk3576-gkd-atom.dtb.stock`); BasedOS's build still ships stock's, and spruce's
-Overclock still asks for 2208.
+the higher voltage. The test DTB was removed again after the sweep: Overclock stays at 2208, the top of the table
+Rockchip's driver picks for this chip, and BasedOS ships stock's DTB.
 
 **Cost per step.** `tools/dev/clock-sweep.sh`: all four A72s saturated with sha256, on battery,
 20 s per step, two rounds in opposite order (averages below). CPU power is the total minus the

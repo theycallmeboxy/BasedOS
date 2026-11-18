@@ -1,0 +1,17 @@
+#!/bin/sh
+# Deep sleep, then BasedOS's own wake fixes: what a systemd base's system-sleep hooks do, for a
+# base without systemd. Frontends call this instead of writing /sys/power/state themselves
+# (spruce's 350H Ultra platform does when it's there). Returns when the device is awake again,
+# with the kernel's status: non-zero when it refused to suspend.
+# After resume:
+#   resync_dac_volume  the stock kernel's DAC driver wakes the chip at full volume while its
+#                      cache keeps the old level (see /usr/lib/basedos/functions)
+. /usr/lib/basedos/functions
+
+sync
+if ! echo mem > /sys/power/state 2>/dev/null; then
+	log "the kernel refused to suspend"
+	exit 1
+fi
+resync_dac_volume
+log "woke (suspend $(cat /sys/power/suspend_stats/success 2>/dev/null)): DAC volume resynced"

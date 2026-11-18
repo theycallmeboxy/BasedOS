@@ -29,3 +29,16 @@ key_held() {
 
 # mark name: record when a boot step happened (/run/basedos/mark-<name> holds the uptime).
 mark() { cut -d' ' -f1 /proc/uptime > "/run/basedos/mark-$1"; }
+
+# resync_dac_volume: the stock kernel's es9018k2m driver doesn't restore the DAC's registers after
+# deep sleep. The chip wakes at its power-on attenuation (0 dB, full volume) while regmap's cache
+# keeps the level set before, so a frontend setting that same level again is skipped as
+# unchanged (read on the unit 2026-11-18: chip 0x0f = 00, cache ff; keeping vcca3v3_codec on in
+# suspend didn't help). Writing a neighbouring value and then the level puts both through.
+resync_dac_volume() {
+	_ctl='name=Digital Playback Volume'
+	_raw=$(amixer cget "$_ctl" 2>/dev/null | sed -n 's/.*: values=\([0-9]*\).*/\1/p')
+	[ -n "$_raw" ] || return 0
+	if [ "$_raw" -gt 0 ]; then _near=$((_raw - 1)); else _near=1; fi
+	amixer -q cset "$_ctl" "$_near,$_near" && amixer -q cset "$_ctl" "$_raw,$_raw"
+}

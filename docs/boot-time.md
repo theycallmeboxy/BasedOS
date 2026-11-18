@@ -18,8 +18,11 @@ Measured on the unit, 2026-11-16 (BasedOS b8121f5 plus the loglevel change, spru
 
 - **`loglevel=4` instead of stock's `loglevel=7`**: `loglevel=7` sends every boot message to the
   serial and framebuffer consoles as it is printed. Kernel time went from 1.590 s to 1.572 s, so
-  the console was not the bottleneck. BasedOS keeps `loglevel=4` anyway, because it also keeps
-  kernel chatter off the screen. Warnings and worse are still shown.
+  the console was not the bottleneck. BasedOS went to `loglevel=4` to keep kernel chatter off the
+  screen, and since 2026-11-18 to `loglevel=1` with `vt.global_cursor_default=0`: the panel shows
+  the boot logo, then BasedOS's boot screen (`basedos-splash`, drawn at the start of `rcS`, with
+  the text console unbound from the panel), then the frontend. Every message still reaches the
+  kernel log and `/data/basedos.log`.
 
 ## Safeguard cost
 

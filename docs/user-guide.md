@@ -39,7 +39,7 @@ To go back to stock: `install-dev.sh revert` (from stock or BasedOS), then reboo
 | You do | BasedOS does |
 |---|---|
 | Power on | boots in about 5 s to spruce's menu |
-| Power on **holding Select** | **maintenance mode**: no spruce; Wi-Fi and SSH only, IP on screen |
+| Power on **holding Select** | **maintenance mode**: no spruce; Wi-Fi and SSH only. The screen says so, with the address to SSH to once Wi-Fi is up and how to leave |
 | Hold **Volume Up + Volume Down** together **3 s** | clean shutdown with any frontend, also a hung one: programs get 3 s to save and quit, then the card is synced and unmounted (`basedos-shutdown-keys`). Holding power is the frontend's (spruce: Button Settings > Power button hold time) |
 | Tap power (in spruce) | sleep; tap again to wake. spruce's "Shutdown after sleeping" works |
 | Pull and reinsert the card | the card is found again; a card that wasn't unmounted cleanly is checked first |

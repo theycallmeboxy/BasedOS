@@ -15,6 +15,14 @@ mount -t tmpfs -o mode=755 tmpfs /var
 mkdir -p /run/basedos /var/log /var/run /var/lib /var/empty /var/tmp
 mark rcS-start
 
+# The boot screen instead of console text: take the text console off the panel (kernel messages
+# still reach the log; boot.scr also says loglevel=1 and hides the cursor), then draw BasedOS's.
+for v in /sys/class/vtconsole/vtcon*; do
+	grep -q "frame buffer" "$v/name" 2>/dev/null && echo 0 > "$v/bind" 2>/dev/null
+done
+splash_boot_info
+splash "starting"
+
 # /data: v0 lives in a folder on eMMC p2, next to stock's /storage, so stock
 # still boots unchanged. (A dedicated p2 comes with the installer.) Checked first, as stock
 # does every boot; e2fsck -p only fixes what is safe and is quick on a clean filesystem.

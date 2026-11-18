@@ -71,6 +71,13 @@ chmod 644 usr/share/basedos/accounts/passwd usr/share/basedos/accounts/group
 chmod 600 usr/share/basedos/accounts/shadow
 for f in passwd group shadow; do ln -sf /data/etc/$f etc/$f; done
 chmod 700 root
+
+echo "--- boot screen"
+# BasedOS's own small static tool (tools/boot-ui); its font comes from Terminus Font (OFL 1.1),
+# whose notice and licence travel with it.
+aarch64-linux-gnu-gcc -O2 -static -Wall -o usr/bin/basedos-splash "$REPO/tools/boot-ui/basedos-splash.c"
+aarch64-linux-gnu-strip usr/bin/basedos-splash
+install -D -m 644 "$REPO/tools/boot-ui/OFL-Terminus.txt" usr/share/licenses/basedos-splash/OFL-Terminus.txt
 ln -sf /run/resolv.conf etc/resolv.conf
 ln -sf /run/machine-id etc/machine-id
 

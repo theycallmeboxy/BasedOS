@@ -30,8 +30,11 @@ if [ ! -f $STATE/session-checked ]; then
 		log "Select held at boot: maintenance mode"
 	fi
 fi
-[ -f $STATE/maintenance ] &&
-	stay_down "maintenance mode (Select held at boot): no frontend; SSH is up once Wi-Fi is. Reboot to leave."
+if [ -f $STATE/maintenance ]; then
+	log "maintenance mode (Select held at boot): no frontend; SSH is up once Wi-Fi is"
+	maintenance_screen
+	while :; do sleep 3600; done
+fi
 
 # How long did the last frontend run? Five short runs in a row stop the respawning.
 if [ -f $STATE/session-start ]; then

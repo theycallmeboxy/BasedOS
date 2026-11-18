@@ -15,7 +15,12 @@ bound|renew)
 	for d in $dns; do echo "nameserver $d" >> /run/resolv.conf; done
 	echo "[$(cut -d' ' -f1 /proc/uptime)] udhcpc: $1 $ip on $interface" >> /data/basedos.log
 	cut -d' ' -f1 /proc/uptime > /run/basedos/mark-ip
-	echo "BasedOS: $ip on $interface" > /dev/tty0 2>/dev/null
+	# Maintenance mode's screen shows the address to SSH to; otherwise nothing is drawn (the
+	# frontend usually owns the display by now).
+	if [ -f /run/basedos/maintenance ]; then
+		. /usr/lib/basedos/functions
+		maintenance_screen "Wi-Fi up: $ip"
+	fi
 	;;
 esac
 exit 0

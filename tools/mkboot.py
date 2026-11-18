@@ -70,10 +70,12 @@ def bootscr(stock, out):
     if s.count('setenv bootargs "') != 2 or s.count("booti ${kernel_addr_r} - ${fdt_addr_r}") != 1:
         sys.exit("stock boot.scr isn't the expected 20260613 one")
     # Stock's loglevel=7 undoes "quiet": every boot message goes to the serial console and the
-    # framebuffer console as it is printed. Warnings and worse still do.
+    # framebuffer console as it is printed. loglevel=1 keeps all but emergencies off the
+    # consoles (everything still reaches the kernel log), so the panel shows the boot logo and
+    # then BasedOS's boot screen (basedos-splash), not console text.
     if s.count("loglevel=7") != 2:
         sys.exit("stock boot.scr isn't the expected one (loglevel=7 twice)")
-    s = s.replace("loglevel=7", "loglevel=4")
+    s = s.replace("loglevel=7", "loglevel=1")
     # The built-in panel's DTB: BasedOS's own (mkboot.py dtb, 60 Hz) when it's on p1, else stock's.
     # The HDMI and USB-DP DTBs have no panel and stay stock's. Stock's file is never touched, so
     # install-dev.sh revert still boots stock with stock's DTB.
@@ -90,7 +92,7 @@ def bootscr(stock, out):
     # initrd can never leave the eMMC unbootable. (This U-Boot has no iminfo to check first.)
     s = s.replace("booti ${kernel_addr_r} - ${fdt_addr_r}",
                   "setenv stock_bootargs \"${bootargs}\"\n"
-                  "setenv bootargs \"${bootargs} rdinit=/basedos/init\"\n"
+                  "setenv bootargs \"${bootargs} rdinit=/basedos/init vt.global_cursor_default=0\"\n"
                   "if load mmc 0:1 ${ramdisk_addr_r} basedos/initrd.uimg; then\n"
                   "booti ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r}\n"
                   "fi\n"

@@ -12,8 +12,47 @@ log() {
 	echo "$_l" > /dev/kmsg 2>/dev/null
 }
 
-# say "message": also show it on the screen's text console (until a frontend draws).
-say() { log "$*"; echo "BasedOS: $*" > /dev/tty0 2>/dev/null; }
+# The boot screen (/usr/bin/basedos-splash): BasedOS's wordmark, the info lines in
+# /run/basedos/splash ('!' first = highlighted) and a status line. It draws to the framebuffer,
+# which the panel shows while no frontend owns the display; with a frontend up it's not seen.
+SPLASH_INFO=/run/basedos/splash
+splash() { [ -x /usr/bin/basedos-splash ] && /usr/bin/basedos-splash "$@" >/dev/null 2>&1; }
+
+# say "message": log it, and show it as the boot screen's status line.
+say() { log "$*"; splash "$*"; }
+
+# Which rootfs slot this boot runs: the initrd loop-mounts rootfs.squashfs (a) or
+# rootfs-b.squashfs (b).
+boot_slot() {
+	case "$(cat /sys/block/loop0/loop/backing_file 2>/dev/null)" in
+	*rootfs-b.squashfs) echo b ;;
+	*rootfs.squashfs) echo a ;;
+	*) echo "?" ;;
+	esac
+}
+
+# The boot screen's info lines for a normal boot.
+splash_boot_info() {
+	{
+		echo "BasedOS $BASEOS_VERSION  build $BASEOS_BUILD  slot $(boot_slot)"
+		echo "$(cat /proc/device-tree/model 2>/dev/null | tr -d '\0')  kernel $(uname -r)"
+		echo "!Hold Select at power-on: maintenance mode"
+	} > "$SPLASH_INFO"
+}
+
+# Maintenance mode's screen: what it is, how to reach it and how to leave. Refreshed when Wi-Fi
+# gets an address (udhcpc's default.script).
+maintenance_screen() {
+	_ip=$(ip -4 addr show wlan0 2>/dev/null | sed -n 's/.*inet \([0-9.]*\).*/\1/p' | head -1)
+	{
+		echo "!MAINTENANCE MODE"
+		echo "No frontend this boot: Wi-Fi and SSH only."
+		echo "ssh root@${_ip:-(waiting for Wi-Fi)}   no password"
+		echo "To leave: hold Volume Up + Volume Down 3 s, then power on."
+		echo "BasedOS $BASEOS_VERSION  build $BASEOS_BUILD  slot $(boot_slot)"
+	} > "$SPLASH_INFO"
+	splash "$@"
+}
 
 # key_held "evdev name" code: true if that key is down right now (evtest's EVIOCGKEY query,
 # so a key held since before boot counts). About 0.04 s.

@@ -23,8 +23,12 @@ for p in "$P"/devices/RK3576/patches/mali-bifrost/*.patch; do
 	patch -s -p1 -N < "$p"
 done
 D=product/kernel/drivers/gpu/arm/midgard
-make -C "$K" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j"$(nproc)" M="$PWD/$D" \
-	CONFIG_MALI_MIDGARD=m CONFIG_MALI_PLATFORM_NAME=devicetree CONFIG_MALI_REAL_HW=y modules >/dev/null
+# Through the driver's own Makefile, as ROCKNIX does (kernel_make KDIR=... -C midgard): it sets
+# the DDK's defaults, CONFIG_MALI_DEVFREQ=y among them. Going straight to the kernel's Kbuild
+# (make -C $K M=...) skips them, and without devfreq the GPU sat at 131 MHz.
+make -C "$D" KDIR="$K" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j"$(nproc)" \
+	CONFIG_MALI_MIDGARD=m CONFIG_MALI_PLATFORM_NAME=devicetree CONFIG_MALI_REAL_HW=y >/dev/null
+strings "$D/mali_kbase.ko" | grep -q "devfreq" || { echo "mali_kbase built without devfreq"; exit 1; }
 aarch64-linux-gnu-strip --strip-debug "$D/mali_kbase.ko"
 cp "$D/mali_kbase.ko" "$R/out/mainline/"
 find . -name '*.ko' | sed "s|^|built: |"

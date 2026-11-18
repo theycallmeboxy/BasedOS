@@ -1,5 +1,5 @@
 diff --git a/src/video/kmsdrm/SDL_kmsdrmopengles.c b/src/video/kmsdrm/SDL_kmsdrmopengles.c
-index 92b896e1f..77e577406 100644
+index 92b896e1f..a23498008 100644
 --- a/src/video/kmsdrm/SDL_kmsdrmopengles.c
 +++ b/src/video/kmsdrm/SDL_kmsdrmopengles.c
 @@ -30,6 +30,7 @@
@@ -461,7 +461,7 @@ index 92b896e1f..77e577406 100644
  /* EGL implementation of SDL OpenGL support */
  
  void KMSDRM_GLES_DefaultProfileConfig(_THIS, int *mask, int *major, int *minor)
-@@ -96,6 +541,78 @@ SDL_EGL_CreateContext_impl(KMSDRM)
+@@ -96,6 +541,105 @@ SDL_EGL_CreateContext_impl(KMSDRM)
      return 0;
  }
  
@@ -493,29 +493,56 @@ index 92b896e1f..77e577406 100644
 + */
 +static void KMSDRM_RotationStats(Uint64 t0, SDL_bool gpu, double frame_ms)
 +{
-+    static int frames;
-+    static double sum, worst, frame_sum;
++    /*
++     * Every 300 frames: the rotation's average and worst time, and the app's frame pacing
++     * (time between swaps; "slow" frames took longer than 1.5 refreshes at 60 Hz). To stderr,
++     * or appended to SDL_KMSDRM_ROTATION_LOG when that names a file (launch scripts often
++     * swallow stderr).
++     */
++    static int frames, slow;
++    static double sum, worst, frame_sum, period_sum;
++    static Uint64 last_swap;
++    static FILE *out;
++    Uint64 now = SDL_GetPerformanceCounter();
 +    double ms;
 +
 +    if (!KMSDRM_RotationStatsMode()) {
 +        return;
 +    }
-+    ms = KMSDRM_Ms(t0, SDL_GetPerformanceCounter());
++    if (!out) {
++        const char *path = SDL_getenv("SDL_KMSDRM_ROTATION_LOG");
++
++        out = path && *path ? fopen(path, "a") : NULL;
++        if (!out) {
++            out = stderr;
++        }
++    }
++    ms = KMSDRM_Ms(t0, now);
 +    sum += ms;
 +    frame_sum += frame_ms;
 +    if (ms > worst) {
 +        worst = ms;
 +    }
++    if (last_swap) {
++        double period = KMSDRM_Ms(last_swap, now);
++
++        period_sum += period;
++        if (period > 25.0) {
++            slow++;
++        }
++    }
++    last_swap = now;
 +    if (++frames == 300) {
 +        if (KMSDRM_RotationStatsMode() == 2) {
-+            fprintf(stderr, "KMSDRM rotation (%s): %.2f ms average, %.2f ms worst, after the app's frame (%.2f ms average), over %d frames\n",
-+                    gpu ? "GPU" : "RGA", sum / frames, worst, frame_sum / frames, frames);
++            fprintf(out, "KMSDRM rotation (%s): %.2f ms average, %.2f ms worst, after the app's frame (%.2f ms average), over %d frames; frames every %.2f ms, %d slow\n",
++                    gpu ? "GPU" : "RGA", sum / frames, worst, frame_sum / frames, frames, period_sum / frames, slow);
 +        } else {
-+            fprintf(stderr, "KMSDRM rotation (%s): %.2f ms average, %.2f ms worst over %d frames\n",
-+                    gpu ? "GPU" : "RGA", sum / frames, worst, frames);
++            fprintf(out, "KMSDRM rotation (%s): %.2f ms average, %.2f ms worst over %d frames; frames every %.2f ms, %d slow\n",
++                    gpu ? "GPU" : "RGA", sum / frames, worst, frames, period_sum / frames, slow);
 +        }
-+        frames = 0;
-+        sum = worst = frame_sum = 0;
++        fflush(out);
++        frames = slow = 0;
++        sum = worst = frame_sum = period_sum = 0;
 +    }
 +}
 +
@@ -540,7 +567,7 @@ index 92b896e1f..77e577406 100644
  int KMSDRM_GLES_SwapWindow(_THIS, SDL_Window *window)
  {
      SDL_WindowData *windata = ((SDL_WindowData *)window->driverdata);
-@@ -104,6 +621,8 @@ int KMSDRM_GLES_SwapWindow(_THIS, SDL_Window *window)
+@@ -104,6 +648,8 @@ int KMSDRM_GLES_SwapWindow(_THIS, SDL_Window *window)
      KMSDRM_FBInfo *fb_info;
      int ret = 0;
      struct gbm_bo* rga_buffer = NULL;
@@ -549,7 +576,7 @@ index 92b896e1f..77e577406 100644
  
      /* Always wait for the previous issued flip before issuing a new one,
         even if you do async flips. */
-@@ -154,7 +673,21 @@ int KMSDRM_GLES_SwapWindow(_THIS, SDL_Window *window)
+@@ -154,7 +700,21 @@ int KMSDRM_GLES_SwapWindow(_THIS, SDL_Window *window)
      }
  
      /* Get an actual usable fb for the next front buffer. */
@@ -572,7 +599,7 @@ index 92b896e1f..77e577406 100644
          if (src_info.fd) {
              close(src_info.fd);
          }
-@@ -174,6 +707,7 @@ int KMSDRM_GLES_SwapWindow(_THIS, SDL_Window *window)
+@@ -174,6 +734,7 @@ int KMSDRM_GLES_SwapWindow(_THIS, SDL_Window *window)
          }
  
          viddata->rga_buffer_index = (viddata->rga_buffer_index + 1) % RGA_BUFFERS_MAX;

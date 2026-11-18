@@ -1,0 +1,249 @@
+#!/bin/busybox sh
+# Mainline experiment: the probe initrd's /init. No rootfs, no eMMC: it finds the test card,
+# logs what the mainline kernel brought up to mainline/logs/<n>/ on it, records the buttons for
+# 90 s, and offers a shell over USB networking (NCM, 169.254.77.1, nc on port 2323) if the
+# USB port came up as a gadget. Hold power to switch off; logs are synced every 15 s.
+/bin/busybox --install -s /bin
+export PATH=/bin
+mkdir -p /proc /sys /dev /tmp /card
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+mkdir -p /dev/pts && mount -t devpts devpts /dev/pts
+mount -t debugfs debugfs /sys/kernel/debug
+mount -t configfs configfs /sys/kernel/config
+exec >/dev/tty0 2>&1 </dev/null
+say() { echo "probe: $*"; echo "probe: $*" > /dev/kmsg; }
+say "mainline probe on $(uname -r)"
+for b in /sys/class/backlight/*/brightness; do [ -e "$b" ] && echo 160 > "$b"; done
+
+# The card: the partition with mainline/probe.uimg.
+card=
+i=0
+while [ -z "$card" ] && [ $i -lt 20 ]; do
+	for p in /dev/mmcblk*p1; do
+		[ -b "$p" ] || continue
+		# Read-only first: the eMMC's p1 is FAT too, and it's only looked at.
+		if mount -t vfat -o ro "$p" /card 2>/dev/null; then
+			if [ -f /card/mainline/probe.uimg ] && mount -o remount,rw /card; then
+				card=$p
+				break
+			fi
+			umount /card
+		fi
+	done
+	[ -n "$card" ] || { sleep 1; i=$((i + 1)); }
+done
+if [ -z "$card" ]; then
+	say "no test card found; nothing logged"
+	ls -l /dev/mmc* > /dev/kmsg 2>&1
+	exec sh
+fi
+n=1
+while [ -e "/card/mainline/logs/$n" ]; do n=$((n + 1)); done
+L=/card/mainline/logs/$n
+mkdir -p "$L"
+say "card $card, logging to mainline/logs/$n"
+
+snap() {
+	d=$1
+	mkdir -p "$d"
+	dmesg > "$d/dmesg.txt"
+	{
+		uname -a; cat /proc/cmdline; echo; cat /proc/cpuinfo | grep -c processor; free
+		echo; echo "== mmc"; ls -l /dev/mmc* 2>&1; cat /proc/partitions
+		echo; echo "== sdio"; for s in /sys/bus/sdio/devices/*; do [ -e "$s" ] && echo "$s vendor=$(cat $s/vendor) device=$(cat $s/device) driver=$(readlink $s/driver)"; done
+		echo; echo "== drm"; ls /sys/class/drm; cat /sys/kernel/debug/dri/*/summary /sys/kernel/debug/dri/*/state 2>&1
+		echo; echo "== backlight"; for b in /sys/class/backlight/*; do echo "$b $(cat $b/brightness)/$(cat $b/max_brightness)"; done
+		echo; echo "== input"; cat /proc/bus/input/devices
+		echo; echo "== power_supply"; for s in /sys/class/power_supply/*; do echo "-- $s"; cat "$s/uevent"; done
+		echo; echo "== thermal"; for t in /sys/class/thermal/thermal_zone*; do echo "$(cat $t/type) $(cat $t/temp)"; done
+		echo; echo "== cpufreq"; for c in /sys/devices/system/cpu/cpufreq/policy*; do echo "$c $(cat $c/scaling_cur_freq) [$(cat $c/scaling_available_frequencies 2>/dev/null)] $(cat $c/scaling_governor)"; done
+		echo; echo "== devfreq"; for c in /sys/class/devfreq/*; do echo "$c $(cat $c/cur_freq) $(cat $c/governor)"; done
+		echo; echo "== sound"; cat /proc/asound/cards 2>&1
+		echo; echo "== i2c"; for c in /sys/bus/i2c/devices/*; do echo "$c $(cat $c/name 2>/dev/null) $(readlink $c/driver)"; done
+		echo; echo "== udc"; ls /sys/class/udc 2>&1; ls /sys/class/typec 2>&1
+		echo; echo "== rtc"; cat /sys/class/rtc/rtc0/date /sys/class/rtc/rtc0/time 2>&1
+		echo; echo "== deferred"; cat /sys/kernel/debug/devices_deferred 2>&1
+		echo; echo "== interrupts"; cat /proc/interrupts
+	} > "$d/state.txt" 2>&1
+	cat /sys/kernel/debug/regulator/regulator_summary > "$d/regulators.txt" 2>&1
+	cat /sys/kernel/debug/clk/clk_summary > "$d/clocks.txt" 2>&1
+	cat /sys/kernel/debug/gpio > "$d/gpio.txt" 2>&1
+	cat /sys/kernel/debug/pinctrl/*/pinmux-pins > "$d/pinmux.txt" 2>&1
+	sync
+}
+snap "$L/boot"
+say "boot state saved"
+# Each step leaves its name on the card first, so a step that hangs shows up there.
+step() { echo "$*" >> "$L/steps.txt"; sync; }
+
+# The buttons first, so a later step that hangs can't stop them being recorded.
+step "recording buttons"
+for e in /dev/input/event*; do
+	[ -c "$e" ] && (cat "$e" > "$L/$(basename $e).bin" &)
+done
+say "press every button and move the stick: recording for 90 s"
+
+# The display pipeline's registers, as tools/mainline/regdump.py dumps them on the stock BSP
+# kernel (keep the list in step): name:base:length.
+REGS="dsi2:0x27D80000:0x400 dcphy:0x2B020000:0x4000 vop:0x27D00000:0x3000 vo0_grf:0x2601A000:0x100 dcphy_grf:0x26034000:0x100"
+# /bin/regdump (tools/mainline/regdump.c): 32-bit reads through an mmap of /dev/mem, since
+# read() on /dev/mem only reaches RAM on arm64.
+dumpregs() {
+	mkdir -p "$1"
+	/bin/regdump "$1" $REGS 2>> "$L/steps.txt"
+	sync
+}
+step "register dump"
+dumpregs "$L/regs"
+
+# The display start-up again, with the DSI, DC-PHY and panel drivers' debug messages on: blank
+# and unblank the console's framebuffer, which disables and re-enables the whole pipeline.
+step "display restart with debug"
+for f in dw-mipi-dsi2.c dw-mipi-dsi2-rockchip.c phy-rockchip-samsung-dcphy.c panel-generic-dsi.c; do
+	echo "file $f +p" > /sys/kernel/debug/dynamic_debug/control 2>/dev/null
+done
+echo 0x1e > /sys/module/drm/parameters/debug 2>/dev/null
+echo 4 > /sys/class/graphics/fb0/blank 2>/dev/null
+sleep 1
+echo 0 > /sys/class/graphics/fb0/blank 2>/dev/null
+sleep 1
+echo 0 > /sys/module/drm/parameters/debug 2>/dev/null
+dmesg > "$L/dmesg-restart.txt"
+dumpregs "$L/regs-restart"
+step "display restarted"
+
+# The panel: a noise frame for 3 s, then back to the console. In the background, since on a
+# VOP that isn't scanning out the write could block.
+if [ -c /dev/fb0 ]; then
+	step "noise frame"
+	(dd if=/dev/urandom of=/dev/fb0 bs=65536 count=140 2>/dev/null; sleep 3
+	 echo -e '\033[2J\033[H'; echo "noise frame done" >> "$L/steps.txt") &
+fi
+
+# USB networking, when the port is a gadget: NCM, a link-local address (Windows picks its own
+# 169.254.x.y once no DHCP answers), and a shell on port 2323. In the background too.
+udc=$(ls /sys/class/udc 2>/dev/null | head -1)
+if [ -n "$udc" ]; then
+	step "USB gadget on $udc"
+	(
+		G=/sys/kernel/config/usb_gadget/g1
+		mkdir -p $G/strings/0x409 $G/configs/c.1/strings/0x409 $G/functions/ncm.usb0
+		echo 0x1d6b > $G/idVendor; echo 0x0104 > $G/idProduct
+		# An IAD composite (class EF/02/01): with class 00 Windows' composite driver fails
+		# (Code 10) and its built-in NCM driver never binds.
+		echo 0xEF > $G/bDeviceClass; echo 0x02 > $G/bDeviceSubClass; echo 0x01 > $G/bDeviceProtocol
+		echo "BasedOS mainline probe" > $G/strings/0x409/product
+		echo "NCM" > $G/configs/c.1/strings/0x409/configuration
+		ln -s $G/functions/ncm.usb0 $G/configs/c.1/
+		echo "$udc" > $G/UDC && sleep 1
+		ifconfig usb0 169.254.77.1 netmask 255.255.0.0 up
+		echo "USB gadget up" >> "$L/steps.txt"
+		say "USB gadget on $udc: 169.254.77.1, shell on port 2323"
+		while :; do nc -l -p 2323 -e /bin/sh; sleep 1; done
+	) &
+else
+	say "no USB device controller: no network shell"
+fi
+
+# Wi-Fi and SSH with BasedOS's own userspace: its rootfs (the active slot) and /data from the
+# eMMC, both read-only, each under a RAM overlay so nothing is written back. The module is an
+# AP6255, a BCM43455 (SDIO 02d0:a9bf, BCM4345 revision 6), though the stock DT says "ap6256":
+# bcmdhd picks fw_bcm43455c0_ag.bin and nvram_ap6255.txt by itself, and brcmfmac takes the same
+# files as brcmfmac43455-sdio. Logged to net.txt; the address is shown.
+net() {
+	# BasedOS's tools live in its own /usr/bin, /usr/sbin and /sbin.
+	export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+	B=/run/bos
+	mkdir -p /run
+	mount -t tmpfs tmpfs /run
+	mkdir -p /emmc1 /emmc2 /run/root /run/ov/u /run/ov/w /run/ovd/u /run/ovd/w /run/fw/brcm $B
+	mount -t vfat -o ro /dev/mmcblk0p1 /emmc1 || { echo "no eMMC p1"; return 1; }
+	[ -d /emmc1/basedos ] || { echo "/dev/mmcblk0p1 isn't the eMMC's BasedOS partition"; return 1; }
+	slot=$(head -c 2 /emmc1/basedos/slot 2>/dev/null | tr -d '\n')
+	[ "$slot" = b ] || slot=""
+	root=/emmc1/basedos/rootfs${slot:+-$slot}.squashfs
+	echo "rootfs $root"
+	mount -t squashfs -o ro,loop "$root" /run/root || { echo "can't mount $root"; return 1; }
+	# noload: no journal replay, so the eMMC's p2 isn't written to even once.
+	mount -t ext4 -o ro,noload /dev/mmcblk0p2 /emmc2 || { echo "no eMMC p2"; return 1; }
+
+	cp /run/root/usr/lib/firmware/fw_bcm43455c0_ag.bin /run/fw/brcm/brcmfmac43455-sdio.bin
+	cp /run/root/usr/lib/firmware/nvram_ap6255.txt /run/fw/brcm/brcmfmac43455-sdio.txt
+	# The board-specific nvram name brcmfmac asks for first (from the DT's compatible).
+	cp /run/fw/brcm/brcmfmac43455-sdio.txt "/run/fw/brcm/brcmfmac43455-sdio.gamekiddy,gkd-350h-ultra.txt"
+	echo -n /run/fw > /sys/module/firmware_class/parameters/path
+	# ROCKNIX's config has the user-helper fallback on: every file not found directly (the
+	# optional CLM blob and others) would wait 60 s for a helper the probe doesn't have.
+	echo 1 > /sys/class/firmware/timeout
+	echo /bin/modprobe > /proc/sys/kernel/modprobe
+	# brcmfmac-wcc (the vendor part for Broadcom-made chips) pulls in brcmfmac; loaded here because
+	# brcmfmac's own request_module for it fails in the probe ("mod=wcc: failed -2").
+	# feature_disable=0x2000 (BRCMF_FEAT_FWSUP, bit 13): with the firmware doing the WPA
+	# handshake itself, wpa_supplicant never saw it, timed out on "authentication" ~10 s after
+	# associating and tore down a link that worked; this leaves the handshake to wpa_supplicant.
+	modprobe brcmfmac feature_disable=0x2000 || { echo "modprobe brcmfmac failed"; return 1; }
+	modprobe brcmfmac-wcc || { echo "modprobe brcmfmac-wcc failed"; return 1; }
+	cat /sys/module/brcmfmac/parameters/feature_disable
+	lsmod
+	i=0
+	while [ ! -e /sys/class/net/wlan0 ] && [ $i -lt 40 ]; do sleep 1; i=$((i + 1)); done
+	[ -e /sys/class/net/wlan0 ] || { echo "no wlan0 after 40 s"; return 1; }
+	echo "wlan0 $(cat /sys/class/net/wlan0/address)"
+
+	mount -t overlay overlay -o lowerdir=/run/root,upperdir=/run/ov/u,workdir=/run/ov/w $B
+	mount -t overlay overlay -o lowerdir=/emmc2/basedos-data,upperdir=/run/ovd/u,workdir=/run/ovd/w $B/data
+	mount -t proc proc $B/proc
+	mount -t sysfs sysfs $B/sys
+	mount -o bind /dev $B/dev
+	mount -o bind /dev/pts $B/dev/pts
+	mount -t tmpfs tmpfs $B/run
+	mount -t tmpfs tmpfs $B/tmp
+	# The test card, read-write, for tools/mainline/remote.sh (new kernels, logs, boot-emmc).
+	mkdir -p $B/card
+	mount -o bind /card $B/card
+	mkdir -p $B/run/basedos $B/run/wpa_supplicant
+	chroot $B /usr/bin/wpa_supplicant -B -i wlan0 -D nl80211 -c /data/wpa_supplicant.conf \
+		-P /run/wpa_supplicant.pid -f /run/basedos/wpa_supplicant.log || { echo "wpa_supplicant failed"; return 1; }
+	chroot $B udhcpc -i wlan0 -b -x hostname:basedos-mainline -p /run/udhcpc.pid \
+		-s /usr/share/udhcpc/default.script
+	chroot $B /etc/init.d/sshd
+	i=0
+	while ! ip -4 addr show wlan0 | grep -q inet && [ $i -lt 30 ]; do sleep 1; i=$((i + 1)); done
+	ip -4 addr show wlan0
+	cp $B/run/basedos/wpa_supplicant.log "$L/wpa_supplicant.log" 2>/dev/null
+	cp $B/data/sshd.log "$L/sshd.log" 2>/dev/null
+	ip=$(ip -4 addr show wlan0 | sed -n 's/.*inet \([0-9.]*\).*/\1/p')
+	[ -n "$ip" ] && say "Wi-Fi up: ssh root@$ip (empty password)" || say "Wi-Fi: no address (see net.txt)"
+}
+step "network"
+(net > "$L/net.txt" 2>&1; dmesg > "$L/dmesg-net.txt"; echo "network done" >> "$L/steps.txt"; sync) &
+
+# Synced every 5 s, so presses reach the card even if it's switched off early.
+i=0
+while [ $i -lt 18 ]; do
+	sleep 5
+	sync
+	i=$((i + 1))
+done
+killall cat 2>/dev/null
+cp /proc/bus/input/devices "$L/input-devices.txt"
+step "buttons recorded"
+say "buttons recorded"
+
+# The rest: the kernel log and the uptime every 5 s. The second snapshot only when
+# mainline/later-snapshot exists on the card: every run with it so far hung 10-15 s after it.
+t=0
+while :; do
+	sleep 5
+	t=$((t + 5))
+	dmesg > "$L/dmesg-now.txt"
+	echo "up $(cut -d' ' -f1 /proc/uptime) s" > "$L/alive.txt"
+	sync
+	if [ $t -eq 120 ] && [ -e /card/mainline/later-snapshot ]; then
+		snap "$L/later"
+		step "second state saved"
+		say "second state saved"
+	fi
+done

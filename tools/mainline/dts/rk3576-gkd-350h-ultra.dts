@@ -1,0 +1,1223 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * GameKiddy GKD 350H Ultra (Rockchip RK3576S)
+ *
+ * Mainline device tree for ROCKNIX's mainline kernel. Derived from the
+ * vendor (Rockchip BSP 6.1) device tree, laid out after ROCKNIX's
+ * rk3576-anbernic-rg-vita-pro.dts.
+ *
+ * First milestone: boots, logs to the SD card, panel lights, input works.
+ * Everything else is present but untested.
+ *
+ * Markers:
+ *   unverified - guessed or adapted, not confirmed against hardware/stock
+ *   TODO       - stock has something not mapped yet; stock value given
+ */
+
+/dts-v1/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/linux-event-codes.h>
+#include <dt-bindings/pinctrl/rockchip.h>
+#include <dt-bindings/pwm/pwm.h>
+#include <dt-bindings/soc/rockchip,vop2.h>
+#include <dt-bindings/usb/pd.h>
+
+#include "rk3576.dtsi"
+
+/ {
+	model = "GameKiddy GKD 350H Ultra";
+	chassis-type = "handset";
+	compatible = "gamekiddy,gkd-350h-ultra", "rockchip,rk3576";
+
+	aliases {
+		mmc0 = &sdhci;
+		mmc1 = &sdmmc;
+		mmc2 = &sdio;
+	};
+
+	chosen {
+		/* stock fiq-debugger: serial-id 0 (uart0m0), 1500000 baud */
+		stdout-path = "serial0:1500000n8";
+	};
+
+	/*
+	 * TODO: stock reserves a 256 MiB CMA pool (linux,cma, 4 MiB aligned);
+	 * left to the kernel cmdline / defconfig here.
+	 */
+
+	backlight: backlight {
+		compatible = "pwm-backlight";
+		/* stock: pwm@2add1000 (PWM1 ch1), 25000 ns, inverted */
+		pwms = <&pwm1_6ch_1 0 25000 PWM_POLARITY_INVERTED>;
+		/*
+		 * Stock table is 0, then 40 x 40, then 41..255. Level 0 turns
+		 * the backlight off; 1..215 interpolate 40..255.
+		 */
+		brightness-levels = <40 255>;
+		num-interpolated-steps = <215>;
+		/* stock default 190/255 */
+		default-brightness-level = <150>;
+	};
+
+	battery: battery {
+		compatible = "simple-battery";
+		charge-full-design-microamp-hours = <5000000>;
+		/* 5000 mAh x 3.7 V nominal */
+		energy-full-design-microwatt-hours = <18500000>;
+		/* stock bq25892 ti,battery-regulation-voltage */
+		constant-charge-voltage-max-microvolt = <4400000>;
+		voltage-max-design-microvolt = <4400000>;
+		voltage-min-design-microvolt = <3000000>; /* unverified */
+		/* stock bq25892 charge/precharge/termination currents */
+		constant-charge-current-max-microamp = <3100000>;
+		precharge-current-microamp = <130000>;
+		charge-term-current-microamp = <66000>;
+	};
+
+	/*
+	 * Gamepad. Stock uses a custom "gamekiddy-joypad" driver (gpio buttons
+	 * plus two saradc channels for the single stick). Mainline splits it
+	 * into gpio-keys and adc-joystick; ROCKNIX would usually merge the two
+	 * into one virtual pad with inputplumber.
+	 * Stock identity: name "gkd_atom_joypad", vendor 0x0001,
+	 * product 0x2103, version 0x0100.
+	 */
+	gamepad_keys: gamepad-keys {
+		compatible = "gpio-keys";
+		pinctrl-names = "default";
+		pinctrl-0 = <&btn_pins>;
+
+		button-dpad-up {
+			label = "DPAD-UP";
+			gpios = <&gpio2 RK_PB0 GPIO_ACTIVE_LOW>;
+			linux,code = <BTN_DPAD_UP>;
+		};
+
+		button-dpad-down {
+			label = "DPAD-DOWN";
+			gpios = <&gpio2 RK_PB1 GPIO_ACTIVE_LOW>;
+			linux,code = <BTN_DPAD_DOWN>;
+		};
+
+		button-dpad-left {
+			label = "DPAD-LEFT";
+			gpios = <&gpio2 RK_PB3 GPIO_ACTIVE_LOW>;
+			linux,code = <BTN_DPAD_LEFT>;
+		};
+
+		button-dpad-right {
+			label = "DPAD-RIGHT";
+			gpios = <&gpio2 RK_PB4 GPIO_ACTIVE_LOW>;
+			linux,code = <BTN_DPAD_RIGHT>;
+		};
+
+		button-a {
+			label = "BTN-A";
+			gpios = <&gpio2 RK_PB6 GPIO_ACTIVE_LOW>;
+			linux,code = <BTN_EAST>;
+		};
+
+		button-b {
+			label = "BTN-B";
+			gpios = <&gpio2 RK_PB7 GPIO_ACTIVE_LOW>;
+			linux,code = <BTN_SOUTH>;
+		};
+
+		button-x {
+			label = "BTN-X";
+			gpios = <&gpio2 RK_PC1 GPIO_ACTIVE_LOW>;
+			linux,code = <BTN_NORTH>;
+		};
+
+		button-y {
+			label = "BTN-Y";
+			gpios = <&gpio2 RK_PC2 GPIO_ACTIVE_LOW>;
+			linux,code = <BTN_WEST>;
+		};
+
+		button-select {
+			label = "BTN-SELECT";
+			gpios = <&gpio2 RK_PD2 GPIO_ACTIVE_LOW>;
+			linux,code = <BTN_SELECT>;
+		};
+
+		button-start {
+			label = "BTN-START";
+			gpios = <&gpio2 RK_PD3 GPIO_ACTIVE_LOW>;
+			linux,code = <BTN_START>;
+		};
+
+		/* stock label "BTN_F" */
+		button-mode {
+			label = "BTN-MODE";
+			gpios = <&gpio2 RK_PD5 GPIO_ACTIVE_LOW>;
+			linux,code = <BTN_MODE>;
+		};
+
+		/* stock label "F1" */
+		button-f1 {
+			label = "BTN-F1";
+			gpios = <&gpio2 RK_PD6 GPIO_ACTIVE_LOW>;
+			linux,code = <BTN_TRIGGER_HAPPY1>;
+		};
+
+		button-l1 {
+			label = "BTN-TL";
+			gpios = <&gpio2 RK_PC5 GPIO_ACTIVE_LOW>;
+			linux,code = <BTN_TL>;
+		};
+
+		button-r1 {
+			label = "BTN-TR";
+			gpios = <&gpio2 RK_PD0 GPIO_ACTIVE_LOW>;
+			linux,code = <BTN_TR>;
+		};
+
+		button-l2 {
+			label = "BTN-TL2";
+			gpios = <&gpio2 RK_PC4 GPIO_ACTIVE_LOW>;
+			linux,code = <BTN_TL2>;
+		};
+
+		button-r2 {
+			label = "BTN-TR2";
+			gpios = <&gpio2 RK_PC7 GPIO_ACTIVE_LOW>;
+			linux,code = <BTN_TR2>;
+		};
+
+		button-thumbl {
+			label = "BTN-THUMBL";
+			gpios = <&gpio3 RK_PA3 GPIO_ACTIVE_LOW>;
+			linux,code = <BTN_THUMBL>;
+		};
+	};
+
+	/*
+	 * Stock: io-channels saradc 3 (joy1_x) and 4 (joy1_y),
+	 * button-adc-x/y-range 1800 (reported -900..899), scale 2,
+	 * deadzone 20, fuzz 32, flat 32, poll 10 ms.
+	 * adc-joystick reports raw 12-bit saradc counts instead of a centred
+	 * value, so the stock -900..899 cannot be used as-is. The stock driver
+	 * reads millivolts (1.8 V vref), multiplies by its scale of 2 and clamps
+	 * to +-900 around the boot-time centre, i.e. full deflection is about
+	 * +-450 mV = +-1024 counts around mid-scale.
+	 */
+	joystick: adc-joystick {
+		compatible = "adc-joystick";
+		io-channels = <&saradc 3>, <&saradc 4>;
+		poll-interval = <10>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		axis@0 {
+			reg = <0>;
+			linux,code = <ABS_X>;
+			/* unverified: centred estimate; TODO: axis direction (swap to invert) */
+			abs-range = <1024 3072>;
+			abs-fuzz = <32>;
+			abs-flat = <32>;
+		};
+
+		axis@1 {
+			reg = <1>;
+			linux,code = <ABS_Y>;
+			/* unverified: centred estimate; TODO: axis direction (swap to invert) */
+			abs-range = <1024 3072>;
+			abs-fuzz = <32>;
+			abs-flat = <32>;
+		};
+	};
+
+	gpio_keys: gpio-keys {
+		compatible = "gpio-keys";
+		autorepeat;
+		pinctrl-names = "default";
+		pinctrl-0 = <&volume_gpio>;
+
+		vol-up-key {
+			gpios = <&gpio3 RK_PA0 GPIO_ACTIVE_LOW>;
+			label = "volume up";
+			linux,code = <KEY_VOLUMEUP>;
+		};
+
+		vol-down-key {
+			gpios = <&gpio3 RK_PA1 GPIO_ACTIVE_LOW>;
+			label = "volume down";
+			linux,code = <KEY_VOLUMEDOWN>;
+		};
+	};
+
+	/*
+	 * The RK3576 PWM controllers are not in rk3576.dtsi yet; these follow
+	 * the template (ROCKNIX rockchip-mfpwm + pwm-rockchip-v4 driver).
+	 */
+	pwm0_2ch_0: pwm@27330000 {
+		compatible = "rockchip,rk3576-pwm";
+		reg = <0x0 0x27330000 0x0 0x1000>;
+		interrupts = <GIC_SPI 100 IRQ_TYPE_LEVEL_HIGH>;
+		#pwm-cells = <3>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pwm0m0_ch0>;
+		clocks = <&cru CLK_PMU1PWM>, <&cru PCLK_PMU1PWM>,
+			 <&cru CLK_PMU1PWM_OSC>, <&cru CLK_PMU1PWM_RC>;
+		clock-names = "pwm", "pclk", "osc", "rc";
+		status = "okay";
+	};
+
+	pwm1_6ch_1: pwm@2add1000 {
+		compatible = "rockchip,rk3576-pwm";
+		reg = <0x0 0x2add1000 0x0 0x1000>;
+		interrupts = <GIC_SPI 103 IRQ_TYPE_LEVEL_HIGH>;
+		#pwm-cells = <3>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pwm1m0_ch1>;
+		clocks = <&cru CLK_PWM1>, <&cru PCLK_PWM1>,
+			 <&cru CLK_OSC_PWM1>, <&cru CLK_RC_PWM1>;
+		clock-names = "pwm", "pclk", "osc", "rc";
+		status = "okay";
+	};
+
+	sdio_pwrseq: sdio-pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		/*
+		 * unverified: stock does not list the 32k clock, but the AP6256
+		 * needs LPO and mainline would gate an unused hym8563 CLKOUT.
+		 * Same wiring as the Rockchip reference (ArmSoM Sige5).
+		 */
+		clocks = <&hym8563>;
+		clock-names = "ext_clock";
+		pinctrl-names = "default";
+		pinctrl-0 = <&wifi_poweren_gpio>;
+		post-power-on-delay-ms = <200>;
+		reset-gpios = <&gpio1 RK_PC6 GPIO_ACTIVE_LOW>;
+	};
+
+	/* untested: no ES9018K2M driver in mainline yet */
+	sound: sound {
+		compatible = "simple-audio-card";
+		/* stock: rockchip,multicodecs-card "rockchip-es9018" */
+		simple-audio-card,name = "rockchip-es9018";
+		simple-audio-card,format = "i2s";
+		simple-audio-card,mclk-fs = <256>;
+		/*
+		 * TODO: stock card also has pre-power-on-delay-ms 30,
+		 * post-power-down-delay-ms 40, keyup-threshold-microvolt 1800000,
+		 * poll-interval 100 (no io-channels, so no headset keys).
+		 */
+
+		simple-audio-card,cpu {
+			sound-dai = <&sai1>;
+			/* 32-bit slots whatever the sample size: the DAC is set to 32-bit I2S (reg 1). */
+			dai-tdm-slot-num = <2>;
+			dai-tdm-slot-width = <32>;
+		};
+
+		simple-audio-card,codec {
+			sound-dai = <&es9018k2m>;
+		};
+	};
+
+	vbus5v0_typec: regulator-vbus5v0-typec {
+		compatible = "regulator-fixed";
+		regulator-name = "vbus5v0_typec";
+		/*
+		 * unverified: stock declares 3.3 V (min/max 3300000) with
+		 * vin vcc_3v3_s0, which looks copy-pasted; the switch is
+		 * gpio0 PC3 "usb-otg0-pwren", probably the bq25892 OTG pin.
+		 */
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		enable-active-high;
+		gpio = <&gpio0 RK_PC3 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&usb_otg0_pwren>;
+		vin-supply = <&vcc_3v3_s0>;
+	};
+
+	vcc5v0_sys: regulator-vcc5v0-sys {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_sys";
+		regulator-always-on;
+		regulator-boot-on;
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+	};
+
+	vcc_1v1_nldo_s3: regulator-vcc-1v1-nldo-s3 {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_1v1_nldo_s3";
+		regulator-always-on;
+		regulator-boot-on;
+		regulator-min-microvolt = <1100000>;
+		regulator-max-microvolt = <1100000>;
+		vin-supply = <&vcc5v0_sys>;
+	};
+
+	vcc_1v8_s0: regulator-vcc-1v8-s0 {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_1v8_s0";
+		regulator-always-on;
+		regulator-boot-on;
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		vin-supply = <&vcc_1v8_s3>;
+	};
+
+	vcc_2v0_pldo_s3: regulator-vcc-2v0-pldo-s3 {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_2v0_pldo_s3";
+		regulator-always-on;
+		regulator-boot-on;
+		regulator-min-microvolt = <2000000>;
+		regulator-max-microvolt = <2000000>;
+		vin-supply = <&vcc5v0_sys>;
+	};
+
+	vcc_3v3_s0: regulator-vcc-3v3-s0 {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_3v3_s0";
+		regulator-always-on;
+		regulator-boot-on;
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		vin-supply = <&vcc_3v3_s3>;
+	};
+
+	vibrator: vibrator {
+		compatible = "pwm-vibrator";
+		/* stock: pwm@27330000 (PWM0 ch0), period 200 ms, normal polarity */
+		pwms = <&pwm0_2ch_0 0 200000000 0>;
+		pwm-names = "enable";
+		/* stock value; only used with a "direction" pwm */
+		direction-duty-cycle-ns = <200000000>;
+	};
+};
+
+&cpu_b0 {
+	cpu-supply = <&vdd_cpu_big_s0>;
+};
+
+&cpu_b1 {
+	cpu-supply = <&vdd_cpu_big_s0>;
+};
+
+&cpu_b2 {
+	cpu-supply = <&vdd_cpu_big_s0>;
+};
+
+&cpu_b3 {
+	cpu-supply = <&vdd_cpu_big_s0>;
+};
+
+&cpu_l0 {
+	cpu-supply = <&vdd_cpu_lit_s0>;
+};
+
+&cpu_l1 {
+	cpu-supply = <&vdd_cpu_lit_s0>;
+};
+
+&cpu_l2 {
+	cpu-supply = <&vdd_cpu_lit_s0>;
+};
+
+&cpu_l3 {
+	cpu-supply = <&vdd_cpu_lit_s0>;
+};
+
+&dsi {
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	dsi_panel: panel@0 {
+		compatible = "rocknix,generic-dsi";
+		reg = <0>;
+		backlight = <&backlight>;
+		enable-gpios = <&gpio0 RK_PC6 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpio3 RK_PD4 GPIO_ACTIVE_LOW>;
+		/* stock also has avrman-te-gpio = gpio4 PA0 (TE, unused here) */
+		pinctrl-names = "default";
+		pinctrl-0 = <&lcd_en>, <&lcd_rst>, <&lcd_te_gpio>;
+		rotation = <270>;
+		/*
+		 * unverified: stock panel node has no supplies; both of these
+		 * are always-on rails, given so the driver gets real regulators.
+		 */
+		vdd-supply = <&vcc_3v3_s0>;
+		iovcc-supply = <&vcc_1v8_s0>;
+
+		/*
+		 * G/I lines as importpanel.py would produce them from the stock
+		 * panel@0 (prepare 40, reset 60, init 80, enable 60 ms, ready 20;
+		 * stock also has stbyb 20, disable 20, unprepare 20 ms, which
+		 * this driver has no slot for). M line is our 60 Hz timing
+		 * (stock timing0 is 172 MHz, hfp 150). Note the driver parses
+		 * "wait=" as hex, so wait=120/40 sleep 288/64 ms (harmless).
+		 * The odd 5-byte be01900f39 write is exactly what stock sends.
+		 */
+		panel_description =
+			"G size=135,216 delays=40,60,80,60,20 format=rgb888 lanes=4 flags=0xe03",
+			"M clock=169715 horizontal=1440,124,30,120 vertical=1600,30,10,10 default=1",
+			"I seq=ff10", "I seq=fb01",
+			"I seq=2a0000059f",
+			"I seq=2b0000063f",
+			"I seq=3500", "I seq=ba07", "I seq=bb13", "I seq=e500",
+			"I seq=ff26", "I seq=fb01", "I seq=0200", "I seq=0380",
+			"I seq=ff25", "I seq=fb01", "I seq=6260", "I seq=6500",
+			"I seq=6607", "I seq=6756",
+			"I seq=ffd0", "I seq=fb01", "I seq=0588",
+			"I seq=ff10", "I seq=fb01", "I seq=c080",
+			"I seq=be01900f39",
+			"I seq=11 wait=120",
+			"I seq=ff10",
+			"I seq=29 wait=40";
+
+		port {
+			panel_in_dsi: endpoint {
+				remote-endpoint = <&dsi_out_panel>;
+			};
+		};
+	};
+};
+
+/* stock routes DSI from VOP video port 0 (route-dsi -> vp0 endpoint@0) */
+&dsi_in {
+	dsi_in_vp0: endpoint {
+		remote-endpoint = <&vp0_out_dsi>;
+	};
+};
+
+&dsi_out {
+	dsi_out_panel: endpoint {
+		remote-endpoint = <&panel_in_dsi>;
+	};
+};
+
+&gpu {
+	mali-supply = <&vdd_gpu_s0>;
+	/* as in the template; rk3576.dtsi has no resets on the gpu node */
+	resets = <&cru SRST_GPU>;
+	status = "okay";
+};
+
+/*
+ * HDMI and DP (USB-C alt mode, stock enables dp@27e40000 on VP2 via
+ * the usbdp phy with all 4 lanes) are left disabled for now.
+ * hdptxphy is enabled only because the VOP takes it as its
+ * "pll_hdmiphy0" clock; with the provider disabled the VOP could defer.
+ */
+&hdptxphy {
+	status = "okay"; /* unverified: may be unnecessary */
+};
+
+&i2c1 {
+	status = "okay";
+
+	pmic@23 {
+		compatible = "rockchip,rk806";
+		reg = <0x23>;
+		#gpio-cells = <2>;
+		gpio-controller;
+		interrupt-parent = <&gpio0>;
+		interrupts = <RK_PA6 IRQ_TYPE_LEVEL_LOW>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pmic_pins
+				 &rk806_dvs1_null
+				 &rk806_dvs2_null
+				 &rk806_dvs3_null>;
+		system-power-controller;
+		/* stock pmic-reset-func = <1> */
+		rockchip,reset-mode = <1>; /* unverified: BSP->mainline value mapping */
+		/*
+		 * TODO: stock BSP-only props: low_voltage_threshold 3000 mV,
+		 * shutdown_voltage_threshold 2700 mV, shutdown_temperture_threshold
+		 * 160, hotdie_temperture_threshold 115, pwron-on-time-500ms,
+		 * buck5-feedback-disable; pinctrl "pmic-power-off" = dvs1_pwrdn.
+		 */
+		vcc1-supply = <&vcc5v0_sys>;
+		vcc2-supply = <&vcc5v0_sys>;
+		vcc3-supply = <&vcc5v0_sys>;
+		vcc4-supply = <&vcc5v0_sys>;
+		vcc5-supply = <&vcc5v0_sys>;
+		vcc6-supply = <&vcc5v0_sys>;
+		vcc7-supply = <&vcc5v0_sys>;
+		vcc8-supply = <&vcc5v0_sys>;
+		vcc9-supply = <&vcc5v0_sys>;
+		vcc10-supply = <&vcc5v0_sys>;
+		vcc11-supply = <&vcc_2v0_pldo_s3>;
+		vcc12-supply = <&vcc5v0_sys>;
+		vcc13-supply = <&vcc_1v1_nldo_s3>;
+		vcc14-supply = <&vcc_1v1_nldo_s3>;
+		vcca-supply = <&vcc5v0_sys>;
+
+		rk806_dvs1_null: dvs1-null-pins {
+			/* stock says gpio_pwrctrl2 here (typo); template uses pwrctrl1 */
+			pins = "gpio_pwrctrl1";
+			function = "pin_fun0";
+		};
+
+		rk806_dvs2_null: dvs2-null-pins {
+			pins = "gpio_pwrctrl2";
+			function = "pin_fun0";
+		};
+
+		rk806_dvs3_null: dvs3-null-pins {
+			pins = "gpio_pwrctrl3";
+			function = "pin_fun0";
+		};
+
+		/* stock regulator-init-microvolt values are not mainline props, dropped */
+		regulators {
+			vdd_cpu_big_s0: dcdc-reg1 {
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-enable-ramp-delay = <400>;
+				regulator-min-microvolt = <550000>;
+				regulator-max-microvolt = <950000>;
+				regulator-name = "vdd_cpu_big_s0";
+				regulator-ramp-delay = <12500>;
+				regulator-state-mem {
+					regulator-off-in-suspend;
+				};
+			};
+
+			vdd_npu_s0: dcdc-reg2 {
+				regulator-boot-on;
+				regulator-enable-ramp-delay = <400>;
+				regulator-min-microvolt = <550000>;
+				regulator-max-microvolt = <950000>;
+				regulator-name = "vdd_npu_s0";
+				regulator-ramp-delay = <12500>;
+				regulator-state-mem {
+					regulator-off-in-suspend;
+				};
+			};
+
+			vdd_cpu_lit_s0: dcdc-reg3 {
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <550000>;
+				regulator-max-microvolt = <950000>;
+				regulator-name = "vdd_cpu_lit_s0";
+				regulator-ramp-delay = <12500>;
+				regulator-state-mem {
+					regulator-off-in-suspend;
+					regulator-suspend-microvolt = <750000>;
+				};
+			};
+
+			vcc_3v3_s3: dcdc-reg4 {
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-name = "vcc_3v3_s3";
+				regulator-state-mem {
+					regulator-on-in-suspend;
+					regulator-suspend-microvolt = <3300000>;
+				};
+			};
+
+			vdd_gpu_s0: dcdc-reg5 {
+				/*
+				 * Not always-on in stock; kept on as in the template so
+				 * PD_GPU never loses its supply before panfrost binds.
+				 */
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-enable-ramp-delay = <400>;
+				regulator-min-microvolt = <550000>;
+				regulator-max-microvolt = <900000>;
+				regulator-name = "vdd_gpu_s0";
+				regulator-ramp-delay = <12500>;
+				regulator-state-mem {
+					regulator-off-in-suspend;
+					regulator-suspend-microvolt = <850000>;
+				};
+			};
+
+			vddq_ddr_s0: dcdc-reg6 {
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-name = "vddq_ddr_s0";
+				regulator-state-mem {
+					regulator-off-in-suspend;
+				};
+			};
+
+			vdd_logic_s0: dcdc-reg7 {
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <550000>;
+				regulator-max-microvolt = <800000>;
+				regulator-name = "vdd_logic_s0";
+				regulator-state-mem {
+					/*
+					 * stock lists both off- and on-in-suspend;
+					 * of_regulator gives on-in-suspend precedence
+					 */
+					regulator-on-in-suspend;
+				};
+			};
+
+			vcc_1v8_s3: dcdc-reg8 {
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+				regulator-name = "vcc_1v8_s3";
+				regulator-state-mem {
+					regulator-on-in-suspend;
+					regulator-suspend-microvolt = <1800000>;
+				};
+			};
+
+			vdd2_ddr_s3: dcdc-reg9 {
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-name = "vdd2_ddr_s3";
+				regulator-state-mem {
+					regulator-on-in-suspend;
+				};
+			};
+
+			vdd_ddr_s0: dcdc-reg10 {
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <550000>;
+				regulator-max-microvolt = <1200000>;
+				regulator-name = "vdd_ddr_s0";
+				regulator-state-mem {
+					regulator-off-in-suspend;
+				};
+			};
+
+			vcca_1v8_s0: pldo-reg1 {
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+				regulator-name = "vcca_1v8_s0";
+				regulator-state-mem {
+					/* stock lists both off- and on-in-suspend; on wins */
+					regulator-on-in-suspend;
+				};
+			};
+
+			vcca1v8_pldo2_s0: pldo-reg2 {
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+				regulator-name = "vcca1v8_pldo2_s0";
+				regulator-state-mem {
+					regulator-off-in-suspend;
+				};
+			};
+
+			vdda_1v2_s0: pldo-reg3 {
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <1200000>;
+				regulator-name = "vdda_1v2_s0";
+				regulator-state-mem {
+					regulator-off-in-suspend;
+				};
+			};
+
+			vcca3v3_codec: pldo-reg4 {
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-name = "vcca3v3_codec";
+				regulator-state-mem {
+					regulator-off-in-suspend;
+				};
+			};
+
+			vccio_sd_s0: pldo-reg5 {
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-name = "vccio_sd_s0";
+				regulator-state-mem {
+					regulator-off-in-suspend;
+				};
+			};
+
+			vcca1v8_pldo6_s3: pldo-reg6 {
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+				regulator-name = "vcca1v8_pldo6_s3";
+				regulator-state-mem {
+					regulator-on-in-suspend;
+					regulator-suspend-microvolt = <1800000>;
+				};
+			};
+
+			vdd_0v75_s3: nldo-reg1 {
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <750000>;
+				regulator-max-microvolt = <750000>;
+				regulator-name = "vdd_0v75_s3";
+				regulator-state-mem {
+					regulator-on-in-suspend;
+					regulator-suspend-microvolt = <750000>;
+				};
+			};
+
+			vdda_ddr_pll_s0: nldo-reg2 {
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <850000>;
+				regulator-max-microvolt = <850000>;
+				regulator-name = "vdda_ddr_pll_s0";
+				regulator-state-mem {
+					regulator-off-in-suspend;
+				};
+			};
+
+			/* stock runs this "0v75" rail at 837.5 mV */
+			vdda0v75_hdmi_s0: nldo-reg3 {
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <837500>;
+				regulator-max-microvolt = <837500>;
+				regulator-name = "vdda0v75_hdmi_s0";
+				regulator-state-mem {
+					regulator-off-in-suspend;
+				};
+			};
+
+			vdda_0v85_s0: nldo-reg4 {
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <850000>;
+				regulator-max-microvolt = <850000>;
+				regulator-name = "vdda_0v85_s0";
+				regulator-state-mem {
+					regulator-off-in-suspend;
+				};
+			};
+
+			vdda_0v75_s0: nldo-reg5 {
+				regulator-always-on;
+				regulator-boot-on;
+				regulator-min-microvolt = <750000>;
+				regulator-max-microvolt = <750000>;
+				regulator-name = "vdda_0v75_s0";
+				regulator-state-mem {
+					regulator-off-in-suspend;
+				};
+			};
+		};
+	};
+};
+
+&i2c2 {
+	status = "okay";
+
+	/* TODO: stock has a "shunwei,sh366103" fuel gauge at 0x55; no mainline driver */
+
+	husb311: typec-port@4e {
+		compatible = "hynetek,husb311", "richtek,rt1711h";
+		reg = <0x4e>;
+		interrupt-parent = <&gpio0>;
+		interrupts = <RK_PB4 IRQ_TYPE_LEVEL_LOW>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&usbc0_int>;
+		vbus-supply = <&vbus5v0_typec>;
+
+		/* untested */
+		connector {
+			compatible = "usb-c-connector";
+			label = "USB-C";
+			data-role = "dual";
+			power-role = "dual";
+			try-power-role = "sink";
+			/* stock value: 1 W */
+			op-sink-microwatt = <1000000>;
+			sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)
+				     PDO_FIXED(9000, 3000, PDO_FIXED_USB_COMM)
+				     PDO_FIXED(12000, 3000, PDO_FIXED_USB_COMM)>;
+			source-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)>;
+
+			/*
+			 * TODO: stock advertises DP alt mode (svid 0xff01,
+			 * vdo 0xffffffff) and wires connector port@0/@1 to the
+			 * usbdp phy (orientation-switch, sbu1/2-dc gpio4 PC4/PC5,
+			 * dp-lane-mux 0 1 2 3, maximum-speed high-speed). Add the
+			 * altmodes node, port@1/@2 and &usbdp_phy with DP.
+			 */
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+					usbc0_hs_ep: endpoint {
+						remote-endpoint = <&usb_drd0_hs_ep>;
+					};
+				};
+
+				/* SS lanes: go to the usbdp phy (DP alt mode); TODO above */
+				port@1 {
+					reg = <1>;
+				};
+			};
+		};
+	};
+
+	hym8563: rtc@51 {
+		compatible = "haoyu,hym8563";
+		reg = <0x51>;
+		#clock-cells = <0>;
+		clock-output-names = "hym8563";
+		interrupt-parent = <&gpio0>;
+		interrupts = <RK_PA5 IRQ_TYPE_LEVEL_LOW>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&hym8563_int>;
+		wakeup-source;
+		/* TODO: stock clock-frequency = <32768> (not in the mainline binding) */
+	};
+
+	/* untested */
+	bq25892: charger@6b {
+		compatible = "ti,bq25892", "ti,bq25890";
+		reg = <0x6b>;
+		interrupt-parent = <&gpio0>;
+		interrupts = <RK_PC7 IRQ_TYPE_EDGE_FALLING>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&bq25890_irq>;
+		monitored-battery = <&battery>;
+		ti,battery-regulation-voltage = <4400000>;
+		ti,charge-current = <3100000>;
+		ti,termination-current = <66000>;
+		ti,precharge-current = <130000>;
+		ti,minimum-sys-voltage = <3500000>;
+		ti,boost-voltage = <5200000>;
+		ti,boost-max-current = <1600000>;
+	};
+};
+
+&i2c3 {
+	status = "okay";
+
+	/* untested; stock: gs_sc7a20, polled (irq_enable 0), irq gpio4 PB3 */
+	accelerometer@18 {
+		compatible = "silan,sc7a20";
+		reg = <0x18>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&sensor_gpio>;
+		/* TODO: stock layout = <1>; translate to a mount-matrix */
+	};
+
+	/* untested */
+	eeprom@50 {
+		compatible = "atmel,24c02";
+		reg = <0x50>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&eeprom_wp_gpio>;
+		wp-gpios = <&gpio4 RK_PB0 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+&i2c4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c4m3_xfer>;
+	status = "okay";
+
+	/* BasedOS's driver (tools/mainline/drivers/es9018k2m.c). */
+	es9018k2m: audio-codec@48 {
+		compatible = "ess,es9018k2m";
+		reg = <0x48>;
+		#sound-dai-cells = <0>;
+		/*
+		 * Stock's avrman-spk-con, avrman-hp-con and avrman-hp-det. On stock with no
+		 * headphones: hp-det reads low, spk-con is driven high, hp-con low.
+		 */
+		spk-en-gpios = <&gpio4 RK_PA4 GPIO_ACTIVE_HIGH>;
+		hp-en-gpios = <&gpio4 RK_PA2 GPIO_ACTIVE_HIGH>;
+		hp-det-gpios = <&gpio4 RK_PA6 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+&mipidcphy {
+	status = "okay";
+};
+
+&pinctrl {
+	bluetooth {
+		bt_reg_on: bt-reg-on {
+			rockchip,pins = <1 RK_PC7 RK_FUNC_GPIO &pcfg_pull_none>; /* unverified pull */
+		};
+
+		bt_wake: bt-wake {
+			rockchip,pins = <1 RK_PD4 RK_FUNC_GPIO &pcfg_pull_none>; /* unverified pull */
+		};
+
+		bt_wake_host_irq: bt-wake-host-irq {
+			rockchip,pins = <0 RK_PB1 RK_FUNC_GPIO &pcfg_pull_down>; /* unverified pull */
+		};
+	};
+
+	btns {
+		btn_pins: btn-pins {
+			rockchip,pins =
+				<2 RK_PB0 RK_FUNC_GPIO &pcfg_pull_up>,
+				<2 RK_PB1 RK_FUNC_GPIO &pcfg_pull_up>,
+				<2 RK_PB3 RK_FUNC_GPIO &pcfg_pull_up>,
+				<2 RK_PB4 RK_FUNC_GPIO &pcfg_pull_up>,
+				<2 RK_PB6 RK_FUNC_GPIO &pcfg_pull_up>,
+				<2 RK_PB7 RK_FUNC_GPIO &pcfg_pull_up>,
+				<2 RK_PC1 RK_FUNC_GPIO &pcfg_pull_up>,
+				<2 RK_PC2 RK_FUNC_GPIO &pcfg_pull_up>,
+				<2 RK_PD5 RK_FUNC_GPIO &pcfg_pull_up>,
+				<2 RK_PD6 RK_FUNC_GPIO &pcfg_pull_up>,
+				<2 RK_PD3 RK_FUNC_GPIO &pcfg_pull_up>,
+				<2 RK_PD2 RK_FUNC_GPIO &pcfg_pull_up>,
+				<2 RK_PC4 RK_FUNC_GPIO &pcfg_pull_up>,
+				<2 RK_PC5 RK_FUNC_GPIO &pcfg_pull_up>,
+				<2 RK_PC7 RK_FUNC_GPIO &pcfg_pull_up>,
+				<2 RK_PD0 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PA3 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+	};
+
+	eeprom {
+		eeprom_wp_gpio: eeprom-wp-gpio {
+			rockchip,pins = <4 RK_PB0 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+	};
+
+	hym8563 {
+		hym8563_int: hym8563-int {
+			rockchip,pins = <0 RK_PA5 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+	};
+
+	keys {
+		volume_gpio: volume-gpio {
+			rockchip,pins =
+				<3 RK_PA0 RK_FUNC_GPIO &pcfg_pull_up>,
+				<3 RK_PA1 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+	};
+
+	lcd {
+		lcd_en: lcd-en {
+			rockchip,pins = <0 RK_PC6 RK_FUNC_GPIO &pcfg_pull_none>; /* unverified pull */
+		};
+
+		lcd_rst: lcd-rst {
+			rockchip,pins = <3 RK_PD4 RK_FUNC_GPIO &pcfg_pull_none>; /* unverified pull */
+		};
+
+		lcd_te_gpio: lcd-te-gpio {
+			rockchip,pins = <4 RK_PA0 RK_FUNC_GPIO &pcfg_pull_down>;
+		};
+	};
+
+	sensor {
+		sensor_gpio: sensor-gpio {
+			rockchip,pins = <4 RK_PB3 RK_FUNC_GPIO &pcfg_pull_down>;
+		};
+	};
+
+	usb {
+		bq25890_irq: bq25890-irq {
+			rockchip,pins = <0 RK_PC7 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+
+		usbc0_int: usbc0-int {
+			rockchip,pins = <0 RK_PB4 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+
+		usb_otg0_pwren: usb-otg0-pwren {
+			rockchip,pins = <0 RK_PC3 RK_FUNC_GPIO &pcfg_pull_down>;
+		};
+	};
+
+	wireless-wlan {
+		wifi_host_wake_irq: wifi-host-wake-irq {
+			rockchip,pins = <0 RK_PB0 RK_FUNC_GPIO &pcfg_pull_down>;
+		};
+
+		wifi_poweren_gpio: wifi-poweren-gpio {
+			rockchip,pins = <1 RK_PC6 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+	};
+};
+
+/* stock es9018-sound card's rockchip,cpu is sai@2a610000 = SAI1, on its m1 pins */
+&sai1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&sai1m1_lrck
+		     &sai1m1_sclk
+		     &sai1m1_sdo0>;
+	status = "okay";
+};
+
+&saradc {
+	vref-supply = <&vcca_1v8_s0>;
+	status = "okay";
+};
+
+&sdhci {
+	bus-width = <8>;
+	full-pwr-cycle-in-suspend;
+	mmc-hs400-1_8v;
+	mmc-hs400-enhanced-strobe;
+	no-sd;
+	no-sdio;
+	non-removable;
+	status = "okay";
+};
+
+/*
+ * SD card. Default pinctrl from rk3576.dtsi matches stock: native card
+ * detect (sdmmc0_det, gpio0 PA7) and the controller-driven power switch
+ * (sdmmc0_pwren, gpio0 PB6).
+ */
+&sdmmc {
+	bus-width = <4>;
+	cap-mmc-highspeed;
+	cap-sd-highspeed;
+	disable-wp;
+	max-frequency = <150000000>;
+	no-mmc;
+	no-sdio;
+	sd-uhs-sdr50;
+	sd-uhs-sdr104;
+	vmmc-supply = <&vcc_3v3_s0>;
+	vqmmc-supply = <&vccio_sd_s0>;
+	status = "okay";
+};
+
+/* SDIO Wi-Fi: stock wifi_chip_type "ap6256" (BCM43456) */
+&sdio {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	bus-width = <4>;
+	cap-sd-highspeed;
+	cap-sdio-irq;
+	disable-wp;
+	keep-power-in-suspend;
+	max-frequency = <200000000>;
+	mmc-pwrseq = <&sdio_pwrseq>;
+	no-mmc;
+	no-sd;
+	non-removable;
+	sd-uhs-sdr50;
+	/* TODO: stock gives sdio no vmmc/vqmmc supply (sige5 uses vcc_3v3_s3/vcc_1v8_s3) */
+	status = "okay";
+
+	/* untested */
+	/*
+	 * In-band SDIO interrupts (cap-sdio-irq). With the out-of-band host-wake line (gpio0 PB0,
+	 * level high, as stock) firmware events reached the host late or not at all: wpa_supplicant
+	 * timed out on authentication, then saw "Associated" late, and pings mostly went unanswered.
+	 * Stock's host-wake: gpio0 PB0, pinctrl wifi_host_wake_irq.
+	 */
+	brcmf: wifi@1 {
+		compatible = "brcm,bcm4329-fmac";
+		reg = <1>;
+	};
+};
+
+&u2phy0 {
+	status = "okay";
+};
+
+&u2phy0_otg {
+	status = "okay";
+};
+
+&uart0 {
+	status = "okay";
+};
+
+/* untested: Bluetooth half of the AP6256 */
+&uart4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart4m1_xfer>, <&uart4m1_ctsn>, <&uart4m1_rtsn>;
+	uart-has-rtscts;
+	status = "okay";
+
+	bluetooth {
+		compatible = "brcm,bcm4345c5";
+		clocks = <&hym8563>; /* unverified, as for the Wi-Fi pwrseq */
+		clock-names = "lpo";
+		/* stock BT,reset_gpio gpio1 PC7 (flag 0) = BT_REG_ON */
+		shutdown-gpios = <&gpio1 RK_PC7 GPIO_ACTIVE_HIGH>;
+		/* stock BT,wake_gpio */
+		device-wakeup-gpios = <&gpio1 RK_PD4 GPIO_ACTIVE_HIGH>;
+		/* stock BT,wake_host_irq */
+		interrupt-parent = <&gpio0>;
+		interrupts = <RK_PB1 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-names = "host-wakeup";
+		pinctrl-names = "default";
+		pinctrl-0 = <&bt_reg_on>, <&bt_wake>, <&bt_wake_host_irq>;
+		max-speed = <1500000>; /* unverified */
+		vbat-supply = <&vcc_3v3_s3>; /* unverified */
+		vddio-supply = <&vcc_1v8_s3>; /* unverified */
+	};
+};
+
+/*
+ * USB-C OTG on DRD0. Stock runs the usbdp phy at high-speed only (its
+ * lanes go to DP alt mode), so the controller uses just the USB2 phy here.
+ * Stock leaves DRD1 disabled (u2phy1 on, its otg-port off), so no second
+ * USB host.
+ */
+&usb_drd0_dwc3 {
+	dr_mode = "otg";
+	maximum-speed = "high-speed";
+	phys = <&u2phy0_otg>;
+	phy-names = "usb2-phy";
+	usb-role-switch;
+	status = "okay";
+
+	port {
+		usb_drd0_hs_ep: endpoint {
+			remote-endpoint = <&usbc0_hs_ep>;
+		};
+	};
+};
+
+&vop {
+	/*
+	 * 1188 MHz / 7 = 169.714 MHz, the panel's 60 Hz mode (checked: dclk_vp0 169714286).
+	 * DCLK_VP0_SRC is CLK_SET_RATE_NO_REPARENT, so the parent is fixed here.
+	 */
+	assigned-clocks = <&cru PLL_VPLL>, <&cru DCLK_VP0_SRC>;
+	assigned-clock-parents = <0>, <&cru PLL_VPLL>;
+	assigned-clock-rates = <1188000000>, <0>;
+	/*
+	 * The stock U-Boot leaves its splash screen running through the VOP's IOMMU; BasedOS's
+	 * VOP2 patch (tools/mainline/patches) resets the VOP with these before attaching it.
+	 */
+	resets = <&cru SRST_A_VOP>, <&cru SRST_H_VOP>, <&cru SRST_D_VP0>,
+		 <&cru SRST_D_VP1>, <&cru SRST_D_VP2>;
+	status = "okay";
+};
+
+&vop_mmu {
+	status = "okay";
+};
+
+&vp0 {
+	vp0_out_dsi: endpoint@ROCKCHIP_VOP2_EP_MIPI0 {
+		reg = <ROCKCHIP_VOP2_EP_MIPI0>;
+		remote-endpoint = <&dsi_in_vp0>;
+	};
+};

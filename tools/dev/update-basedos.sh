@@ -41,15 +41,23 @@ put() {
 mount -o remount,rw /boot
 trap 'sync; mount -o remount,ro /boot || echo "WARNING: /boot stayed read-write" >&2' EXIT
 put "$SRC/rootfs.squashfs" "$B/$newfile"
-# The initrd is not A/B, but boot.scr boots stock if U-Boot rejects it.
-[ -s "$SRC/initrd.uimg" ] && put "$SRC/initrd.uimg" "$B/initrd.uimg"
-# Nor is the panel DTB: boot.scr falls back to stock's when it can't load ours, and boots stock
-# (with stock's DTB) when booti rejects it.
-[ -s "$SRC/rk3576-gkd-atom.dtb" ] && put "$SRC/rk3576-gkd-atom.dtb" "$B/rk3576-gkd-atom.dtb"
+# The initrd, the panel DTB and boot.scr are not A/B: the slot fallback can't undo them, so each
+# one replaced keeps the file it replaces as <name>.prev. To go back (from SSH or maintenance mode):
+#   mount -o remount,rw /boot; cp <name>.prev <name>; sync
+# boot.scr boots stock when U-Boot rejects the initrd (CRC) or booti rejects the DTB (not a valid
+# FDT), reloading stock's DTB first. A valid DTB with wrong values (a black panel) and a boot.scr
+# that U-Boot can't run have no automatic way back: SSH and the .prev copy, or the rescue card.
+replace() {
+	if [ -f "$2" ] && ! cmp -s "$1" "$2"; then put "$2" "$2.prev"; fi
+	put "$1" "$2"
+}
+[ -s "$SRC/initrd.uimg" ] && replace "$SRC/initrd.uimg" "$B/initrd.uimg"
+[ -s "$SRC/rk3576-gkd-atom.dtb" ] && replace "$SRC/rk3576-gkd-atom.dtb" "$B/rk3576-gkd-atom.dtb"
 # boot.scr last, and only BasedOS's own (mkboot.py bootscr): never stock's, which would leave BasedOS.
 if [ -s "$SRC/boot.scr" ]; then
-	dd if="$SRC/boot.scr" bs=72 skip=1 2>/dev/null | grep -q "BasedOS" || die "$SRC/boot.scr isn't BasedOS's"
-	put "$SRC/boot.scr" /boot/boot.scr
+	scr=$(dd if="$SRC/boot.scr" bs=72 skip=1 2>/dev/null)
+	case "$scr" in *"# BasedOS:"*"rdinit=/basedos/init"*) ;; *) die "$SRC/boot.scr isn't BasedOS's (mkboot.py bootscr)" ;; esac
+	replace "$SRC/boot.scr" /boot/boot.scr
 fi
 if [ "$new" = b ]; then
 	echo b > "$B/slot.new" && sync && mv "$B/slot.new" "$B/slot"

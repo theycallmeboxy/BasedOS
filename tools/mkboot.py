@@ -118,7 +118,14 @@ PANEL_TIMING = "/dsi@27d80000/panel@0/display-timings/timing0"
 # would land on 1188/8 = 148.5 MHz). The horizontal front porch shrinks so that the line takes
 # as long as the panel's own mode says it should (1740 clocks at 172.26 MHz = 1714 at 169.714):
 # 169.714 MHz / (1714 x 1650) = 60.01 Hz.
-PANEL_60HZ = {"clock-frequency": (172260000, 169715000), "hfront-porch": (150, 124)}
+# Every timing value is checked against stock's, since the refresh depends on all of them. The
+# clock the VOP really makes (GPLL's rate and its divider) can't be checked here: after a kernel
+# or DTB change, read real_dclk in /sys/kernel/debug/dri/0/summary on the unit.
+PANEL_STOCK = {"clock-frequency": 172260000, "hactive": 1440, "hfront-porch": 150,
+               "hsync-len": 30, "hback-porch": 120, "vactive": 1600, "vfront-porch": 30,
+               "vsync-len": 10, "vback-porch": 10}
+PANEL_60HZ = {"clock-frequency": 169715000, "hfront-porch": 124}
+VOP_DCLK = 1188000000 // 7  # what dclk_vp0 really runs at for a 169715 kHz ask (GPLL / 7)
 
 
 def fdt_props(blob, path):
@@ -155,16 +162,25 @@ def fdt_props(blob, path):
 def dtb(stock, out):
     b = bytearray(open(stock, "rb").read())
     props = fdt_props(b, PANEL_TIMING)
-    for name, (old, new) in PANEL_60HZ.items():
+    t = {}
+    for name, old in PANEL_STOCK.items():
         if name not in props or props[name][1] != 4:
             sys.exit(f"{PANEL_TIMING} has no 32-bit {name}")
-        have = struct.unpack_from(">I", b, props[name][0])[0]
-        if have != old:
-            sys.exit(f"{name} is {have}, not stock's {old}: not the expected stock DTB")
+        t[name] = struct.unpack_from(">I", b, props[name][0])[0]
+        if t[name] != old:
+            sys.exit(f"{name} is {t[name]}, not stock's {old}: not the expected stock DTB")
+    t.update(PANEL_60HZ)
+    for name, new in PANEL_60HZ.items():
         struct.pack_into(">I", b, props[name][0], new)
+    htotal = t["hactive"] + t["hfront-porch"] + t["hsync-len"] + t["hback-porch"]
+    vtotal = t["vactive"] + t["vfront-porch"] + t["vsync-len"] + t["vback-porch"]
+    hz = VOP_DCLK / (htotal * vtotal)
+    if not 59.83 <= hz <= 60.1:  # at least the DS's 59.83 Hz, at most a hair over 60
+        sys.exit(f"the new timings give {hz:.2f} Hz")
     with open(out, "xb") as f:
         f.write(b)
-    print(f"{out}: panel at 60.01 Hz (" + ", ".join(f"{k} {o} -> {n}" for k, (o, n) in PANEL_60HZ.items()) + ")")
+    print(f"{out}: panel at {hz:.2f} Hz ({htotal} x {vtotal} at {VOP_DCLK / 1e6:.3f} MHz; "
+          + ", ".join(f"{k} {PANEL_STOCK[k]} -> {n}" for k, n in PANEL_60HZ.items()) + ")")
 
 
 def main():

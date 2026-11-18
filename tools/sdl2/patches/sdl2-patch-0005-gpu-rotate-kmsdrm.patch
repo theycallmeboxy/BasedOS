@@ -1,0 +1,641 @@
+diff --git a/src/video/kmsdrm/SDL_kmsdrmopengles.c b/src/video/kmsdrm/SDL_kmsdrmopengles.c
+index 92b896e1f..77e577406 100644
+--- a/src/video/kmsdrm/SDL_kmsdrmopengles.c
++++ b/src/video/kmsdrm/SDL_kmsdrmopengles.c
+@@ -30,6 +30,7 @@
+ #include "SDL_kmsdrmopengles.h"
+ #include "SDL_kmsdrmdyn.h"
+ #include <errno.h>
++#include <stdio.h>
+ #include<stdbool.h>
+ 
+ #ifndef EGL_PLATFORM_GBM_MESA
+@@ -39,6 +40,450 @@
+ extern rga_info_t src_info;
+ extern rga_info_t dst_info;
+ 
++/*
++ * BasedOS: rotation on the GPU, for kernels without the BSP's RGA (/dev/rga), such as mainline.
++ * Same buffers and the same result as the RGA path above: the app's 1600x1440 frame (the GBM
++ * surface's front buffer) is drawn turned into one of the portrait rga_buffers, which is then
++ * scanned out. The draw runs in SDL's own EGL context, so the app's GL state is never touched;
++ * the frame is imported as a dma-buf EGLImage (cached per buffer) and sampled as an external
++ * texture with nearest filtering, so every pixel is copied exactly. A GPU-side wait orders the
++ * draw after the app's frame, and a fence makes sure it is finished before the page flip (the
++ * Mali driver attaches no implicit fences to the buffers).
++ */
++#include "SDL_opengles2.h"
++
++#ifndef EGL_LINUX_DMA_BUF_EXT
++#define EGL_LINUX_DMA_BUF_EXT 0x3270
++#define EGL_LINUX_DRM_FOURCC_EXT 0x3271
++#define EGL_DMA_BUF_PLANE0_FD_EXT 0x3272
++#define EGL_DMA_BUF_PLANE0_OFFSET_EXT 0x3273
++#define EGL_DMA_BUF_PLANE0_PITCH_EXT 0x3274
++#endif
++#ifndef EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT
++#define EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT 0x3443
++#define EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT 0x3444
++#endif
++
++#define KMSDRM_ROT_SRC_MAX 4
++
++typedef struct KMSDRM_RotSrc
++{
++    struct gbm_bo *bo;   /* NULL once GBM has destroyed the buffer */
++    EGLImageKHR img;
++    GLuint tex;
++    SDL_bool used;
++} KMSDRM_RotSrc;
++
++typedef struct KMSDRM_GPURotate
++{
++    EGLContext ctx;
++    GLuint prog, vbo;
++    GLint loc_sz;
++    int rot;            /* 270 or 90, as HAL_TRANSFORM_ROT_* in src_info */
++    KMSDRM_RotSrc src[KMSDRM_ROT_SRC_MAX];
++    EGLImageKHR dst_img[RGA_BUFFERS_MAX];
++    GLuint dst_rb[RGA_BUFFERS_MAX], dst_fb[RGA_BUFFERS_MAX];
++    PFNEGLCREATEIMAGEKHRPROC CreateImage;
++    PFNEGLDESTROYIMAGEKHRPROC DestroyImage;
++    PFNGLEGLIMAGETARGETTEXTURE2DOESPROC ImageTargetTexture2D;
++    PFNGLEGLIMAGETARGETRENDERBUFFERSTORAGEOESPROC ImageTargetRenderbuffer;
++#define ROT_GL(ret, name, args) ret (APIENTRY *name) args;
++    ROT_GL(void, glGenTextures, (GLsizei, GLuint *))
++    ROT_GL(void, glDeleteTextures, (GLsizei, const GLuint *))
++    ROT_GL(void, glBindTexture, (GLenum, GLuint))
++    ROT_GL(void, glTexParameteri, (GLenum, GLenum, GLint))
++    ROT_GL(void, glGenRenderbuffers, (GLsizei, GLuint *))
++    ROT_GL(void, glBindRenderbuffer, (GLenum, GLuint))
++    ROT_GL(void, glGenFramebuffers, (GLsizei, GLuint *))
++    ROT_GL(void, glBindFramebuffer, (GLenum, GLuint))
++    ROT_GL(void, glFramebufferRenderbuffer, (GLenum, GLenum, GLenum, GLuint))
++    ROT_GL(GLenum, glCheckFramebufferStatus, (GLenum))
++    ROT_GL(GLuint, glCreateShader, (GLenum))
++    ROT_GL(void, glShaderSource, (GLuint, GLsizei, const GLchar *const *, const GLint *))
++    ROT_GL(void, glCompileShader, (GLuint))
++    ROT_GL(void, glGetShaderiv, (GLuint, GLenum, GLint *))
++    ROT_GL(void, glGetShaderInfoLog, (GLuint, GLsizei, GLsizei *, GLchar *))
++    ROT_GL(GLuint, glCreateProgram, (void))
++    ROT_GL(void, glAttachShader, (GLuint, GLuint))
++    ROT_GL(void, glBindAttribLocation, (GLuint, GLuint, const GLchar *))
++    ROT_GL(void, glLinkProgram, (GLuint))
++    ROT_GL(void, glGetProgramiv, (GLuint, GLenum, GLint *))
++    ROT_GL(void, glUseProgram, (GLuint))
++    ROT_GL(GLint, glGetUniformLocation, (GLuint, const GLchar *))
++    ROT_GL(void, glUniform1i, (GLint, GLint))
++    ROT_GL(void, glUniform2f, (GLint, GLfloat, GLfloat))
++    ROT_GL(void, glViewport, (GLint, GLint, GLsizei, GLsizei))
++    ROT_GL(void, glGenBuffers, (GLsizei, GLuint *))
++    ROT_GL(void, glBindBuffer, (GLenum, GLuint))
++    ROT_GL(void, glBufferData, (GLenum, GLsizeiptr, const void *, GLenum))
++    ROT_GL(void, glEnableVertexAttribArray, (GLuint))
++    ROT_GL(void, glVertexAttribPointer, (GLuint, GLint, GLenum, GLboolean, GLsizei, const void *))
++    ROT_GL(void, glDrawArrays, (GLenum, GLint, GLsizei))
++    ROT_GL(void, glDisable, (GLenum))
++    ROT_GL(void, glActiveTexture, (GLenum))
++    ROT_GL(void, glFlush, (void))
++    ROT_GL(void, glFinish, (void))
++#undef ROT_GL
++} KMSDRM_GPURotate;
++
++static void KMSDRM_RotSrcDestroyed(struct gbm_bo *bo, void *data)
++{
++    KMSDRM_RotSrc *s = (KMSDRM_RotSrc *)data;
++
++    s->bo = NULL; /* the image and texture go on the next rotation, in the rotation context */
++}
++
++static GLuint KMSDRM_RotShader(KMSDRM_GPURotate *r, GLenum type, const char *src)
++{
++    GLuint s = r->glCreateShader(type);
++    GLint ok = 0;
++    char log[512];
++
++    r->glShaderSource(s, 1, &src, NULL);
++    r->glCompileShader(s);
++    r->glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
++    if (!ok) {
++        r->glGetShaderInfoLog(s, sizeof(log), NULL, log);
++        SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "GPU rotation: shader: %s", log);
++        return 0;
++    }
++    return s;
++}
++
++/* Called with the rotation context current. */
++static int KMSDRM_RotSetupGL(KMSDRM_GPURotate *r)
++{
++    /*
++     * For destination pixel o (memory coordinates, row 0 first): 270 takes source pixel
++     * (sw-1-o.y, o.x), 90 takes (o.y, sh-1-o.x); sz is the source size. FBOs on imported
++     * buffers and external textures both address memory rows from 0, so no flip is needed.
++     */
++    static const char *vs =
++        "attribute vec2 p;\n"
++        "void main() { gl_Position = vec4(p, 0.0, 1.0); }\n";
++    static const char *fs270 =
++        "#extension GL_OES_EGL_image_external : require\n"
++        "precision highp float;\n"
++        "uniform samplerExternalOES s; uniform vec2 sz;\n"
++        "void main() { vec2 o = floor(gl_FragCoord.xy);\n"
++        "  gl_FragColor = texture2D(s, vec2(sz.x - 1.0 - o.y + 0.5, o.x + 0.5) / sz); }\n";
++    static const char *fs90 =
++        "#extension GL_OES_EGL_image_external : require\n"
++        "precision highp float;\n"
++        "uniform samplerExternalOES s; uniform vec2 sz;\n"
++        "void main() { vec2 o = floor(gl_FragCoord.xy);\n"
++        "  gl_FragColor = texture2D(s, vec2(o.y + 0.5, sz.y - 1.0 - o.x + 0.5) / sz); }\n";
++    static const GLfloat tri[] = { -1.0f, -1.0f, 3.0f, -1.0f, -1.0f, 3.0f };
++    GLuint v = KMSDRM_RotShader(r, GL_VERTEX_SHADER, vs);
++    GLuint f = KMSDRM_RotShader(r, GL_FRAGMENT_SHADER, r->rot == 90 ? fs90 : fs270);
++    GLint ok = 0;
++
++    if (!v || !f) {
++        return -1;
++    }
++    r->prog = r->glCreateProgram();
++    r->glAttachShader(r->prog, v);
++    r->glAttachShader(r->prog, f);
++    r->glBindAttribLocation(r->prog, 0, "p");
++    r->glLinkProgram(r->prog);
++    r->glGetProgramiv(r->prog, GL_LINK_STATUS, &ok);
++    if (!ok) {
++        SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "GPU rotation: link failed");
++        return -1;
++    }
++    r->glUseProgram(r->prog);
++    r->glUniform1i(r->glGetUniformLocation(r->prog, "s"), 0);
++    r->loc_sz = r->glGetUniformLocation(r->prog, "sz");
++    r->glGenBuffers(1, &r->vbo);
++    r->glBindBuffer(GL_ARRAY_BUFFER, r->vbo);
++    r->glBufferData(GL_ARRAY_BUFFER, sizeof(tri), tri, GL_STATIC_DRAW);
++    r->glEnableVertexAttribArray(0);
++    r->glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
++    r->glDisable(GL_BLEND);
++    r->glDisable(GL_DEPTH_TEST);
++    r->glDisable(GL_SCISSOR_TEST);
++    r->glDisable(GL_CULL_FACE);
++    r->glActiveTexture(GL_TEXTURE0);
++    return 0;
++}
++
++static EGLImageKHR KMSDRM_RotImport(_THIS, KMSDRM_GPURotate *r, struct gbm_bo *bo)
++{
++    EGLint a[17];
++    int n = 0, fd = KMSDRM_gbm_bo_get_fd(bo);
++    uint64_t mod = KMSDRM_gbm_bo_get_modifier ? KMSDRM_gbm_bo_get_modifier(bo) : DRM_FORMAT_MOD_INVALID;
++    EGLImageKHR img;
++
++    if (fd < 0) {
++        return EGL_NO_IMAGE_KHR;
++    }
++    a[n++] = EGL_WIDTH;
++    a[n++] = (EGLint)KMSDRM_gbm_bo_get_width(bo);
++    a[n++] = EGL_HEIGHT;
++    a[n++] = (EGLint)KMSDRM_gbm_bo_get_height(bo);
++    a[n++] = EGL_LINUX_DRM_FOURCC_EXT;
++    a[n++] = (EGLint)KMSDRM_gbm_bo_get_format(bo);
++    a[n++] = EGL_DMA_BUF_PLANE0_FD_EXT;
++    a[n++] = fd;
++    a[n++] = EGL_DMA_BUF_PLANE0_OFFSET_EXT;
++    a[n++] = 0;
++    a[n++] = EGL_DMA_BUF_PLANE0_PITCH_EXT;
++    a[n++] = (EGLint)KMSDRM_gbm_bo_get_stride(bo);
++    if (mod != DRM_FORMAT_MOD_INVALID && mod != 0) {
++        a[n++] = EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT;
++        a[n++] = (EGLint)(mod & 0xffffffff);
++        a[n++] = EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT;
++        a[n++] = (EGLint)(mod >> 32);
++    }
++    a[n++] = EGL_NONE;
++    img = r->CreateImage(_this->egl_data->egl_display, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, a);
++    close(fd); /* EGL keeps its own reference */
++    return img;
++}
++
++void KMSDRM_GPURotateDestroy(_THIS)
++{
++    SDL_VideoData *viddata = ((SDL_VideoData *)_this->driverdata);
++    KMSDRM_GPURotate *r = viddata->gpu_rot;
++    EGLDisplay dpy = _this->egl_data ? _this->egl_data->egl_display : EGL_NO_DISPLAY;
++    int i;
++
++    if (!r) {
++        return;
++    }
++    for (i = 0; i < KMSDRM_ROT_SRC_MAX; i++) {
++        if (r->src[i].bo) {
++            KMSDRM_gbm_bo_set_user_data(r->src[i].bo, NULL, NULL);
++        }
++        if (r->src[i].img && dpy != EGL_NO_DISPLAY) {
++            r->DestroyImage(dpy, r->src[i].img);
++        }
++    }
++    for (i = 0; i < RGA_BUFFERS_MAX; i++) {
++        if (r->dst_img[i] && dpy != EGL_NO_DISPLAY) {
++            r->DestroyImage(dpy, r->dst_img[i]);
++        }
++    }
++    if (r->ctx && dpy != EGL_NO_DISPLAY) {
++        _this->egl_data->eglDestroyContext(dpy, r->ctx);
++    }
++    SDL_free(r);
++    viddata->gpu_rot = NULL;
++}
++
++static KMSDRM_GPURotate *KMSDRM_GPURotateInit(_THIS, SDL_Window *window)
++{
++    SDL_VideoData *viddata = ((SDL_VideoData *)_this->driverdata);
++    SDL_WindowData *windata = ((SDL_WindowData *)window->driverdata);
++    EGLDisplay dpy = _this->egl_data->egl_display;
++    EGLContext app = (EGLContext)SDL_GL_GetCurrentContext();
++    static const EGLint ctx_attrs[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
++    KMSDRM_GPURotate *r = SDL_calloc(1, sizeof(*r));
++    int ok;
++
++    if (!r) {
++        return NULL;
++    }
++    r->rot = src_info.rotation == HAL_TRANSFORM_ROT_90 ? 90 : 270;
++    r->CreateImage = (PFNEGLCREATEIMAGEKHRPROC)_this->egl_data->eglGetProcAddress("eglCreateImageKHR");
++    r->DestroyImage = (PFNEGLDESTROYIMAGEKHRPROC)_this->egl_data->eglGetProcAddress("eglDestroyImageKHR");
++    r->ImageTargetTexture2D = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)SDL_GL_GetProcAddress("glEGLImageTargetTexture2DOES");
++    r->ImageTargetRenderbuffer = (PFNGLEGLIMAGETARGETRENDERBUFFERSTORAGEOESPROC)SDL_GL_GetProcAddress("glEGLImageTargetRenderbufferStorageOES");
++    ok = r->CreateImage && r->DestroyImage && r->ImageTargetTexture2D && r->ImageTargetRenderbuffer;
++#define ROT_LOAD(name) ok = ok && (*(void **)&r->name = SDL_GL_GetProcAddress(#name)) != NULL;
++    ROT_LOAD(glGenTextures) ROT_LOAD(glDeleteTextures) ROT_LOAD(glBindTexture) ROT_LOAD(glTexParameteri)
++    ROT_LOAD(glGenRenderbuffers) ROT_LOAD(glBindRenderbuffer) ROT_LOAD(glGenFramebuffers)
++    ROT_LOAD(glBindFramebuffer) ROT_LOAD(glFramebufferRenderbuffer) ROT_LOAD(glCheckFramebufferStatus)
++    ROT_LOAD(glCreateShader) ROT_LOAD(glShaderSource) ROT_LOAD(glCompileShader) ROT_LOAD(glGetShaderiv)
++    ROT_LOAD(glGetShaderInfoLog) ROT_LOAD(glCreateProgram) ROT_LOAD(glAttachShader)
++    ROT_LOAD(glBindAttribLocation) ROT_LOAD(glLinkProgram) ROT_LOAD(glGetProgramiv) ROT_LOAD(glUseProgram)
++    ROT_LOAD(glGetUniformLocation) ROT_LOAD(glUniform1i) ROT_LOAD(glUniform2f) ROT_LOAD(glViewport)
++    ROT_LOAD(glGenBuffers) ROT_LOAD(glBindBuffer) ROT_LOAD(glBufferData) ROT_LOAD(glEnableVertexAttribArray)
++    ROT_LOAD(glVertexAttribPointer) ROT_LOAD(glDrawArrays) ROT_LOAD(glDisable) ROT_LOAD(glActiveTexture)
++    ROT_LOAD(glFlush) ROT_LOAD(glFinish)
++#undef ROT_LOAD
++    if (!ok) {
++        SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "GPU rotation: missing EGL/GLES entry points");
++        SDL_free(r);
++        return NULL;
++    }
++    r->ctx = _this->egl_data->eglCreateContext(dpy, _this->egl_data->egl_config, EGL_NO_CONTEXT, ctx_attrs);
++    if (r->ctx == EGL_NO_CONTEXT ||
++        !_this->egl_data->eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, r->ctx)) {
++        SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "GPU rotation: no context (%#x)", _this->egl_data->eglGetError());
++        if (r->ctx != EGL_NO_CONTEXT) {
++            _this->egl_data->eglDestroyContext(dpy, r->ctx);
++        }
++        SDL_free(r);
++        return NULL;
++    }
++    ok = KMSDRM_RotSetupGL(r) == 0;
++    _this->egl_data->eglMakeCurrent(dpy, windata->egl_surface, windata->egl_surface, app);
++    viddata->gpu_rot = r;
++    if (!ok) {
++        KMSDRM_GPURotateDestroy(_this);
++        return NULL;
++    }
++    SDL_LogInfo(SDL_LOG_CATEGORY_VIDEO, "KMSDRM: rotating %d degrees on the GPU", r->rot);
++    return r;
++}
++
++/* Draws the app's frame (src) turned into rga_buffers[dst_index]. 0 when done. */
++static Uint64 rot_step_t[5];
++static double rot_step_sum[4];
++static int rot_step_frames;
++
++static void KMSDRM_RotStep(int i)
++{
++    rot_step_t[i] = SDL_GetPerformanceCounter();
++}
++
++static void KMSDRM_RotStepsDone(void)
++{
++    static const char *names[4] = { "switch in", "draw+flush", "switch back", "wait" };
++    int i;
++    const char *e = SDL_getenv("SDL_KMSDRM_ROTATION_STATS");
++
++    if (!e || SDL_atoi(e) != 3) {
++        return;
++    }
++    for (i = 0; i < 4; i++) {
++        rot_step_sum[i] += (double)(rot_step_t[i + 1] - rot_step_t[i]) * 1000.0 / (double)SDL_GetPerformanceFrequency();
++    }
++    if (++rot_step_frames == 300) {
++        fprintf(stderr, "KMSDRM GPU rotation steps:");
++        for (i = 0; i < 4; i++) {
++            fprintf(stderr, " %s %.2f ms", names[i], rot_step_sum[i] / rot_step_frames);
++            rot_step_sum[i] = 0;
++        }
++        fprintf(stderr, "\n");
++        rot_step_frames = 0;
++    }
++}
++
++static int KMSDRM_GPURotateFrame(_THIS, SDL_Window *window, struct gbm_bo *src, int dst_index)
++{
++    SDL_VideoData *viddata = ((SDL_VideoData *)_this->driverdata);
++    SDL_WindowData *windata = ((SDL_WindowData *)window->driverdata);
++    EGLDisplay dpy = _this->egl_data->egl_display;
++    EGLContext app = (EGLContext)SDL_GL_GetCurrentContext();
++    KMSDRM_GPURotate *r = viddata->gpu_rot;
++    KMSDRM_RotSrc *s = NULL;
++    EGLSyncKHR frame = EGL_NO_SYNC_KHR, done = EGL_NO_SYNC_KHR;
++    int i, ret = 0;
++
++    if (!r && !(r = KMSDRM_GPURotateInit(_this, window))) {
++        return -1;
++    }
++
++    KMSDRM_RotStep(0);
++    /* The app's frame is flushed by eglSwapBuffers; the rotation waits for it on the GPU. */
++    if (_this->egl_data->eglCreateSyncKHR) {
++        frame = _this->egl_data->eglCreateSyncKHR(dpy, EGL_SYNC_FENCE_KHR, NULL);
++    }
++    if (!_this->egl_data->eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, r->ctx)) {
++        if (frame != EGL_NO_SYNC_KHR) {
++            _this->egl_data->eglDestroySyncKHR(dpy, frame);
++        }
++        return -1;
++    }
++    if (frame != EGL_NO_SYNC_KHR) {
++        if (_this->egl_data->eglWaitSyncKHR) {
++            _this->egl_data->eglWaitSyncKHR(dpy, frame, 0);
++        } else {
++            _this->egl_data->eglClientWaitSyncKHR(dpy, frame, 0, EGL_FOREVER_KHR);
++        }
++        _this->egl_data->eglDestroySyncKHR(dpy, frame);
++    }
++
++    KMSDRM_RotStep(1);
++    /* The source: one image and texture per GBM buffer, dropped when GBM destroys it. */
++    for (i = 0; i < KMSDRM_ROT_SRC_MAX; i++) {
++        if (r->src[i].used && !r->src[i].bo) {
++            r->DestroyImage(dpy, r->src[i].img);
++            r->glDeleteTextures(1, &r->src[i].tex);
++            SDL_zero(r->src[i]);
++        }
++    }
++    s = (KMSDRM_RotSrc *)KMSDRM_gbm_bo_get_user_data(src);
++    if (!s) {
++        for (i = 0; i < KMSDRM_ROT_SRC_MAX && r->src[i].used; i++) {
++        }
++        if (i == KMSDRM_ROT_SRC_MAX) {
++            SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "GPU rotation: more front buffers than expected");
++            ret = -1;
++            goto out;
++        }
++        s = &r->src[i];
++        s->img = KMSDRM_RotImport(_this, r, src);
++        if (s->img == EGL_NO_IMAGE_KHR) {
++            SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "GPU rotation: can't import the frame (%#x)",
++                         _this->egl_data->eglGetError());
++            ret = -1;
++            goto out;
++        }
++        r->glGenTextures(1, &s->tex);
++        r->glBindTexture(GL_TEXTURE_EXTERNAL_OES, s->tex);
++        r->ImageTargetTexture2D(GL_TEXTURE_EXTERNAL_OES, s->img);
++        r->glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
++        r->glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
++        r->glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++        r->glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++        s->bo = src;
++        s->used = SDL_TRUE;
++        KMSDRM_gbm_bo_set_user_data(src, s, KMSDRM_RotSrcDestroyed);
++    }
++
++    /* The destination: the scanout buffer, as a framebuffer object. */
++    if (!r->dst_fb[dst_index]) {
++        r->dst_img[dst_index] = KMSDRM_RotImport(_this, r, viddata->rga_buffers[dst_index]);
++        if (r->dst_img[dst_index] == EGL_NO_IMAGE_KHR) {
++            SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "GPU rotation: can't import a scanout buffer");
++            ret = -1;
++            goto out;
++        }
++        r->glGenRenderbuffers(1, &r->dst_rb[dst_index]);
++        r->glBindRenderbuffer(GL_RENDERBUFFER, r->dst_rb[dst_index]);
++        r->ImageTargetRenderbuffer(GL_RENDERBUFFER, r->dst_img[dst_index]);
++        r->glGenFramebuffers(1, &r->dst_fb[dst_index]);
++        r->glBindFramebuffer(GL_FRAMEBUFFER, r->dst_fb[dst_index]);
++        r->glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, r->dst_rb[dst_index]);
++        if (r->glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
++            SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "GPU rotation: scanout buffer isn't renderable");
++            ret = -1;
++            goto out;
++        }
++    }
++
++    r->glBindFramebuffer(GL_FRAMEBUFFER, r->dst_fb[dst_index]);
++    r->glViewport(0, 0, (GLsizei)KMSDRM_gbm_bo_get_width(viddata->rga_buffers[dst_index]),
++                  (GLsizei)KMSDRM_gbm_bo_get_height(viddata->rga_buffers[dst_index]));
++    r->glBindTexture(GL_TEXTURE_EXTERNAL_OES, s->tex);
++    r->glUniform2f(r->loc_sz, (GLfloat)KMSDRM_gbm_bo_get_width(src), (GLfloat)KMSDRM_gbm_bo_get_height(src));
++    r->glDrawArrays(GL_TRIANGLES, 0, 3);
++
++    /* Finished before the flip: the buffers carry no implicit fences. */
++    if (_this->egl_data->eglCreateSyncKHR) {
++        done = _this->egl_data->eglCreateSyncKHR(dpy, EGL_SYNC_FENCE_KHR, NULL);
++    }
++    r->glFlush();
++    if (done == EGL_NO_SYNC_KHR) {
++        r->glFinish();
++    }
++
++out:
++    KMSDRM_RotStep(2);
++    _this->egl_data->eglMakeCurrent(dpy, windata->egl_surface, windata->egl_surface, app);
++    KMSDRM_RotStep(3);
++    if (done != EGL_NO_SYNC_KHR) {
++        _this->egl_data->eglClientWaitSyncKHR(dpy, done, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, EGL_FOREVER_KHR);
++        _this->egl_data->eglDestroySyncKHR(dpy, done);
++    }
++    KMSDRM_RotStep(4);
++    KMSDRM_RotStepsDone();
++    return ret;
++}
++
+ /* EGL implementation of SDL OpenGL support */
+ 
+ void KMSDRM_GLES_DefaultProfileConfig(_THIS, int *mask, int *major, int *minor)
+@@ -96,6 +541,78 @@ SDL_EGL_CreateContext_impl(KMSDRM)
+     return 0;
+ }
+ 
++
++/*
++ * BasedOS: SDL_KMSDRM_ROTATION_STATS=1 prints the rotation's own time (RGA blit or GPU pass,
++ * including the wait for it to finish) every 300 frames: average and worst, in ms.
++ */
++static int KMSDRM_RotationStatsMode(void)
++{
++    static int mode = -1;
++
++    if (mode < 0) {
++        const char *e = SDL_getenv("SDL_KMSDRM_ROTATION_STATS");
++        mode = e ? SDL_atoi(e) : 0;
++    }
++    return mode;
++}
++
++static double KMSDRM_Ms(Uint64 t0, Uint64 t1)
++{
++    return (double)(t1 - t0) * 1000.0 / (double)SDL_GetPerformanceFrequency();
++}
++
++/*
++ * SDL_KMSDRM_ROTATION_STATS: 1 times the rotation as in normal use (including any wait for the
++ * app's frame); 2 waits for the app's frame first (frame_ms) so the rest is the rotation alone;
++ * 3 also splits the GPU pass into its steps (see KMSDRM_RotStepsDone).
++ */
++static void KMSDRM_RotationStats(Uint64 t0, SDL_bool gpu, double frame_ms)
++{
++    static int frames;
++    static double sum, worst, frame_sum;
++    double ms;
++
++    if (!KMSDRM_RotationStatsMode()) {
++        return;
++    }
++    ms = KMSDRM_Ms(t0, SDL_GetPerformanceCounter());
++    sum += ms;
++    frame_sum += frame_ms;
++    if (ms > worst) {
++        worst = ms;
++    }
++    if (++frames == 300) {
++        if (KMSDRM_RotationStatsMode() == 2) {
++            fprintf(stderr, "KMSDRM rotation (%s): %.2f ms average, %.2f ms worst, after the app's frame (%.2f ms average), over %d frames\n",
++                    gpu ? "GPU" : "RGA", sum / frames, worst, frame_sum / frames, frames);
++        } else {
++            fprintf(stderr, "KMSDRM rotation (%s): %.2f ms average, %.2f ms worst over %d frames\n",
++                    gpu ? "GPU" : "RGA", sum / frames, worst, frames);
++        }
++        frames = 0;
++        sum = worst = frame_sum = 0;
++    }
++}
++
++/* Mode 2: wait (on the CPU) for the app's frame, and say how long that took. */
++static double KMSDRM_WaitAppFrame(_THIS)
++{
++    EGLDisplay dpy = _this->egl_data->egl_display;
++    Uint64 t0 = SDL_GetPerformanceCounter();
++    EGLSyncKHR f;
++
++    if (KMSDRM_RotationStatsMode() != 2 || !_this->egl_data->eglCreateSyncKHR) {
++        return 0.0;
++    }
++    f = _this->egl_data->eglCreateSyncKHR(dpy, EGL_SYNC_FENCE_KHR, NULL);
++    if (f != EGL_NO_SYNC_KHR) {
++        _this->egl_data->eglClientWaitSyncKHR(dpy, f, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, EGL_FOREVER_KHR);
++        _this->egl_data->eglDestroySyncKHR(dpy, f);
++    }
++    return KMSDRM_Ms(t0, SDL_GetPerformanceCounter());
++}
++
+ int KMSDRM_GLES_SwapWindow(_THIS, SDL_Window *window)
+ {
+     SDL_WindowData *windata = ((SDL_WindowData *)window->driverdata);
+@@ -104,6 +621,8 @@ int KMSDRM_GLES_SwapWindow(_THIS, SDL_Window *window)
+     KMSDRM_FBInfo *fb_info;
+     int ret = 0;
+     struct gbm_bo* rga_buffer = NULL;
++    Uint64 rot_t0;
++    double frame_ms;
+ 
+     /* Always wait for the previous issued flip before issuing a new one,
+        even if you do async flips. */
+@@ -154,7 +673,21 @@ int KMSDRM_GLES_SwapWindow(_THIS, SDL_Window *window)
+     }
+ 
+     /* Get an actual usable fb for the next front buffer. */
+-    if (viddata->rga_rotation_active) {
++    frame_ms = KMSDRM_WaitAppFrame(_this);
++    rot_t0 = SDL_GetPerformanceCounter();
++    if (viddata->rga_rotation_active && viddata->gpu_rotation_active) {
++        if (KMSDRM_GPURotateFrame(_this, window, windata->next_bo, viddata->rga_buffer_index) < 0) {
++            SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "GPU rotation failed");
++        }
++        rga_buffer = viddata->rga_buffers[viddata->rga_buffer_index];
++        fb_info = KMSDRM_FBFromBO(_this, rga_buffer);
++        if (!fb_info) {
++            SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "Could not get a framebuffer");
++            return 0;
++        }
++        viddata->rga_buffer_index = (viddata->rga_buffer_index + 1) % RGA_BUFFERS_MAX;
++        KMSDRM_RotationStats(rot_t0, SDL_TRUE, frame_ms);
++    } else if (viddata->rga_rotation_active) {
+         if (src_info.fd) {
+             close(src_info.fd);
+         }
+@@ -174,6 +707,7 @@ int KMSDRM_GLES_SwapWindow(_THIS, SDL_Window *window)
+         }
+ 
+         viddata->rga_buffer_index = (viddata->rga_buffer_index + 1) % RGA_BUFFERS_MAX;
++        KMSDRM_RotationStats(rot_t0, SDL_FALSE, frame_ms);
+     } else {
+         fb_info = KMSDRM_FBFromBO(_this, windata->next_bo);
+     }
+diff --git a/src/video/kmsdrm/SDL_kmsdrmvideo.c b/src/video/kmsdrm/SDL_kmsdrmvideo.c
+index 89c13a9d4..dcb477b5c 100644
+--- a/src/video/kmsdrm/SDL_kmsdrmvideo.c
++++ b/src/video/kmsdrm/SDL_kmsdrmvideo.c
+@@ -343,8 +343,21 @@ KMSDRM_InitRotateBuffer(_THIS, int frameWidth, int frameHeight)
+     int l_frameHeight;
+     SDL_VideoData *viddata = ((SDL_VideoData *)_this->driverdata);
+ 
+-    // initialize 2D raster graphic acceleration unit (RGA)
+-    c_RkRgaInit();
++    /*
++     * BasedOS: the RGA where the kernel has the BSP's driver (/dev/rga), the GPU otherwise
++     * (mainline). SDL_KMSDRM_ROTATION=gpu or rga picks one, for comparing them on one kernel.
++     */
++    {
++        const char *how = SDL_getenv("SDL_KMSDRM_ROTATION");
++        SDL_bool want_gpu = how && SDL_strcmp(how, "gpu") == 0;
++
++        viddata->gpu_rotation_active = SDL_TRUE;
++        if (!want_gpu && access("/dev/rga", R_OK | W_OK) == 0 && c_RkRgaInit() == 0) {
++            viddata->gpu_rotation_active = SDL_FALSE;
++        }
++        SDL_LogInfo(SDL_LOG_CATEGORY_VIDEO, "KMSDRM: rotating the DSI panel with the %s",
++                    viddata->gpu_rotation_active ? "GPU" : "RGA");
++    }
+ 
+     l_frameHeight = frameHeight;
+     if(l_frameHeight % 32 != 0) {
+@@ -1599,7 +1612,11 @@ void KMSDRM_DestroyWindow(_THIS, SDL_Window *window)
+             if (src_info.fd) {
+                 close(src_info.fd);
+             }
+-            c_RkRgaDeInit();
++            if (viddata->gpu_rotation_active) {
++                KMSDRM_GPURotateDestroy(_this);
++            } else {
++                c_RkRgaDeInit();
++            }
+         }
+ }
+ 
+diff --git a/src/video/kmsdrm/SDL_kmsdrmvideo.h b/src/video/kmsdrm/SDL_kmsdrmvideo.h
+index aa8f5498f..9e15614ac 100644
+--- a/src/video/kmsdrm/SDL_kmsdrmvideo.h
++++ b/src/video/kmsdrm/SDL_kmsdrmvideo.h
+@@ -100,9 +100,13 @@ typedef struct SDL_VideoData
+     int rga_buffer_prime_fds[RGA_BUFFERS_MAX];
+     int rga_buffer_index;
+     SDL_bool rga_rotation_active;
++    SDL_bool gpu_rotation_active;  /* BasedOS: rotate on the GPU (no /dev/rga) */
++    struct KMSDRM_GPURotate *gpu_rot;
+ 
+ } SDL_VideoData;
+ 
++void KMSDRM_GPURotateDestroy(_THIS);
++
+ typedef struct SDL_DisplayModeData
+ {
+     int mode_index;

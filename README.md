@@ -24,7 +24,7 @@ Not a fork of any distribution (dArkMoss, ROCKNIX or otherwise). It's three thin
 
 | Part | Where it comes from |
 |---|---|
-| Bootloader, kernel, DTBs | stock ROCKNIX (build `c8ed06c`), unchanged: the only ones that support this board |
+| Bootloader, kernel, DTBs | stock ROCKNIX (build `c8ed06c`), the only ones that support this board. Unchanged, except a copy of the panel DTB with the panel at 60 Hz instead of 59.11 Hz (`tools/mkboot.py dtb`, [docs/power.md](docs/power.md)) |
 | Userland: glibc, Mali GPU (GLES, GBM, Vulkan), ALSA, Python, sshd, wpa_supplicant, Wi-Fi driver and firmware | copied from stock's rootfs: only what [manifest/harvest.list](manifest/harvest.list) names, plus the libraries those need |
 | SDL2 and librga | built from source by [tools/sdl2/build.sh](tools/sdl2/build.sh): dArkMoss's rotating SDL2 (SDL 2.32.10, ArkOS's patches, the RGA turns the panel so apps see 1600x1440) and Rockchip's librga 1.10.5 |
 | BusyBox (shell and core tools) | Alpine's static aarch64 build |
@@ -34,7 +34,7 @@ On the eMMC (stock's partition layout; the bootloader area is never written):
 
 | Partition | Holds |
 |---|---|
-| p1 vfat `BASEDOS` | `boot.scr`, kernel, DTBs, `basedos-initrd.img`, and two read-only root images: slot A `rootfs.squashfs`, slot B `rootfs-b.squashfs` |
+| p1 vfat `BASEDOS` | `boot.scr`, kernel, DTBs (stock's, plus BasedOS's 60 Hz panel DTB in `basedos/`), `basedos-initrd.img`, and two read-only root images: slot A `rootfs.squashfs`, slot B `rootfs-b.squashfs` |
 | p2 ext4 `BASEDOS-DATA` | `/data`: SSH keys, Wi-Fi config, logs, boot counter |
 
 Boot: U-Boot runs `boot.scr` → kernel plus BasedOS's initrd → the initrd mounts the chosen slot

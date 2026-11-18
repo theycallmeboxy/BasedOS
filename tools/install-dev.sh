@@ -1,11 +1,12 @@
 #!/bin/sh
 # Developer install of BasedOS v0 next to stock, run ON the device under stock.
-#   install-dev.sh <dir with rootfs.squashfs, initrd.uimg, boot.scr>
+#   install-dev.sh <dir with rootfs.squashfs, initrd.uimg, boot.scr, rk3576-gkd-atom.dtb>
 #   install-dev.sh revert      put stock's boot.scr back (stock boots again)
 #
 # Adds /flash/basedos/ (p1) and /storage/basedos-data/ (p2), swaps boot.scr and
-# keeps stock's copy in /flash/basedos/boot.scr.stock. Stock's SYSTEM, Image,
-# DTBs and /storage stay as they are.
+# keeps stock's copy in /flash/basedos/boot.scr.stock. BasedOS's panel DTB (60 Hz,
+# mkboot.py dtb) goes in /flash/basedos/; stock's SYSTEM, Image, DTBs and /storage
+# stay as they are.
 # Copies stock's SSH host keys (same fingerprint) and its saved Wi-Fi network
 # (connman -> wpa_supplicant.conf) into basedos-data. Those stay on the device.
 set -eu
@@ -41,7 +42,7 @@ fi
 
 SRC=${1:?usage: $0 <dir> | revert}
 [ -d /storage/.cache ] || die "install from stock (it reads stock's /storage)"
-for f in rootfs.squashfs initrd.uimg boot.scr; do [ -s "$SRC/$f" ] || die "missing $SRC/$f"; done
+for f in rootfs.squashfs initrd.uimg boot.scr rk3576-gkd-atom.dtb; do [ -s "$SRC/$f" ] || die "missing $SRC/$f"; done
 [ "$(md5sum < $P1/boot.scr)" = "$(md5sum < $SRC/boot.scr)" ] && echo "(BasedOS boot.scr already installed)"
 
 rw
@@ -53,9 +54,10 @@ if [ ! -f $P1/basedos/boot.scr.stock ]; then
 		die "boot.scr is already BasedOS's and there is no saved stock copy"
 	put $P1/boot.scr $P1/basedos/boot.scr.stock
 fi
-# The rootfs and initrd first; boot.scr, which switches the device over, only once both verify.
+# The rootfs, initrd and DTB first; boot.scr, which switches the device over, only once they verify.
 put "$SRC/rootfs.squashfs" $P1/basedos/rootfs.squashfs
 put "$SRC/initrd.uimg" $P1/basedos/initrd.uimg
+put "$SRC/rk3576-gkd-atom.dtb" $P1/basedos/rk3576-gkd-atom.dtb
 put "$SRC/boot.scr" $P1/boot.scr
 echo "p1: $(ls $P1/basedos | tr '\n' ' ')"
 

@@ -120,7 +120,17 @@ GammaOS's voltage for 2304 on the RG Vita Pro's RK3576). The firmware (BL31 v1.2
 for 2304 it keeps reporting 2208 (`scmi_armclkb` in `clk_summary`), but at 925 mV the A72s run
 4.4% faster than at 2208, as 2304 would (sha256 timing), presumably the PVTPLL running faster at
 the higher voltage. The test DTB was removed again after the sweep: Overclock stays at 2208, the top of the table
-Rockchip's driver picks for this chip, and BasedOS ships stock's DTB.
+Rockchip's driver picks for this chip. BasedOS's own panel DTB (below) keeps stock's OPP tables.
+
+**Panel refresh.** Stock's DTB asks for a 172.26 MHz pixel clock, which the VOP can't make: `dclk_vp0`
+comes from GPLL (1188 MHz) through an integer divider and gets 1188/7 = 169.714 MHz (`real_dclk` in
+`/sys/kernel/debug/dri/0/summary`), so the panel ran at 59.11 Hz. Anything that paces itself on vsync ran
+1.2-1.5% slow: DraStic at 98.1-98.5% with its sound running dry (crackle). `mkboot.py dtb` asks for
+169.715 MHz (the kernel rounds the mode to kHz and the clock framework takes the closest rate at or
+below it, so 169.714 MHz would fall to 1188/8 = 148.5) and trims the horizontal front porch from 150
+to 124, which keeps each line at the length the panel's own mode gives it: 169.714 MHz / (1714 x 1650)
+= 60.01 Hz, DraStic at 100.0%. Same pixel clock as before, so the same power. BasedOS loads it from
+`basedos/rk3576-gkd-atom.dtb`; stock's file stays as it was.
 
 **Cost per step.** `tools/dev/clock-sweep.sh`: all four A72s saturated with sha256, on battery,
 20 s per step, two rounds in opposite order (averages below). CPU power is the total minus the

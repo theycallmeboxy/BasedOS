@@ -24,7 +24,9 @@ between the 350H Ultra and your other spruce devices.
    `python tools/prepare_stock.py <backup>/mmcblk0.img prepared`
 3. In WSL: unpack them (`tools/wsl/unpack-stock.sh`) and build the rootfs (`tools/wsl/build.sh`).
 4. Make the boot files: `python tools/mkboot.py initrd prepared/alpine/busybox.static out/initrd.uimg`
-   and `python tools/mkboot.py bootscr prepared/<build>/boot.scr out/boot.scr`.
+   and `python tools/mkboot.py bootscr prepared/<build>/boot.scr out/boot.scr`
+   and `python tools/mkboot.py dtb prepared/<build>/rk3576-gkd-atom.dtb out/rk3576-gkd-atom.dtb`
+   (the panel at 60 Hz; see power.md).
 5. With the 350H Ultra running stock and reachable over SSH, copy `out/` to `/tmp` on the device and run
    `tools/install-dev.sh /tmp/<dir>` there. It adds BasedOS's files to the boot partition, keeps
    stock's boot script, copies your Wi-Fi network and SSH keys, and leaves stock untouched.

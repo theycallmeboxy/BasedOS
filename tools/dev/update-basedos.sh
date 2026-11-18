@@ -1,6 +1,6 @@
 #!/bin/sh
 # Developer update, run ON the device under BasedOS:
-#   update-basedos.sh <dir with rootfs.squashfs [initrd.uimg]>
+#   update-basedos.sh <dir with rootfs.squashfs [initrd.uimg] [rk3576-gkd-atom.dtb] [boot.scr]>
 # Writes the rootfs to the slot that is NOT running (rootfs.squashfs / rootfs-b.squashfs on p1),
 # verifies it from the card, then points /boot/basedos/slot at it. Reboot to use it; the
 # initrd's boot counter falls back to the other slot if the new one never reaches rcS.
@@ -43,6 +43,14 @@ trap 'sync; mount -o remount,ro /boot || echo "WARNING: /boot stayed read-write"
 put "$SRC/rootfs.squashfs" "$B/$newfile"
 # The initrd is not A/B, but boot.scr boots stock if U-Boot rejects it.
 [ -s "$SRC/initrd.uimg" ] && put "$SRC/initrd.uimg" "$B/initrd.uimg"
+# Nor is the panel DTB: boot.scr falls back to stock's when it can't load ours, and boots stock
+# (with stock's DTB) when booti rejects it.
+[ -s "$SRC/rk3576-gkd-atom.dtb" ] && put "$SRC/rk3576-gkd-atom.dtb" "$B/rk3576-gkd-atom.dtb"
+# boot.scr last, and only BasedOS's own (mkboot.py bootscr): never stock's, which would leave BasedOS.
+if [ -s "$SRC/boot.scr" ]; then
+	dd if="$SRC/boot.scr" bs=72 skip=1 2>/dev/null | grep -q "BasedOS" || die "$SRC/boot.scr isn't BasedOS's"
+	put "$SRC/boot.scr" /boot/boot.scr
+fi
 if [ "$new" = b ]; then
 	echo b > "$B/slot.new" && sync && mv "$B/slot.new" "$B/slot"
 else

@@ -41,6 +41,7 @@ deploy)
 	SRC=$ROOT/out/mainline/card
 	[ -f "$SRC/boot.scr" ] || { echo "no $SRC: run tools/mainline/mkcard.py first"; exit 1; }
 	FILES="boot.scr mainline/Image mainline/rk3576-gkd-350h-ultra.dtb mainline/probe.uimg"
+	[ -f "$SRC/mainline/mali_kbase.ko" ] && FILES="$FILES mainline/mali_kbase.ko"
 	# Git Bash's md5sum marks binary files with a '*' before the name; drop it.
 	sums=$(cd "$SRC" && md5sum $FILES | sed 's/ [*]/  /')
 	# Only what differs from the card's copy goes over the air.

@@ -9,6 +9,7 @@ kernel with a 350H Ultra device tree and boot it from a test SD card, without wr
 |---|---|
 | Source: Linux + ROCKNIX's patches, panel driver and config, plus BasedOS's patches, in WSL `~/mainline` | `sh tools/mainline/fetch.sh` |
 | Kernel, DTB, modules and the probe's register reader into `out/mainline/` | `sh tools/mainline/build.sh` |
+| The Mali GPU driver (ROCKNIX's `mali_kbase`, r54p2) into `out/mainline/` | `sh tools/mainline/build-mali.sh` |
 | Test card files into `out/mainline/card/` | `python3 tools/mainline/mkcard.py` |
 | Over SSH: deploy a build to the card, switch kernels, pull logs | `sh tools/mainline/remote.sh` |
 
@@ -18,8 +19,10 @@ The device tree is `dts/rk3576-gkd-350h-ultra.dts`, translated from stock's
 ## Working on mainline
 
 Display (DSI panel at 60 Hz), every button and the stick, the RK806 and its regulators, RTC,
-charger, Type-C, thermal, cpufreq up to 2208 MHz, eMMC and SD, USB device mode, audio, and
-Wi-Fi with SSH.
+charger, Type-C, thermal, cpufreq up to 2208 MHz, eMMC and SD, USB device mode, audio, Wi-Fi
+with SSH, and the GPU: BasedOS's own libmali (g24p0, as harvested) on ROCKNIX's `mali_kbase`
+r54p2 (UK 11.46), which the probe loads from the card; SDL picks KMSDRM with the `opengles2`
+renderer.
 
 ## BasedOS's kernel changes (`patches/`, applied by `fetch.sh`)
 
@@ -63,6 +66,7 @@ run with it hung 10-15 s later, cause not found yet.
 
 ## Still to do
 
-- GPU (libmali with ROCKNIX's kbase, or Panfrost) and rotation: BasedOS's SDL turns the panel
-  with the RGA through the BSP's driver, and mainline has no RK3576 RGA node.
+- Rotation: BasedOS's SDL turns each frame 270 degrees with the RGA through the BSP's driver
+  (librga, `/dev/rga`). Mainline has no RK3576 RGA support (its RGA driver is V4L2 and doesn't
+  list the RK3576), and its VOP2 planes on RK3576 only mirror, so SDL has to rotate on the GPU.
 - Sleep, DVFS tables, the snapshot hang, and running the whole BasedOS rootfs on this kernel.

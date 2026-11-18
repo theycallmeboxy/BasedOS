@@ -217,6 +217,13 @@ net() {
 	ip=$(ip -4 addr show wlan0 | sed -n 's/.*inet \([0-9.]*\).*/\1/p')
 	[ -n "$ip" ] && say "Wi-Fi up: ssh root@$ip (empty password)" || say "Wi-Fi: no address (see net.txt)"
 }
+# The Mali GPU driver (ROCKNIX's mali_kbase, tools/mainline/build-mali.sh): /dev/mali0 for
+# BasedOS's libmali. Loaded from the card so a new build is just a file to replace.
+if [ -f /card/mainline/mali_kbase.ko ]; then
+	step "GPU driver"
+	insmod /card/mainline/mali_kbase.ko && say "GPU driver loaded (/dev/mali0)" || say "GPU driver failed to load"
+fi
+
 step "network"
 (net > "$L/net.txt" 2>&1; dmesg > "$L/dmesg-net.txt"; echo "network done" >> "$L/steps.txt"; sync) &
 

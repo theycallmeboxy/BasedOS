@@ -12,6 +12,7 @@ to run BasedOS's own wpa_supplicant and sshd (with brcmfmac and the stock Wi-Fi 
   boot.scr                          loads from mmc 1:1 (the SD slot)
   mainline/Image                    out/mainline/Image (tools/mainline/build.sh)
   mainline/rk3576-gkd-350h-ultra.dtb
+  mainline/mali_kbase.ko            the Mali GPU driver (tools/mainline/build-mali.sh)
   mainline/probe.uimg               busybox, regdump, the Wi-Fi modules and probe-init: a plain
                                     cpio in a ramdisk wrapper
 """
@@ -66,6 +67,9 @@ def main():
     os.makedirs(os.path.join(CARD, "mainline"))
     for f in ("Image", DTB):
         shutil.copy(os.path.join(OUT, f), os.path.join(CARD, "mainline", f))
+    # The Mali GPU driver (tools/mainline/build-mali.sh), loaded by the probe from the card.
+    if os.path.isfile(os.path.join(OUT, "mali_kbase.ko")):
+        shutil.copy(os.path.join(OUT, "mali_kbase.ko"), os.path.join(CARD, "mainline", "mali_kbase.ko"))
 
     init = open(os.path.join(HERE, "probe-init"), "rb").read().replace(b"\r\n", b"\n")
     bb = open(os.path.join(ROOT, "prepared", "alpine", "busybox.static"), "rb").read()

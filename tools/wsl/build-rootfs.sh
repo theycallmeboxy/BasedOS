@@ -65,7 +65,7 @@ echo "$n busybox links"
 echo "--- overlay"
 cp -a "$REPO/overlay/." "$OUT/"
 find "$OUT/etc" "$OUT/usr/lib/basedos" "$OUT/usr/share/udhcpc" -type f -exec chmod 644 {} +
-chmod 755 etc/init.d/* usr/sbin/mount-frontend usr/sbin/frontend-session usr/sbin/basedos-pwrkey usr/sbin/basedos-suspend usr/share/udhcpc/default.script
+chmod 755 etc/init.d/* usr/sbin/mount-frontend usr/sbin/frontend-session usr/sbin/basedos-shutdown-keys usr/sbin/basedos-suspend usr/share/udhcpc/default.script
 # Accounts are on /data (rcS seeds them from these defaults), so a frontend can add users.
 chmod 644 usr/share/basedos/accounts/passwd usr/share/basedos/accounts/group
 chmod 600 usr/share/basedos/accounts/shadow

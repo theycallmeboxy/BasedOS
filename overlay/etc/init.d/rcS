@@ -57,5 +57,5 @@ ifconfig lo 127.0.0.1 up
 # Everything slow goes to the background.
 /etc/init.d/network &
 /etc/init.d/sshd &
-/usr/sbin/basedos-pwrkey &
+/usr/sbin/basedos-shutdown-keys &
 mark rcS-done

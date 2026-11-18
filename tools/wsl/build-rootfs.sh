@@ -64,7 +64,7 @@ echo "$n busybox links"
 
 echo "--- overlay"
 cp -a "$REPO/overlay/." "$OUT/"
-find "$OUT/etc" "$OUT/usr/lib/basedos" "$OUT/usr/share/udhcpc" -type f -exec chmod 644 {} +
+find "$OUT/etc" "$OUT/usr/lib/basedos" "$OUT/usr/share/udhcpc" "$OUT/usr/share/basedos" -type f -exec chmod 644 {} +
 chmod 755 etc/init.d/* usr/sbin/mount-frontend usr/sbin/frontend-session usr/sbin/basedos-shutdown-keys usr/sbin/basedos-suspend usr/share/udhcpc/default.script
 # Accounts are on /data (rcS seeds them from these defaults), so a frontend can add users.
 chmod 644 usr/share/basedos/accounts/passwd usr/share/basedos/accounts/group
@@ -77,6 +77,9 @@ echo "--- boot screen"
 # whose notice and licence travel with it.
 aarch64-linux-gnu-gcc -O2 -static -Wall -o usr/bin/basedos-splash "$REPO/tools/boot-ui/basedos-splash.c"
 aarch64-linux-gnu-strip usr/bin/basedos-splash
+# The boot keys' reader (every held key in one read).
+aarch64-linux-gnu-gcc -O2 -static -Wall -o usr/bin/basedos-keys "$REPO/tools/boot-ui/basedos-keys.c"
+aarch64-linux-gnu-strip usr/bin/basedos-keys
 install -D -m 644 "$REPO/tools/boot-ui/OFL-Terminus.txt" usr/share/licenses/basedos-splash/OFL-Terminus.txt
 ln -sf /run/resolv.conf etc/resolv.conf
 ln -sf /run/machine-id etc/machine-id

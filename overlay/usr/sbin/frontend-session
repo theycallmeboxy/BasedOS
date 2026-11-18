@@ -8,8 +8,12 @@
 # spruce comes before .tmp_update because spruce cards also carry a Miyoo
 # .tmp_update for other devices.
 #
+# Boot keys: a button held while powering on picks this boot's action, from
+# /data/boot-keys.conf or BasedOS's default (/usr/share/basedos/boot-keys.conf):
+#   maintenance        no frontend; SSH and Wi-Fi only (default: Select)
+#   frontend <entry>   start <entry> on the card instead of the first match above
+#
 # Safeguards:
-#   - Hold Select while powering on: maintenance mode. No frontend; SSH and Wi-Fi only.
 #   - A frontend that exits within 15 s, five times in a row, is not restarted again until
 #     the next boot (no hot loop draining the battery and writing to the card).
 export PATH=/usr/bin:/usr/sbin
@@ -22,16 +26,48 @@ stay_down() {
 	while :; do sleep 3600; done
 }
 
-# First session of this boot only: a held Select means maintenance mode.
+# run_frontend <entry>: exec one of the card's frontends, the way its kind is started.
+run_frontend() {
+	case "$1" in
+	System/frontend)
+		say "starting System/frontend"
+		exec /lib/ld-linux-aarch64.so.1 "$SD/System/frontend" > /tmp/frontend.log 2>&1 ;;
+	spruce/scripts/runtime.sh)
+		say "starting spruce"
+		exec /bin/sh "$SD/$1" ;;
+	*.sh|.tmp_update/updater)
+		say "starting $1"
+		exec /bin/sh "$SD/$1" ;;
+	*)
+		say "starting $1"
+		exec "$SD/$1" ;;
+	esac
+}
+
+# First session of this boot only: the boot keys (read once, a few ms; the choice holds for
+# the whole boot, respawns included).
 if [ ! -f $STATE/session-checked ]; then
 	touch $STATE/session-checked
-	if key_held gkd_atom_joypad 314; then
+	act=$(boot_key_action)
+	set -- $act
+	case "$2" in
+	"") ;;
+	maintenance)
 		touch $STATE/maintenance
-		log "Select held at boot: maintenance mode"
-	fi
+		log "$(button_label "$1") held at boot: maintenance mode" ;;
+	frontend)
+		if [ -n "$3" ]; then
+			echo "$3" > $STATE/frontend-choice
+			log "$(button_label "$1") held at boot: frontend $3"
+		else
+			log "$(button_label "$1") held at boot: 'frontend' without an entry in $(boot_keys_conf)"
+		fi ;;
+	*)
+		log "$(button_label "$1") held at boot: unknown action '$2' in $(boot_keys_conf)" ;;
+	esac
 fi
 if [ -f $STATE/maintenance ]; then
-	log "maintenance mode (Select held at boot): no frontend; SSH is up once Wi-Fi is"
+	log "maintenance mode: no frontend; SSH is up once Wi-Fi is"
 	maintenance_screen
 	while :; do sleep 3600; done
 fi
@@ -64,19 +100,18 @@ rm -f /run/basedos/said-nocard
 cd "$SD" || exit 1
 mark frontend
 cut -d. -f1 /proc/uptime > $STATE/session-start
-if [ -f System/frontend ]; then
-	say "starting System/frontend"
-	exec /lib/ld-linux-aarch64.so.1 "$SD/System/frontend" > /tmp/frontend.log 2>&1
-elif [ -f System/launch_frontend.sh ]; then
-	say "starting System/launch_frontend.sh"
-	exec /bin/sh "$SD/System/launch_frontend.sh"
-elif [ -f spruce/scripts/runtime.sh ]; then
-	say "starting spruce"
-	exec /bin/sh "$SD/spruce/scripts/runtime.sh"
-elif [ -f .tmp_update/updater ]; then
-	say "starting .tmp_update/updater"
-	exec /bin/sh "$SD/.tmp_update/updater"
+# A boot key's frontend first, when the card has it.
+choice=$(cat $STATE/frontend-choice 2>/dev/null)
+if [ -n "$choice" ]; then
+	case "$choice" in
+	/*|*..*) log "boot key frontend '$choice' must be a path inside the card; ignored" ;;
+	*) [ -f "$choice" ] && run_frontend "$choice"
+	   log "boot key frontend $choice isn't on the card; starting the usual one" ;;
+	esac
 fi
+for entry in System/frontend System/launch_frontend.sh spruce/scripts/runtime.sh .tmp_update/updater; do
+	[ -f "$entry" ] && run_frontend "$entry"
+done
 say "no frontend on the card; retrying in 5 s"
 sleep 5
 exit 1

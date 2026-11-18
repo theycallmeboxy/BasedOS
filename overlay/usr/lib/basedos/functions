@@ -36,7 +36,7 @@ splash_boot_info() {
 	{
 		echo "BasedOS $BASEOS_VERSION  build $BASEOS_BUILD  slot $(boot_slot)"
 		echo "$(cat /proc/device-tree/model 2>/dev/null | tr -d '\0')  kernel $(uname -r)"
-		echo "!Hold Select at power-on: maintenance mode"
+		boot_key_hints
 	} > "$SPLASH_INFO"
 }
 
@@ -54,16 +54,57 @@ maintenance_screen() {
 	splash "$@"
 }
 
-# key_held "evdev name" code: true if that key is down right now (evtest's EVIOCGKEY query,
-# so a key held since before boot counts). About 0.04 s.
-key_held() {
-	for _d in /sys/class/input/event*; do
-		[ "$(cat "$_d/device/name" 2>/dev/null)" = "$1" ] || continue
-		evtest --query "/dev/input/${_d##*/}" EV_KEY "$2" 2>/dev/null
-		[ $? -eq 10 ]
-		return
+# Boot keys: a button held at power-on picks this boot's action (frontend-session reads them
+# once, on the first session of a boot). The map is /data/boot-keys.conf when there is one,
+# else BasedOS's default (only Select: maintenance mode); see that file for the format.
+boot_keys_conf() {
+	if [ -f /data/boot-keys.conf ]; then echo /data/boot-keys.conf; else echo /usr/share/basedos/boot-keys.conf; fi
+}
+
+# button_code <button>: the Linux key code of a button as labelled on the 350H Ultra (its pad
+# driver's codes; the volume keys come from gpio-keys).
+button_code() {
+	case "$1" in
+	a) echo 305 ;; b) echo 304 ;; x) echo 307 ;; y) echo 308 ;;
+	l1) echo 310 ;; r1) echo 311 ;; l2) echo 312 ;; r2) echo 313 ;;
+	select) echo 314 ;; start) echo 315 ;; menu) echo 316 ;; l3) echo 317 ;; f1) echo 704 ;;
+	up) echo 544 ;; down) echo 545 ;; left) echo 546 ;; right) echo 547 ;;
+	volup) echo 115 ;; voldown) echo 114 ;;
+	*) return 1 ;;
+	esac
+}
+
+# button_label <button>: how the screen names it.
+button_label() {
+	case "$1" in
+	select) echo Select ;; start) echo Start ;; menu) echo Menu ;; f1) echo F1 ;;
+	up) echo Up ;; down) echo Down ;; left) echo Left ;; right) echo Right ;;
+	volup) echo "Volume Up" ;; voldown) echo "Volume Down" ;;
+	*) echo "$1" | tr a-z A-Z ;;
+	esac
+}
+
+# boot_key_action: "<button> <action> [argument]" for the first line of the map whose button is
+# held right now (basedos-keys reads every input device once, a few ms), nothing if none is.
+boot_key_action() {
+	_held=" $(/usr/bin/basedos-keys 2>/dev/null | tr '\n' ' ') "
+	grep -v '^[[:space:]]*\(#\|$\)' "$(boot_keys_conf)" 2>/dev/null | while read -r _b _a _arg; do
+		_c=$(button_code "$_b") || continue
+		case "$_held" in *" $_c "*) echo "$_b $_a${_arg:+ $_arg}"; break ;; esac
 	done
-	return 1
+}
+
+# boot_key_hints: one line for each mapped button, for the boot screen ("!" = highlighted).
+boot_key_hints() {
+	grep -v '^[[:space:]]*\(#\|$\)' "$(boot_keys_conf)" 2>/dev/null | while read -r _b _a _arg; do
+		button_code "$_b" >/dev/null || continue
+		case "$_a" in
+		maintenance) _what="maintenance mode" ;;
+		frontend) _what="start $_arg" ;;
+		*) _what="$_a" ;;
+		esac
+		echo "!Hold $(button_label "$_b") at power-on: $_what"
+	done | head -3
 }
 
 # mark name: record when a boot step happened (/run/basedos/mark-<name> holds the uptime).

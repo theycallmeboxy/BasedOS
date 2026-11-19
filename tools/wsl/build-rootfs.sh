@@ -70,7 +70,7 @@ echo "$n busybox links"
 echo "--- overlay"
 cp -a "$REPO/overlay/." "$OUT/"
 find "$OUT/etc" "$OUT/usr/lib/basedos" "$OUT/usr/share/udhcpc" "$OUT/usr/share/basedos" -type f -exec chmod 644 {} +
-chmod 755 etc/init.d/* usr/sbin/mount-frontend usr/sbin/frontend-session usr/sbin/basedos-shutdown-keys usr/sbin/basedos-suspend usr/share/udhcpc/default.script
+chmod 755 etc/init.d/* usr/sbin/mount-frontend usr/sbin/frontend-session usr/sbin/basedos-suspend usr/share/udhcpc/default.script
 # Accounts are on /data (rcS seeds them from these defaults), so a frontend can add users.
 chmod 644 usr/share/basedos/accounts/passwd usr/share/basedos/accounts/group
 chmod 600 usr/share/basedos/accounts/shadow
@@ -85,6 +85,9 @@ aarch64-linux-gnu-strip usr/bin/basedos-splash
 # The boot keys' reader (every held key in one read).
 aarch64-linux-gnu-gcc -O2 -static -Wall -o usr/bin/basedos-keys "$REPO/tools/boot-ui/basedos-keys.c"
 aarch64-linux-gnu-strip usr/bin/basedos-keys
+# Hold both volume keys 3 s: BasedOS's own clean shutdown (rcS starts it).
+aarch64-linux-gnu-gcc -O2 -static -Wall -o usr/sbin/basedos-shutdown-keys "$REPO/tools/boot-ui/basedos-shutdown-keys.c"
+aarch64-linux-gnu-strip usr/sbin/basedos-shutdown-keys
 install -D -m 644 "$REPO/tools/boot-ui/OFL-Terminus.txt" usr/share/licenses/basedos-splash/OFL-Terminus.txt
 ln -sf /run/resolv.conf etc/resolv.conf
 ln -sf /run/machine-id etc/machine-id

@@ -63,10 +63,8 @@
 ## input and display helpers
 /usr/bin/evtest
 
-## python 3.11 (spruce's PyUI and helper scripts)
-/usr/bin/python3.11
-/usr/bin/python3
-/usr/lib/python3.11
+## No python: spruce brings its own (flip/bin/python3.10, get_python_path), and BasedOS's
+## tools are C or shell.
 
 ## loaded at runtime with dlopen(), so the DT_NEEDED closure can't see them
 /usr/lib/libdrm.so.2
@@ -84,6 +82,13 @@
 /usr/lib/libfreetype.so.6
 /usr/lib/libsndfile.so.1
 /usr/lib/libvorbisenc.so.2
+# Came in with stock's python until it was dropped: spruce's bin64 wget (libuuid), xz (liblzma)
+# and rnano (libncursesw), flip/lib's libspeechd (glib) and libkrb5 (sqlite3).
+/usr/lib/libuuid.so.1
+/usr/lib/liblzma.so.5
+/usr/lib/libncursesw.so.6
+/usr/lib/libglib-2.0.so.0
+/usr/lib/libsqlite3.so.0
 ## spruce's display_text.elf (message screens, and USB Storage Mode's card-less screen, which runs
 ## it with the rootfs's libraries only once the card is unmounted)
 /usr/lib/libSDL2_image-2.0.so.0.800.2 => /usr/lib/libSDL2_image-2.0.so.0

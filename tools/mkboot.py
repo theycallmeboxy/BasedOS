@@ -22,7 +22,6 @@ import io
 import os
 import struct
 import sys
-import time
 import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -42,7 +41,7 @@ def cpio_newc(entries):
     for name, mode, data in entries + [("TRAILER!!!", 0, b"")]:
         nb = name.encode() + b"\0"
         hdr = b"070701" + b"".join(b"%08X" % v for v in (
-            ino, mode, 0, 0, 1, int(time.time()), len(data), 0, 0, 0, 0, len(nb), 0))
+            ino, mode, 0, 0, 1, int(os.environ.get("SOURCE_DATE_EPOCH", "0")), len(data), 0, 0, 0, 0, len(nb), 0))
         out.write(hdr + nb + b"\0" * (-(110 + len(nb)) % 4) + data + b"\0" * (-len(data) % 4))
         ino += 1
     return out.getvalue()

@@ -32,6 +32,9 @@
 /usr/lib/libwayland-client.so.0
 /usr/lib/libwayland-server.so.0
 /usr/lib/libdrm.so.2
+# the unversioned name too: PortMaster's Weston pack finds libdrm by it (tools/findlib libdrm.so),
+# and without it its Crusty layer assumes no DRM and Weston never starts
+/usr/lib/libdrm.so
 ## the Khronos Vulkan loader (Mali's Vulkan driver is its ICD)
 /usr/lib/libvulkan.so.1
 

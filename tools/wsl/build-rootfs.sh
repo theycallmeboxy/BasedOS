@@ -62,6 +62,10 @@ S=$REPO/prepared/sdl2
 SDL=$(cd "$S" && ls libSDL2-2.0.so.0.*.*) RGA=$(cd "$S" && ls librga.so.*.*.*)
 install -m 755 "$S/$SDL" "$S/$RGA" usr/lib/
 ln -sf "$SDL" usr/lib/libSDL2-2.0.so.0
+# The unversioned name too: pysdl2 (PortMaster's GUI) takes an exact libSDL2-2.0.so in any folder of
+# its path before a versioned one, so without it PortMaster's own SDL2, which doesn't turn the
+# panel, won over this one.
+ln -sf libSDL2-2.0.so.0 usr/lib/libSDL2-2.0.so
 ln -sf "$RGA" usr/lib/librga.so.1
 python3 - "$REPO/tools" "$SYS/usr/lib" "$VEN/usr/lib" "$SDL" "$RGA" <<'EOF'
 import os, sys

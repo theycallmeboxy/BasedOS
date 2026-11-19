@@ -48,7 +48,7 @@ Fixed during bring-up: OpenSSH 9.8 needs `/usr/lib/openssh/sshd-session`
 | `/etc/os-release` | `ID=basedos`, `NAME="BasedOS"` | both |
 | Init | BusyBox init: `rcS` sysinit, `frontend-session` respawn, `rcK` shutdown. No udev; devtmpfs only. | both |
 | Writable state | `/data` on p2 (ext4): keys, logs, machine-id, update state. tmpfs `/run`, `/tmp`, `/var`. Root is read-only. | my355 |
-| Updates | `baseos-gkd350hultra-<ver>.bosupd` at the card root, `format=baseos-update/2` (tar plus manifest) | my355 (spruce looks for `baseos-<target>-*.bosupd`) |
+| Updates | `baseos-gkd350hultra-<ver>.bosupd` at the card root, `format=basedos-update/1`: a tar of `manifest`, the system layer and the initrd (`tools/mkupdate.py`; `basedos-update` installs it at boot into the spare slot) | my355's name and manifest style (spruce looks for `baseos-<target>-*.bosupd`); the format is BasedOS's own, as its slots are files |
 | Logs | `/data/basedos.log` (mirroring to the card is not done yet) | both |
 
 ## eMMC layout
@@ -61,7 +61,7 @@ v0 keeps stock's MBR layout, so installing doesn't touch the loader:
 | p1 vfat `BASEDOS`, 3 GB at 16 MiB | `boot.scr`, `Image` and DTBs (harvested), `basedos-initrd.img`, `rootfs.squashfs` |
 | p2 ext4 `BASEDOS-DATA`, the rest | `/data` |
 
-A/B for updates comes later: two rootfs files on p1 (`rootfs-a`, `rootfs-b`), and `boot.scr` picks one from a slot file. That's simpler than my355's GPT flip, and a vfat p1 allows it.
+A/B is two system-layer files on p1 (`rootfs.squashfs`, `rootfs-b.squashfs`) and a slot file the initrd reads, beside the vendor layer (`vendor-<id>.squashfs`, several may sit side by side). That's simpler than my355's GPT flip, and a vfat p1 allows it.
 
 ## Boot flow
 
@@ -72,10 +72,19 @@ A/B for updates comes later: two rootfs files on p1 (`rootfs-a`, `rootfs-b`), an
 
 ## Rootfs
 
-The rootfs is a squashfs built on the PC (WSL has `mksquashfs`) from:
+The root is two squashfs layers built on the PC (WSL has `mksquashfs`), stacked by the initrd with
+overlayfs, the system layer on top:
+
+- **vendor** (`vendor-<id>.squashfs`): the stock harvest (2 below), named by a hash of its
+  contents. Built from the device's own firmware, never published.
+- **system** (the slot files): everything else (1 and 3, SDL2, librga, `wpa_cli`, BasedOS's
+  tools), plus the id of the vendor layer it was built against (`usr/share/basedos/needs-vendor`).
+  The build fails if a stock file is in it. This is what a `.bosupd` carries.
+
+The layers come from:
 
 1. **A skeleton and BusyBox:** Alpine's `busybox-static` (aarch64), the same as my355. It needs no compiler.
-2. **The stock harvest:** a closed set listed in `manifest/harvest.list`, taken from your own stock image. It includes glibc 2.40, libmali (with its EGL, GLES and GBM links), libdrm, SDL2, ALSA, the `bcmdhd` module, Wi-Fi/BT firmware, wpa_supplicant, openssh `sshd`, and Python 3 (spruce's PyUI). A Python closure check (ELF `DT_NEEDED` against `SONAME`s, as my355 does) fails the build if any library is missing.
+2. **The stock harvest:** a closed set listed in `manifest/harvest.list`, taken from your own stock image. It includes glibc 2.40, libmali (with its EGL, GLES and GBM links), libdrm, SDL2, ALSA, the `bcmdhd` module, Wi-Fi/BT firmware, wpa_supplicant, openssh `sshd` (no Python: spruce brings its own). A Python closure check (ELF `DT_NEEDED` against `SONAME`s, as my355 does) fails the build if any library is missing.
 3. **The BasedOS overlay:** `/init`, inittab, `rcS`, `rcK`, `frontend-session`, `mount-frontend`, `baseos-release`, profile, fstab.
 
 The harvest source is either the backup image (`mmcblk0.img`: FAT p1, then its `SYSTEM` squashfs) or a live stock device. `prepare-stock` checks the stock build against known fingerprints (`c8ed06c` for now) and refuses anything unknown.

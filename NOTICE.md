@@ -21,9 +21,12 @@ the overlay scripts, initrd, build and recovery tools here were written for this
 - **ROCKNIX** and **GKD (GameKiddy)**: the stock firmware whose kernel and userland BasedOS reuses
   from the user's own device.
 
-## What builds contain, and why none are published
+## What builds contain, and what can be published
 
-A BasedOS image built with these tools contains:
+A BasedOS build is two read-only layers. The **system layer** (`rootfs.squashfs`, and the
+`.bosupd` update that carries it) holds only the parts marked "this repo" or "built from
+source" below; the build fails if any stock file is in it. The **vendor layer**
+(`vendor-<id>.squashfs`) holds the parts from the user's own stock firmware. Together they contain:
 
 | Part | From | License | In this repo? |
 |---|---|---|---|
@@ -32,12 +35,13 @@ A BasedOS image built with these tools contains:
 | BusyBox (`busybox-static`, aarch64) | Alpine Linux v3.20, downloaded at build time | GPL-2.0 | no |
 | `wpa_cli` 2.11 (hostap, https://w1.fi, Jouni Malinen and contributors) | built from the official release tarball (sha256 pinned) by `tools/wpa_cli/build.sh`, client only, static | BSD-3-Clause (in the image at `/usr/share/licenses/wpa_cli/COPYING`) | build script only |
 | SDL2 2.32.10 with ArkOS's SDL2 patches (christianhaitian/rk3566_core_builds, MIT; copies in `tools/sdl2/patches/`), and librga 1.10.5 (Rockchip, JeffyCN/mirrors linux-rga-multi) | built from source by `tools/sdl2/build.sh` | zlib (SDL), MIT (patches), Apache-2.0 (librga) | patches and build script only |
-| Kernel, DTBs, libmali, Wi-Fi firmware and module, glibc, Python, OpenSSH, ALSA, ... | the user's own stock firmware (harvested from their backup) | various: GPL, LGPL, proprietary (libmali, Broadcom firmware) | no, hashes only (`manifest/`) |
+| Kernel, DTBs (boot files on p1); in the vendor layer: libmali, Wi-Fi firmware and module, glibc, OpenSSH, ALSA, ... | the user's own stock firmware (harvested from their backup) | various: GPL, LGPL, proprietary (libmali, Broadcom firmware) | no, hashes only (`manifest/`) |
 
-Because of the vendor parts, **built images are personal and must not be published.** The
-BasedOS releases this repo makes carry only its own files and tools, and every device builds the
-rest from its own firmware. If BasedOS images ever were distributed, BusyBox's GPL-2.0 would
-also require offering its source (Alpine's `busybox` APKBUILD and source).
+Because of the vendor parts, **the vendor layer, and any whole image, are personal and must not be
+published.** Each device builds its own from its own firmware. The system layer and `.bosupd`
+updates hold BasedOS's own files only and can be released; a release that ships them must also
+offer BusyBox's source (GPL-2.0: Alpine's `busybox` APKBUILD and source), and carries the
+licences above (`/usr/share/licenses/`).
 
 ## Tools that use third-party files at run time
 

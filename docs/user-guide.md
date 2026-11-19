@@ -60,6 +60,18 @@ Without a card, BasedOS waits for one and says so once on screen.
   failing, BasedOS's own SSH answers as `root` with **no password**. Use only on a network you
   trust.
 
+## Updates
+
+- Put a `baseos-gkd350hultra-<version>.bosupd` at the root of the card and restart, or use spruce's
+  firmware update app, which finds one there (or downloads one) and restarts for you. BasedOS
+  installs it while starting: the screen says so, and it restarts once more into the new version.
+- It goes into the copy of BasedOS that isn't running, and is checked before it's used. If the new
+  copy doesn't start, BasedOS goes back to the old one after a few tries, and won't try that
+  update again.
+- An update holds only BasedOS's own files. The parts from your device's stock firmware stay as
+  they are; an update built for different ones is refused. To see what it would do, from SSH:
+  `basedos-update status`.
+
 ## Safeguards
 
 - **Boot counter**: if BasedOS fails to start three times in a row it boots its other copy (A/B

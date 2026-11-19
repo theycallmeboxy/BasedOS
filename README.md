@@ -51,8 +51,9 @@ vendor layer it needs and is refused without it.
 Sleep: frontends call `basedos-suspend`, which suspends and then runs BasedOS's wake fixes (what a
 systemd base's system-sleep hooks do): today, putting the DAC's volume back, which the stock kernel loses.
 
-What it leaves out on purpose: systemd, udev, NetworkManager, Wayland/sway, a desktop. The
-frontend draws straight to the display (KMS). Boot to SSH in about 2 s; 67 MB of RAM in use.
+What it leaves out on purpose: systemd, udev (udevd runs only for the length of a PortMaster Weston
+port, `basedos-udev`), NetworkManager, Wayland/sway, a desktop. The frontend draws straight to the
+display (KMS). Boot to SSH in about 2 s; 67 MB of RAM in use.
 
 ## What's here
 

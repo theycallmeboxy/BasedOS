@@ -89,6 +89,16 @@
 /usr/lib/liblzma.so.5
 # spruce's RetroArch (ra64.universal) links it; SDL builds load it with dlopen()
 /usr/lib/libudev.so.1
+# the unversioned name too: PortMaster's Weston pack (its Crusty layer) loads libudev by it, and
+# without it Crusty's udev_new() resolves to itself and Weston spins forever
+/usr/lib/libudev.so
+## udev's daemon, for PortMaster's Weston ports only (2026-11-19). Weston won't start without input
+## devices, and libinput finds them only through udev's database. Not run at boot:
+## basedos-udev starts it for such a port and stops it after. Only the rule libinput needs
+## (ID_INPUT*, from the input_id builtin); no module loading, no device permissions.
+/usr/sbin/udevd
+/usr/bin/udevadm
+/usr/lib/udev/rules.d/60-input-id.rules
 
 ## for PortMaster's ports (2026-11-19)
 /usr/lib/libluajit-5.1.so.2

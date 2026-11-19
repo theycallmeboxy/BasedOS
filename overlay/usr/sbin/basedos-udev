@@ -1,0 +1,42 @@
+#!/bin/sh
+# basedos-udev start|stop: udev's daemon for the length of one program, for frontends that run
+# something needing udev's database. BasedOS doesn't run udevd: its own boot and spruce don't use
+# it, and the stock kernel makes the device nodes itself (devtmpfs).
+#
+# What needs it: PortMaster's Weston pack. Weston won't start without input devices, and libinput
+# finds them only in udev's database (/run/udev/data). spruce's 350H Ultra platform starts this
+# before such a port and stops it after, so everything else runs as it always has, with no
+# /run/udev at all.
+#
+#   start  start udevd, fill the database for the input devices there now, and return once it's
+#          done; devices that come later (a port's virtual keyboard) are added as they appear.
+#          Nothing if it's already running.
+#   stop   stop udevd and remove its database, so programs see no udev again.
+#
+# Only the rule libinput needs is installed (60-input-id.rules: ID_INPUT and its kind); udevd
+# loads no modules and changes no permissions here.
+. /usr/lib/basedos/functions
+
+case "$1" in
+start)
+	pidof udevd >/dev/null && exit 0
+	mkdir -p /run/udev
+	udevd --daemon --resolve-names=never || { log "udevd didn't start"; exit 1; }
+	udevadm trigger --subsystem-match=input --action=add
+	udevadm settle --timeout=5
+	log "udevd started ($(ls /run/udev/data 2>/dev/null | wc -l) devices)"
+	;;
+stop)
+	pidof udevd >/dev/null || { rm -rf /run/udev; exit 0; }
+	udevadm control --exit 2>/dev/null || killall udevd 2>/dev/null
+	_i=0
+	while pidof udevd >/dev/null && [ $_i -lt 20 ]; do usleep 50000; _i=$((_i + 1)); done
+	pidof udevd >/dev/null && killall -9 udevd 2>/dev/null
+	rm -rf /run/udev
+	log "udevd stopped"
+	;;
+*)
+	echo "usage: ${0##*/} start|stop" >&2
+	exit 2
+	;;
+esac

@@ -14,7 +14,9 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from harvest import elf_needed  # noqa: E402
 
-CARD_BIN = ["spruce/flip/bin", "spruce/bin64"]
+# RetroArch and the standalone emulators too: spruce's ra64.universal links libudev.so.1, which a
+# check of the spruce/ folders alone missed (2026-11-19).
+CARD_BIN = ["spruce/flip/bin", "spruce/bin64", "RetroArch", "Emu"]
 CARD_LIB = ["spruce/flip/lib", "App/PyUI/dll"]
 
 

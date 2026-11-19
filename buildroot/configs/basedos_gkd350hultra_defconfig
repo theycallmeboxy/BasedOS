@@ -24,6 +24,12 @@ BR2_SYSTEM_BIN_SH_NONE=y
 # BR2_PACKAGE_BUSYBOX is not set
 # BR2_TARGET_ROOTFS_TAR is not set
 
+# libudev.so.1: spruce's RetroArch (ra64.universal) links it, and SDL builds load it. Buildroot's
+# only libudev is eudev's, which wants eudev chosen for /dev; that only affects Buildroot's own
+# root, which BasedOS doesn't use. BasedOS runs no udev daemon (as before, with stock's libudev).
+BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y
+BR2_PACKAGE_EUDEV=y
+
 # What the closed Mali drivers need.
 BR2_PACKAGE_WAYLAND=y
 BR2_PACKAGE_LIBDRM=y

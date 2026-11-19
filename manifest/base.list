@@ -84,6 +84,8 @@
 /usr/lib/libvorbisenc.so.2
 /usr/lib/libz.so.1
 /usr/lib/liblzma.so.5
+# spruce's RetroArch (ra64.universal) links it; SDL builds load it with dlopen()
+/usr/lib/libudev.so.1
 
 ## for PortMaster's ports (2026-11-19)
 /usr/lib/libluajit-5.1.so.2

@@ -16,6 +16,10 @@ Build the kit: `python tools/spruce-kit.py <spruce repo> out/spruce-kit`. It mak
 Use the nightly built from the commit named in the notes, or later. Re-apply the overlay after a
 spruce update.
 
+The platform is standalone: it owns copies of what it needs from other platforms rather than sourcing
+or hooking them. Which files and functions it owns, where each came from and why:
+`spruce/scripts/platform/basedos/README.md` in the fork.
+
 ## Status (2026-11-19)
 
 | Area | State |

@@ -91,6 +91,17 @@ if missing:
 EOF
 grep -h '^sha256\|  lib' "$S/libSDL2.build-info" | head -3
 
+echo "--- system: GL library names"
+# The Mali package's unversioned names, as stock's /usr/lib/mali/ carries them beside each library:
+# programs built against them (PortMaster's Weston, for one) ask for libGLESv2.so, not .so.2. The
+# targets are the vendor layer's files.
+for l in libEGL.so:libEGL.so.1 libGLESv1_CM.so:libGLESv1_CM.so.1 libGLESv2.so:libGLESv2.so.2 \
+	libgbm.so:libgbm.so.1 libwayland-egl.so:libwayland-egl.so.1 libmali-hook.so:libmali-hook.so.1 \
+	libmali-bifrost-g52-g24p0-wayland-gbm.so:libmali.so.1; do
+	[ -e "$VEN/usr/lib/${l#*:}" ] || { echo "vendor layer has no ${l#*:}" >&2; exit 1; }
+	ln -sf "${l#*:}" "usr/lib/${l%%:*}"
+done
+
 echo "--- system: bash"
 # PortMaster and its ports run on bash (tools/bash/build.sh); stock has none. Linked against
 # glibc only.

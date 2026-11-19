@@ -40,7 +40,7 @@ spruce update.
 | Dreamcast standalone (Flycast, an option beside the RetroArch default) | works: Crazy Taxi, Spider-Man and Sonic Adventure 2 upright in 4:3, OpenGL ES, smooth in Performance. Own pad map (Emu/DC/default_configs/flycast/pads/GKD350HUltra): positional A/B/X/Y, L1/R1 as Z/C, L2/R2 as the triggers (on/off, as on the other boards with button triggers). Flycast's menu at 240% (set_ui_scale); exit through it returns to spruce. |
 | Saturn standalone (YabaSanshiro, an option beside the RetroArch default) | works: Sega Rally upright, controls checked on the unit. Pad seed SATURN_PAD_TABLE=GKD350HUltra (Emu/SATURN/pad, the Miniloong layout with the d-pad on b12-b15); Menu opens Yaba's menu. Stock Yaba puts the picture against the top with all the black below (its fullscreen letterbox forgets to halve the gap, which also shifts 352-wide games on 4:3 screens); theycallmeboxy/YabaSanshiro-spruce fix-vertical-centring centres it (PR to spruceUI pending). The card runs that build, stock kept as Saves/yabasanshiro.stock |
 | ScummVM | not set up for this platform yet |
-| PortMaster | the GUI runs upright (2026-11-19; listed for `BASEDOS` since spruce fork 0a7cce7ff). It needed bash (BasedOS 3190abd), BasedOS's SDL2 found first (the `libSDL2-2.0.so` link, faa6fbb, and `DEVICE_PYSDL2_DLL_PATH`), and `PORTMASTER_DISPLAY_ORIENTATION=0` so it doesn't turn itself on top of SDL. Pad navigation and a port not tried yet |
+| PortMaster and ports | work (2026-11-19): PortMaster's GUI upright, a port downloaded and installed from it, and the port (2048 Plus, LÖVE 11.5) run from spruce's Ports system, upright and full screen, pad checked. It needed bash (BasedOS 3190abd), BasedOS's SDL2 found first (the `libSDL2-2.0.so` link, faa6fbb, and `DEVICE_PYSDL2_DLL_PATH`), and `PORTMASTER_DISPLAY_ORIENTATION=0` so it doesn't turn itself on top of SDL. Listed for `BASEDOS`: the app (spruce fork 0a7cce7ff) and `Emu/PORTS` |
 | Firmware updates | spruce's BaseOS updater: a `baseos-gkd350hultra-<version>.bosupd` from `theycallmeboxy/BasedOS` releases or the card root, installed by BasedOS at the next boot. Checked on the unit, from the app and by hand |
 | E-Reader, Gallery | work: listed for `BASEDOS`, the H700 BaseOS library set and positional pad map, and `gptokeyb`'s keyboard passed to SDL (BasedOS's patch 0006 also finds it by itself). On the unit (2026-11-19): a book opened and the face buttons and D-pad answer; the Gallery moves between images |
 | Screenshots | upright: the capture is the panel's 1440x1600 scanout, turned back with `SCREENSHOT_TRANSPOSE=1` (dArkMossCommon's `take_screenshot`). The hotkey and the Game Switcher previews use it |
@@ -52,8 +52,8 @@ spruce update.
 
 ## Still to do for spruce's onboarding checklist (CONTRIBUTING.md)
 
-- ScummVM target and ini; PortMaster: a port run end to end, then `Emu/PORTS` listed.
-- Device lists in `Emu/*/config.json` for the other standalone emulators (NDSI, ScummVM, Ports),
+- ScummVM target and ini; more ports (other runtimes than LÖVE, ports that use `gptokeyb`'s keyboard).
+- Device lists in `Emu/*/config.json` for the other standalone emulators (NDSI, ScummVM),
   once each runs on BasedOS.
 - A PyUI system json of its own (the dArkMoss Pixel 2's is borrowed) and
   `App/ButtonReader/devices/GKD350HUltra.json`.

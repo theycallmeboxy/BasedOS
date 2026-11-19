@@ -1,5 +1,5 @@
 diff --git a/src/video/kmsdrm/SDL_kmsdrmopengles.c b/src/video/kmsdrm/SDL_kmsdrmopengles.c
-index 92b896e1f..a23498008 100644
+index 92b896e1f..953ce6d3b 100644
 --- a/src/video/kmsdrm/SDL_kmsdrmopengles.c
 +++ b/src/video/kmsdrm/SDL_kmsdrmopengles.c
 @@ -30,6 +30,7 @@
@@ -461,7 +461,7 @@ index 92b896e1f..a23498008 100644
  /* EGL implementation of SDL OpenGL support */
  
  void KMSDRM_GLES_DefaultProfileConfig(_THIS, int *mask, int *major, int *minor)
-@@ -96,6 +541,105 @@ SDL_EGL_CreateContext_impl(KMSDRM)
+@@ -96,6 +541,112 @@ SDL_EGL_CreateContext_impl(KMSDRM)
      return 0;
  }
  
@@ -546,14 +546,21 @@ index 92b896e1f..a23498008 100644
 +    }
 +}
 +
-+/* Mode 2: wait (on the CPU) for the app's frame, and say how long that took. */
-+static double KMSDRM_WaitAppFrame(_THIS)
++/*
++ * Wait (on the CPU) until the GPU has finished the app's frame, and say how long that took. The
++ * RGA path always does: the RGA reads the frame straight from its buffer, and the Mali driver
++ * attaches no implicit fences to it, so without this the RGA could copy a frame still being
++ * drawn (a torn frame). Measured on the stock kernel in games (2026-11-18): 0.01-0.1 ms a frame
++ * on average. The GPU path orders its draw on the GPU instead, so it waits here only for stats
++ * mode 2, which reports this time.
++ */
++static double KMSDRM_WaitAppFrame(_THIS, SDL_bool always)
 +{
 +    EGLDisplay dpy = _this->egl_data->egl_display;
 +    Uint64 t0 = SDL_GetPerformanceCounter();
 +    EGLSyncKHR f;
 +
-+    if (KMSDRM_RotationStatsMode() != 2 || !_this->egl_data->eglCreateSyncKHR) {
++    if ((!always && KMSDRM_RotationStatsMode() != 2) || !_this->egl_data->eglCreateSyncKHR) {
 +        return 0.0;
 +    }
 +    f = _this->egl_data->eglCreateSyncKHR(dpy, EGL_SYNC_FENCE_KHR, NULL);
@@ -567,7 +574,7 @@ index 92b896e1f..a23498008 100644
  int KMSDRM_GLES_SwapWindow(_THIS, SDL_Window *window)
  {
      SDL_WindowData *windata = ((SDL_WindowData *)window->driverdata);
-@@ -104,6 +648,8 @@ int KMSDRM_GLES_SwapWindow(_THIS, SDL_Window *window)
+@@ -104,6 +655,8 @@ int KMSDRM_GLES_SwapWindow(_THIS, SDL_Window *window)
      KMSDRM_FBInfo *fb_info;
      int ret = 0;
      struct gbm_bo* rga_buffer = NULL;
@@ -576,12 +583,12 @@ index 92b896e1f..a23498008 100644
  
      /* Always wait for the previous issued flip before issuing a new one,
         even if you do async flips. */
-@@ -154,7 +700,21 @@ int KMSDRM_GLES_SwapWindow(_THIS, SDL_Window *window)
+@@ -154,7 +707,21 @@ int KMSDRM_GLES_SwapWindow(_THIS, SDL_Window *window)
      }
  
      /* Get an actual usable fb for the next front buffer. */
 -    if (viddata->rga_rotation_active) {
-+    frame_ms = KMSDRM_WaitAppFrame(_this);
++    frame_ms = KMSDRM_WaitAppFrame(_this, viddata->rga_rotation_active && !viddata->gpu_rotation_active);
 +    rot_t0 = SDL_GetPerformanceCounter();
 +    if (viddata->rga_rotation_active && viddata->gpu_rotation_active) {
 +        if (KMSDRM_GPURotateFrame(_this, window, windata->next_bo, viddata->rga_buffer_index) < 0) {
@@ -599,7 +606,7 @@ index 92b896e1f..a23498008 100644
          if (src_info.fd) {
              close(src_info.fd);
          }
-@@ -174,6 +734,7 @@ int KMSDRM_GLES_SwapWindow(_THIS, SDL_Window *window)
+@@ -174,6 +741,7 @@ int KMSDRM_GLES_SwapWindow(_THIS, SDL_Window *window)
          }
  
          viddata->rga_buffer_index = (viddata->rga_buffer_index + 1) % RGA_BUFFERS_MAX;

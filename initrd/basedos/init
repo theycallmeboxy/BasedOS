@@ -50,21 +50,59 @@ if [ "$attempts" -ge 4 ] && [ -f "/p1/basedos/rootfs${other:+-$other}.squashfs" 
 	slot=$other
 fi
 
+# A slot's image is either the system layer, which names the vendor layer it needs
+# (usr/share/basedos/needs-vendor: vendor-<id>.squashfs, stock's files, built on this device's
+# own firmware), or a whole root from before the split. The system layer goes on top of the
+# vendor one with overlayfs, both read-only. A system layer whose vendor layer is missing or
+# different is refused like any other unusable slot.
+$bb mkdir -p /layers/system /layers/vendor
+mount_slot() {
+	$bb mount -t squashfs -o ro,loop "$1" /layers/system || { log "$1 does not mount"; return 1; }
+	want=$($bb cat /layers/system/usr/share/basedos/needs-vendor 2>/dev/null)
+	if [ -z "$want" ]; then
+		$bb umount /layers/system
+		$bb mount -t squashfs -o ro,loop "$1" /newroot || { log "$1 does not mount"; return 1; }
+		layers="whole root"
+	else
+		vendor=/p1/basedos/vendor-$want.squashfs
+		if [ ! -f "$vendor" ]; then
+			log "$1 needs $vendor, which isn't there"
+			$bb umount /layers/system
+			return 1
+		fi
+		if ! $bb mount -t squashfs -o ro,loop "$vendor" /layers/vendor; then
+			log "$vendor does not mount"
+			$bb umount /layers/system
+			return 1
+		fi
+		have=$($bb sed -n 's/^VENDOR_ID=//p' /layers/vendor/usr/share/basedos/vendor-release 2>/dev/null)
+		if [ "$have" != "$want" ] ||
+			! $bb mount -t overlay overlay -o ro,lowerdir=/layers/system:/layers/vendor /newroot; then
+			log "$vendor is vendor '$have', or the layers would not stack"
+			$bb umount /layers/vendor /layers/system 2>/dev/null
+			return 1
+		fi
+		layers="system on vendor-$want"
+	fi
+	# /sbin/init is an absolute link to /usr/bin/busybox, which would resolve against this
+	# initramfs (it has a busybox too), so check the real files inside the new root.
+	if [ -x /newroot/usr/bin/busybox ] && [ -e /newroot/usr/lib/ld-linux-aarch64.so.1 ]; then
+		return 0
+	fi
+	log "$1 has no /usr/bin/busybox or no C library"
+	$bb umount /newroot /layers/vendor /layers/system 2>/dev/null
+	return 1
+}
+
 for s in "$slot" "$other"; do
 	root=/p1/basedos/rootfs${s:+-$s}.squashfs
 	[ -f "$root" ] || { log "no $root"; continue; }
-	# /sbin/init is an absolute link to /usr/bin/busybox, which would resolve against this
-	# initramfs (it has a busybox too), so check the real file inside the new root.
-	if $bb mount -t squashfs -o ro,loop "$root" /newroot && [ -x /newroot/usr/bin/busybox ]; then
-		break
-	fi
-	log "$root does not mount or has no /sbin/init"
-	$bb umount /newroot 2>/dev/null
+	mount_slot "$root" && break
 	root=""
 done
 [ -n "$root" ] || fallback "no usable rootfs"
 
-log "root $root (boot attempt $attempts)"
+log "root $root, $layers (boot attempt $attempts)"
 $bb mkdir -p /newroot/boot 2>/dev/null
 $bb mount --move /p1 /newroot/boot 2>/dev/null || $bb mount -o bind /p1 /newroot/boot
 $bb mount --move /dev /newroot/dev

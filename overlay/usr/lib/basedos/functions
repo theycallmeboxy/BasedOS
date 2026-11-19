@@ -22,13 +22,15 @@ splash() { [ -x /usr/bin/basedos-splash ] && /usr/bin/basedos-splash "$@" >/dev/
 say() { log "$*"; splash "$*"; }
 
 # Which rootfs slot this boot runs: the initrd loop-mounts rootfs.squashfs (a) or
-# rootfs-b.squashfs (b).
+# rootfs-b.squashfs (b), and the vendor layer beside it.
 boot_slot() {
-	case "$(cat /sys/block/loop0/loop/backing_file 2>/dev/null)" in
-	*rootfs-b.squashfs) echo b ;;
-	*rootfs.squashfs) echo a ;;
-	*) echo "?" ;;
-	esac
+	for _f in /sys/block/loop*/loop/backing_file; do
+		case "$(cat "$_f" 2>/dev/null)" in
+		*/basedos/rootfs-b.squashfs) echo b; return ;;
+		*/basedos/rootfs.squashfs) echo a; return ;;
+		esac
+	done
+	echo "?"
 }
 
 # The boot screen's info lines for a normal boot.

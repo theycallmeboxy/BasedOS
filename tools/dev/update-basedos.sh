@@ -1,8 +1,12 @@
 #!/bin/sh
 # Developer update, run ON the device under BasedOS:
-#   update-basedos.sh <dir with rootfs.squashfs [initrd.uimg] [rk3576-gkd-atom.dtb] [boot.scr]>
-# Writes the rootfs to the slot that is NOT running (rootfs.squashfs / rootfs-b.squashfs on p1),
-# verifies it from the card, then points /boot/basedos/slot at it. Reboot to use it; the
+#   update-basedos.sh <dir with rootfs.squashfs [vendor-<id>.squashfs] [initrd.uimg]
+#                     [rk3576-gkd-atom.dtb] [boot.scr]>
+# Writes the rootfs (the system layer) to the slot that is NOT running (rootfs.squashfs /
+# rootfs-b.squashfs on p1), verifies it from the card, then points /boot/basedos/slot at it. A
+# vendor layer it brings is added beside the others (vendor-<id>.squashfs, named by content, so
+# never overwritten); the new slot must find the one it names, and vendor layers neither slot
+# names are removed. The initrd must be one that stacks the layers (2026-11-19 and later). Reboot to use it; the
 # initrd's boot counter falls back to the other slot if the new one never reaches rcS.
 # The running slot is read from the loop device itself, not the slot file, so running this
 # twice without rebooting can never overwrite the image that is running.
@@ -38,8 +42,25 @@ put() {
 	sync
 }
 
+# Which vendor layer an image names (empty for a whole root from before the split).
+needs_vendor() {
+	mkdir -p /tmp/.needs-vendor
+	mount -t squashfs -o ro,loop "$1" /tmp/.needs-vendor || die "$1 does not mount"
+	cat /tmp/.needs-vendor/usr/share/basedos/needs-vendor 2>/dev/null || true
+	umount /tmp/.needs-vendor
+}
+new_vendor=$(needs_vendor "$SRC/rootfs.squashfs")
+run_vendor=$(cat /usr/share/basedos/needs-vendor 2>/dev/null || true)
+
 mount -o remount,rw /boot
 trap 'sync; mount -o remount,ro /boot || echo "WARNING: /boot stayed read-write" >&2' EXIT
+for v in "$SRC"/vendor-*.squashfs; do
+	[ -f "$v" ] || continue
+	[ -f "$B/${v##*/}" ] && cmp -s "$v" "$B/${v##*/}" && continue
+	put "$v" "$B/${v##*/}"
+done
+[ -z "$new_vendor" ] || [ -f "$B/vendor-$new_vendor.squashfs" ] ||
+	die "the new rootfs needs vendor-$new_vendor.squashfs, which isn't on p1 or in $SRC"
 put "$SRC/rootfs.squashfs" "$B/$newfile"
 # The initrd, the panel DTB and boot.scr are not A/B: the slot fallback can't undo them, so each
 # one replaced keeps the file it replaces as <name>.prev. To go back (from SSH or maintenance mode):
@@ -64,5 +85,10 @@ if [ "$new" = b ]; then
 else
 	rm -f "$B/slot"
 fi
+for v in "$B"/vendor-*.squashfs; do
+	[ -f "$v" ] || continue
+	case "${v##*/}" in "vendor-$new_vendor.squashfs"|"vendor-$run_vendor.squashfs") continue ;; esac
+	rm -f "$v" && echo "removed ${v##*/} (neither slot uses it)"
+done
 sync
-echo "running slot: $running; next boot: $new ($newfile). Reboot to switch."
+echo "running slot: $running; next boot: $new ($newfile${new_vendor:+, on vendor-$new_vendor}). Reboot to switch."

@@ -14,4 +14,9 @@ cp "$W/rootfs.squashfs" "$REPO/out/rootfs.squashfs"
 # The vendor layer stays local: built from your own stock, never published (NOTICE.md).
 rm -f "$REPO"/out/vendor-*.squashfs
 cp "$W"/vendor-*.squashfs "$REPO/out/"
+# The update payload: the system layer and the initrd, nothing of stock's (publishable).
+python3 "$REPO/tools/mkboot.py" initrd "$REPO/prepared/alpine/busybox.static" "$W/initrd.uimg.new" >/dev/null
+mv "$W/initrd.uimg.new" "$REPO/out/initrd.uimg"
+rm -f "$REPO"/out/baseos-*.bosupd
+python3 "$REPO/tools/mkupdate.py" "$W/rootfs.squashfs" "$REPO/out/initrd.uimg" 	"$(sed -n 's/^BASEOS_VENDOR=//p' "$W/system/etc/baseos-release")" "$(cat "$REPO/VERSION")" 	"$(sed -n 's/^BASEOS_BUILD=//p' "$W/system/etc/baseos-release")" "$REPO/out"
 cp "$W/harvest-report.txt" "$REPO/out/harvest-report.txt" 2>/dev/null || true

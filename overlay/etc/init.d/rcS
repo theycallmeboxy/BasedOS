@@ -61,6 +61,12 @@ ifconfig lo 127.0.0.1 up
 
 # Card first: the frontend is what the user is waiting for.
 /usr/sbin/mount-frontend
+# System updates (.bosupd at the card root, as spruce's updater leaves them): settle the last one,
+# then install a new one and reboot into it. With no payload on the card, one failed glob.
+if [ $data_ok = 1 ] && mountpoint -q /mnt/SDCARD; then
+	/usr/sbin/basedos-update confirm
+	/usr/sbin/basedos-update apply
+fi
 
 # Everything slow goes to the background. Only the Wi-Fi driver: joining networks and SSH are
 # the frontend's (spruce's), and BasedOS's own (network up, sshd) start in maintenance mode or

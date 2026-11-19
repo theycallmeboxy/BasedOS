@@ -1,0 +1,176 @@
+#!/bin/sh
+# BasedOS system update from a .bosupd at the root of the frontend card (tools/mkupdate.py), the
+# way spruce's firmware updater expects of a BaseOS (baseos-<target>-<version>.bosupd: spruce
+# downloads it or finds it there, then reboots).
+#
+#   apply     rcS, every boot, once the card is mounted: install the first applicable payload
+#             and reboot into it. No payload costs one failed glob.
+#   confirm   rcS, every boot that reaches userspace: settle the last update (remove its payload
+#             once the new slot has booted; note a rollback otherwise).
+#   status    what is installed, and what each payload on the card would do.
+#
+# A payload carries the system layer and the initrd, never stock's files: the vendor layer it
+# names must already be on this device (p1/basedos/vendor-<id>.squashfs), or it is refused. The
+# system layer goes to the slot that isn't running (A/B, as tools/dev/update-basedos.sh), the
+# initrd replaces the old one when it differs (kept as initrd.uimg.prev). Each file is written as
+# <name>.new, synced, re-read from the eMMC against the manifest's SHA-256 and only then renamed,
+# and the slot pointer flips last: a power cut before that leaves the running system as it was.
+# A new slot that never reaches userspace is undone by the initrd's boot counter (the 4th failed
+# boot takes the other slot); the payload then stays on the card but is never applied again
+# (history, by SHA-256), so a bad update can't loop.
+export PATH=/usr/bin:/usr/sbin
+. /usr/lib/basedos/functions
+
+FORMAT=basedos-update/1
+CARD=/mnt/SDCARD
+B=/boot/basedos
+STATE_DIR=/data/update
+STATE=$STATE_DIR/state
+HISTORY=$STATE_DIR/history
+MANIFEST=/run/basedos/bosupd-manifest
+
+field() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1; }
+
+# 0 if dotted version $1 is newer than $2 (missing fields count as 0; a -suffix is a pre-release
+# of its own version).
+version_newer() {
+	_a=${1%%-*} _b=${2%%-*}
+	while [ -n "$_a$_b" ]; do
+		_x=${_a%%.*} _y=${_b%%.*}
+		case "$_a" in *.*) _a=${_a#*.} ;; *) _a="" ;; esac
+		case "$_b" in *.*) _b=${_b#*.} ;; *) _b="" ;; esac
+		case "$_x" in ''|*[!0-9]*) _x=0 ;; esac
+		case "$_y" in ''|*[!0-9]*) _y=0 ;; esac
+		[ "$_x" -gt "$_y" ] && return 0
+		[ "$_x" -lt "$_y" ] && return 1
+	done
+	# Same core version: the release is newer than its pre-releases.
+	case "$1" in *-*) return 1 ;; esac
+	case "$2" in *-*) return 0 ;; esac
+	return 1
+}
+
+# Judge one payload: 0 = apply, 1 = nothing to do, 2 = refused. Sets EV_VERSION, EV_BUILD,
+# EV_SHA, EV_REASON, and leaves its manifest in $MANIFEST.
+evaluate() {
+	EV_VERSION="" EV_BUILD="" EV_SHA="" EV_REASON=""
+	if ! tar -xOf "$1" manifest > "$MANIFEST" 2>/dev/null || [ ! -s "$MANIFEST" ]; then
+		EV_REASON="not a BasedOS update"; return 2
+	fi
+	EV_VERSION=$(field "$MANIFEST" version)
+	EV_BUILD=$(field "$MANIFEST" build)
+	EV_SHA=$(field "$MANIFEST" rootfs-sha256)
+	[ "$(field "$MANIFEST" format)" = "$FORMAT" ] || { EV_REASON="format $(field "$MANIFEST" format), not $FORMAT"; return 2; }
+	[ "$(field "$MANIFEST" target)" = "$BASEOS_TARGET" ] || { EV_REASON="built for $(field "$MANIFEST" target), this is $BASEOS_TARGET"; return 2; }
+	case "$EV_SHA" in [0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) ;; *) EV_REASON="no rootfs-sha256"; return 2 ;; esac
+	_v=$(field "$MANIFEST" vendor)
+	[ -n "$_v" ] && [ -f "$B/vendor-$_v.squashfs" ] ||
+		{ EV_REASON="needs vendor layer ${_v:-?}, which this device doesn't have (rebuild it from this device's stock)"; return 2; }
+	# Only forward, or a rebuild of the running version: an old payload left on the card must not
+	# downgrade the device once it has moved past it.
+	if version_newer "$EV_VERSION" "${BASEOS_VERSION:-0}"; then :
+	elif [ "$EV_VERSION" = "$BASEOS_VERSION" ] && [ "$EV_BUILD" != "$BASEOS_BUILD" ]; then :
+	else EV_REASON="not newer than the running $BASEOS_VERSION ($BASEOS_BUILD)"; return 1
+	fi
+	grep -q "^$EV_SHA " "$HISTORY" 2>/dev/null && { EV_REASON="already applied once"; return 1; }
+	EV_REASON="ready"
+	return 0
+}
+
+# member <payload> <member> <dest> <sha256>: write, sync, drop the cache, re-read, rename.
+member() {
+	tar -xOf "$1" "$2" > "$3.new" 2>/dev/null || { rm -f "$3.new"; return 1; }
+	sync
+	echo 3 > /proc/sys/vm/drop_caches
+	[ "$(sha256sum < "$3.new" | cut -d' ' -f1)" = "$4" ] || { rm -f "$3.new"; return 1; }
+	mv "$3.new" "$3" && sync
+}
+
+running_slot() { boot_slot; }
+
+apply() {
+	_found=""
+	for _p in "$CARD"/*.bosupd; do [ -f "$_p" ] && _found=1 && break; done
+	[ -n "$_found" ] || return 0
+	mkdir -p "$STATE_DIR"
+	_chosen=""
+	for _p in "$CARD"/*.bosupd; do
+		[ -f "$_p" ] || continue
+		evaluate "$_p"; _r=$?
+		[ $_r -eq 0 ] && { _chosen=$_p; break; }
+		[ $_r -eq 2 ] && log "$_p refused: $EV_REASON"
+	done
+	[ -n "$_chosen" ] || return 0
+
+	_run=$(running_slot)
+	case "$_run" in
+	a) _new=b _file=rootfs-b.squashfs ;;
+	b) _new=a _file=rootfs.squashfs ;;
+	*) log "can't tell which slot is running; not updating"; return 1 ;;
+	esac
+	say "updating BasedOS to $EV_VERSION ($EV_BUILD)"
+	mount -o remount,rw /boot || { log "can't write p1; not updating"; return 1; }
+	if ! member "$_chosen" rootfs.squashfs "$B/$_file" "$EV_SHA"; then
+		mount -o remount,ro /boot
+		say "BasedOS update failed: the system image didn't verify; still on $BASEOS_VERSION"
+		return 1
+	fi
+	_isha=$(field "$MANIFEST" initrd-sha256)
+	if [ -n "$_isha" ] && [ "$(sha256sum < "$B/initrd.uimg" | cut -d' ' -f1)" != "$_isha" ]; then
+		cp "$B/initrd.uimg" "$B/initrd.uimg.prev" && sync
+		if ! member "$_chosen" initrd.uimg "$B/initrd.uimg" "$_isha"; then
+			cp "$B/initrd.uimg.prev" "$B/initrd.uimg"; sync
+			mount -o remount,ro /boot
+			say "BasedOS update failed: the initrd didn't verify; still on $BASEOS_VERSION"
+			return 1
+		fi
+	fi
+	# The commit.
+	if [ "$_new" = b ]; then echo b > "$B/slot.new" && sync && mv "$B/slot.new" "$B/slot"; else rm -f "$B/slot"; fi
+	sync
+	mount -o remount,ro /boot
+	echo "$EV_SHA $EV_VERSION $EV_BUILD" >> "$HISTORY"
+	printf 'slot=%s\nversion=%s\nbuild=%s\npayload=%s\nfrom=%s\n' "$_new" "$EV_VERSION" "$EV_BUILD" "$_chosen" "$BASEOS_VERSION ($BASEOS_BUILD)" > "$STATE"
+	sync
+	say "BasedOS $EV_VERSION installed in slot $_new; restarting"
+	reboot
+	sleep 10
+}
+
+confirm() {
+	[ -f "$STATE" ] || return 0
+	_want=$(field "$STATE" slot)
+	if [ "$(running_slot)" = "$_want" ]; then
+		_p=$(field "$STATE" payload)
+		rm -f "$_p" && log "update to $(field "$STATE" version) ($(field "$STATE" build)) confirmed; removed $_p"
+	else
+		log "update to $(field "$STATE" version) didn't boot; back on $BASEOS_VERSION ($BASEOS_BUILD). Its payload stays on the card and won't be applied again"
+	fi
+	rm -f "$STATE"
+	sync
+}
+
+status() {
+	echo "running: BasedOS $BASEOS_VERSION ($BASEOS_BUILD), slot $(running_slot), vendor ${BASEOS_VENDOR:-none}"
+	for _v in "$B"/vendor-*.squashfs; do [ -f "$_v" ] && echo "vendor layer: ${_v##*/}"; done
+	[ -f "$STATE" ] && echo "pending: $(field "$STATE" version) in slot $(field "$STATE" slot)"
+	_any=""
+	for _p in "$CARD"/*.bosupd; do
+		[ -f "$_p" ] || continue
+		_any=1
+		evaluate "$_p"; _r=$?
+		case $_r in
+		0) echo "$_p: $EV_VERSION ($EV_BUILD) WILL BE INSTALLED at the next boot" ;;
+		1) echo "$_p: $EV_VERSION ($EV_BUILD) skipped: $EV_REASON" ;;
+		*) echo "$_p: refused: $EV_REASON" ;;
+		esac
+	done
+	[ -n "$_any" ] || echo "no .bosupd at the root of the card"
+}
+
+case "${1:-}" in
+apply) apply ;;
+confirm) confirm ;;
+status) status ;;
+*) echo "usage: basedos-update apply|confirm|status" >&2; exit 2 ;;
+esac

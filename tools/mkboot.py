@@ -30,7 +30,7 @@ MAGIC = 0x27051956
 
 
 def uimage(data, typ, os_=5, arch=22, name=b""):
-    hdr = bytearray(struct.pack(">7I4B32s", MAGIC, 0, int(time.time()), len(data), 0, 0,
+    hdr = bytearray(struct.pack(">7I4B32s", MAGIC, 0, int(os.environ.get("SOURCE_DATE_EPOCH", "0")), len(data), 0, 0,
                                 zlib.crc32(data), os_, arch, typ, 0, name))
     hdr[4:8] = struct.pack(">I", zlib.crc32(hdr))
     return bytes(hdr) + data

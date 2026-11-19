@@ -43,3 +43,10 @@ for m in /mnt/SDCARD /data /run/p2; do
 done
 mount -o remount,ro /boot 2>/dev/null
 sync
+
+# Finish here when poweroff or reboot said which (/usr/sbin/poweroff): BusyBox init would next
+# signal every process again (all stopped above) and pause 2 s in all before doing the same.
+case "$(cat /run/basedos/shutdown-action 2>/dev/null)" in
+poweroff) /usr/bin/busybox poweroff -f ;;
+reboot) /usr/bin/busybox reboot -f ;;
+esac

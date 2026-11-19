@@ -134,7 +134,8 @@ apply() {
 	sync
 	say "BasedOS $EV_VERSION installed in slot $_new; restarting"
 	reboot
-	sleep 10
+	# BusyBox init acts on the reboot only once rcS (its sysinit) returns: 10 tells rcS to return now.
+	return 10
 }
 
 confirm() {

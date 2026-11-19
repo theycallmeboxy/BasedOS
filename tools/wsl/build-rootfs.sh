@@ -81,13 +81,14 @@ install -m 755 "$REPO/prepared/wpa_cli/wpa_cli" usr/bin/wpa_cli
 install -D -m 644 "$REPO/prepared/wpa_cli/COPYING" usr/share/licenses/wpa_cli/COPYING
 
 echo "--- system: busybox"
-# Links only where neither layer has the file: a stock tool beats BusyBox's applet.
+# Links only where neither layer has the file: a stock tool beats BusyBox's applet, and
+# BasedOS's own (the overlay) beats both.
 install -m 755 "$BB" usr/bin/busybox
 n=0
 while read -r p; do
 	p=${p#/}
 	case $p in bin/*|sbin/*) p=usr/$p ;; esac
-	{ [ -e "$p" ] || [ -L "$p" ] || [ -e "$VEN/$p" ] || [ -L "$VEN/$p" ]; } && continue
+	{ [ -e "$p" ] || [ -L "$p" ] || [ -e "$VEN/$p" ] || [ -L "$VEN/$p" ] || [ -e "$REPO/overlay/$p" ]; } && continue
 	mkdir -p "$(dirname "$p")"
 	ln -s /usr/bin/busybox "$p"
 	n=$((n + 1))
@@ -96,8 +97,11 @@ echo "$n busybox links"
 
 echo "--- system: overlay"
 cp -a "$REPO/overlay/." "$SYS/"
+find "$SYS" -name __pycache__ -prune -exec rm -rf {} +
+# poweroff's wrapper (it notes which of the three was asked for) answers to all three names.
+for a in reboot halt; do rm -f usr/sbin/$a; ln -s poweroff usr/sbin/$a; done
 find "$SYS/etc" "$SYS/usr/lib/basedos" "$SYS/usr/share/udhcpc" "$SYS/usr/share/basedos" -type f -exec chmod 644 {} +
-chmod 755 etc/init.d/* usr/sbin/mount-frontend usr/sbin/frontend-session usr/sbin/basedos-suspend usr/sbin/basedos-update usr/share/udhcpc/default.script
+chmod 755 etc/init.d/* usr/sbin/poweroff usr/sbin/mount-frontend usr/sbin/frontend-session usr/sbin/basedos-suspend usr/sbin/basedos-update usr/share/udhcpc/default.script
 # Accounts are on /data (rcS seeds them from these defaults), so a frontend can add users.
 chmod 644 usr/share/basedos/accounts/passwd usr/share/basedos/accounts/group
 chmod 600 usr/share/basedos/accounts/shadow

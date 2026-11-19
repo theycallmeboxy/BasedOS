@@ -1,0 +1,7 @@
+#!/bin/sh
+# poweroff, reboot and halt (reboot and halt link here): BusyBox's, plus a note of which one was
+# asked for. BusyBox init runs rcK without saying which, then signals every process again and
+# pauses 2 s before doing it; rcK has already stopped everything, so with the note it finishes
+# the job itself. -f doesn't go through init (or rcK), so it leaves no note.
+case " $* " in *" -f "*|*" -"[!-]*f*) ;; *) echo "${0##*/}" > /run/basedos/shutdown-action 2>/dev/null ;; esac
+exec /usr/bin/busybox "${0##*/}" "$@"

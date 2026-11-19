@@ -38,7 +38,7 @@ To go back to stock: `install-dev.sh revert` (from stock or BasedOS), then reboo
 
 | You do | BasedOS does |
 |---|---|
-| Power on | boots in about 5 s to spruce's menu |
+| Power on | boots in about 4 s to spruce's menu |
 | Power on **holding Select** | **maintenance mode**: no spruce; Wi-Fi and SSH only. The screen says so, with the address to SSH to once Wi-Fi is up and how to leave |
 | Power on **holding another button** | whatever `/data/boot-keys.conf` maps it to (none by default): maintenance mode, or a frontend on the card other than the first one found. The format and the button names are in `/usr/share/basedos/boot-keys.conf`; copy it to `/data/` to change it. The boot screen lists the mapped buttons |
 | Hold **Volume Up + Volume Down** together **3 s** | clean shutdown with any frontend, also a hung one: programs get 3 s to save and quit, then the card is synced and unmounted (`basedos-shutdown-keys`). Holding power is the frontend's (spruce: Button Settings > Power button hold time) |
@@ -93,5 +93,6 @@ All three have been tested on a unit, including a full restore.
 
 ## Logs
 
-- BasedOS: `/data/basedos.log` on the eMMC (`basedos-data/basedos.log` seen from stock).
+- BasedOS: `/data/basedos.log` on the eMMC (`basedos-data/basedos.log` seen from stock), about the
+  last 256 KB; the part before is in `basedos.log.1`.
 - spruce: `Saves/spruce/spruce.log` and `pyui.log` on the card.

@@ -96,17 +96,18 @@ if [ -f $STATE/session-start ]; then
 		stay_down "the frontend keeps exiting (5 times within 15 s); not restarting it. Logs: /data/basedos.log and the card. Reboot to try again."
 fi
 
-# Quiet retries; one message per session, and only after 15 s without a card.
+# Quiet retries; one message per session, and only after 15 s without a card. At boot the card
+# is usually a few tens of ms from being probed, so the first 2 s are polled every 50 ms.
 i=0
 until QUIET=1 /usr/sbin/mount-frontend 2>/dev/null; do
 	i=$((i + 1))
-	if [ $i -ge 30 ]; then
+	if [ $i -ge 66 ]; then
 		[ -f /run/basedos/said-nocard ] || say "no card in the slot (waiting for one)"
 		touch /run/basedos/said-nocard
 		sleep 5
 		exit 1
 	fi
-	sleep 0.5
+	if [ $i -le 40 ]; then sleep 0.05; else sleep 0.5; fi
 done
 rm -f /run/basedos/said-nocard
 

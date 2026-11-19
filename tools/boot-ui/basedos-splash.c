@@ -164,21 +164,15 @@ int main(int argc, char **argv)
 	lw = rot ? (int)vi.yres : (int)vi.xres;
 	lh = rot ? (int)vi.xres : (int)vi.yres;
 
-	uint32_t bg = pack(0x000000), dim = pack(0x1f7f3a), green = pack(0x39ff7a),
+	uint32_t dim = pack(0x1f7f3a), green = pack(0x39ff7a),
 		 info = pack(0x8fbf9f), hi = pack(0xffc857), white = pack(0xe6e6e6);
 	int scale = lw >= 1200 ? 5 : lw >= 800 ? 3 : 2, ts = lw >= 1200 ? 1 : 1;
 	int logo_w = 10 * FONT_W * scale, logo_x = (lw - logo_w) / 2;
 	int logo_y = lh * 28 / 100;
 
+	/* The background is black, all-zero in every pixel format: one memset per line. */
 	for (int y = 0; y < (int)vi.yres; y++)
-		for (int x = 0; x < (int)vi.xres; x++) {
-			uint8_t *p = fb + (size_t)y * fi.line_length + (size_t)x * (vi.bits_per_pixel / 8);
-
-			if (vi.bits_per_pixel == 32)
-				*(uint32_t *)p = bg;
-			else
-				memset(p, 0, vi.bits_per_pixel / 8);
-		}
+		memset(fb + (size_t)y * fi.line_length, 0, (size_t)vi.xres * (vi.bits_per_pixel / 8));
 
 	/* "> BasedOS" and a block cursor, terminal style. */
 	text(logo_x, logo_y, ">", scale, dim);

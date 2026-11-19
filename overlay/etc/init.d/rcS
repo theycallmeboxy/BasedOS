@@ -7,7 +7,15 @@ export PATH=/usr/bin:/usr/sbin
 mount -t proc proc /proc
 mount -t sysfs sys /sys
 mkdir -p /dev/pts /dev/shm
-mount -t devpts devpts /dev/pts
+# Device nodes are the kernel's (devtmpfs, mounted by the initrd), with the kernel's modes;
+# nothing rewrites them (BusyBox mdev without an mdev.conf made /dev/null root-only). Firmware is
+# loaded by the kernel itself (no user helper), so no hotplug helper either.
+mount -t devpts -o mode=620,ptmxmode=666 devpts /dev/pts
+# The links a udev or systemd base makes and devtmpfs doesn't (bash's <(...), /dev/stdin readers).
+ln -sf /proc/self/fd /dev/fd
+ln -sf fd/0 /dev/stdin
+ln -sf fd/1 /dev/stdout
+ln -sf fd/2 /dev/stderr
 mount -t tmpfs -o mode=1777 tmpfs /dev/shm
 mount -t tmpfs -o mode=755,size=64m tmpfs /run
 mount -t tmpfs -o mode=1777 tmpfs /tmp
@@ -27,6 +35,9 @@ splash "starting"
 # still boots unchanged. (A dedicated p2 comes with the installer.) Checked first, as stock
 # does every boot; e2fsck -p only fixes what is safe and is quick on a clean filesystem.
 mkdir -p /run/p2
+# The clock first: e2fsck compares the superblock's times with it, and a clock at 1970 would
+# make it check the whole filesystem (or refuse, times "in the future").
+hwclock -u -s 2>/dev/null || early_rtc=1
 e2fsck -p /dev/mmcblk0p2 > /run/basedos/e2fsck.log 2>&1
 fsck_rc=$?
 data_ok=0
@@ -39,8 +50,11 @@ if [ $fsck_rc -lt 4 ] && mount -t ext4 -o noatime /dev/mmcblk0p2 /run/p2 &&
 else
 	mount -t tmpfs tmpfs /data
 fi
+# The log keeps about the last 256 KB: one older copy, replaced when the current one outgrows it.
+[ -n "$(find /data/basedos.log -size +256k 2>/dev/null)" ] && mv /data/basedos.log /data/basedos.log.1
 cat /run/basedos/early.log >> /data/basedos.log 2>/dev/null && rm -f /run/basedos/early.log
-say "boot $(cat /proc/sys/kernel/random/boot_id | cut -c1-8): BasedOS $BASEOS_VERSION ($BASEOS_BUILD)"
+[ -n "${early_rtc:-}" ] && log "no RTC time"
+log "boot $(cut -c1-8 /proc/sys/kernel/random/boot_id): BasedOS $BASEOS_VERSION ($BASEOS_BUILD)"
 [ $data_ok = 1 ] || say "eMMC p2 unusable (e2fsck exit $fsck_rc): /data is in RAM this boot; settings and logs won't persist"
 
 # Accounts live on /data so a frontend can add its own (spruce's SSH/Samba user); the read-only
@@ -52,20 +66,20 @@ done
 chmod 600 /data/etc/shadow
 
 hostname -F /etc/hostname
-hwclock -u -s 2>/dev/null || log "no RTC time"
 [ -f /data/machine-id ] || cat /proc/sys/kernel/random/uuid | tr -d - > /data/machine-id
 ln -sf /data/machine-id /run/machine-id
-echo /sbin/mdev > /proc/sys/kernel/hotplug
-mdev -s
 ifconfig lo 127.0.0.1 up
 
-# Card first: the frontend is what the user is waiting for.
-/usr/sbin/mount-frontend
+# Card first: the frontend is what the user is waiting for. Often not probed yet this early;
+# frontend-session keeps trying (and says so if it never comes).
+QUIET=1 /usr/sbin/mount-frontend
 # System updates (.bosupd at the card root, as spruce's updater leaves them): settle the last one,
 # then install a new one and reboot into it. With no payload on the card, one failed glob.
 if [ $data_ok = 1 ] && mountpoint -q /mnt/SDCARD; then
 	/usr/sbin/basedos-update confirm
 	/usr/sbin/basedos-update apply
+	# 10: installed, and the reboot asked for; init does it once this script returns.
+	[ $? -eq 10 ] && exit 0
 fi
 
 # Everything slow goes to the background. Only the Wi-Fi driver: joining networks and SSH are

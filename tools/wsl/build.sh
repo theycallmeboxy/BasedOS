@@ -17,6 +17,10 @@ cp "$W"/vendor-*.squashfs "$REPO/out/"
 # The update payload: the system layer and the initrd, nothing of stock's (publishable).
 python3 "$REPO/tools/mkboot.py" initrd "$REPO/prepared/alpine/busybox.static" "$W/initrd.uimg.new" >/dev/null
 mv "$W/initrd.uimg.new" "$REPO/out/initrd.uimg"
+# The boot script (not in the payload: install-dev.sh and update-basedos.sh put it on p1).
+rm -f "$W/boot.scr.new"
+python3 "$REPO/tools/mkboot.py" bootscr "$REPO/prepared/rocknix-20260613-c8ed06c/boot.scr" "$W/boot.scr.new" >/dev/null
+mv "$W/boot.scr.new" "$REPO/out/boot.scr"
 rm -f "$REPO"/out/baseos-*.bosupd
 python3 "$REPO/tools/mkupdate.py" "$W/rootfs.squashfs" "$REPO/out/initrd.uimg" 	"$(sed -n 's/^BASEOS_VENDOR=//p' "$W/system/etc/baseos-release")" "$(cat "$REPO/VERSION")" 	"$(sed -n 's/^BASEOS_BUILD=//p' "$W/system/etc/baseos-release")" "$REPO/out"
 cp "$W/harvest-report.txt" "$REPO/out/harvest-report.txt" 2>/dev/null || true

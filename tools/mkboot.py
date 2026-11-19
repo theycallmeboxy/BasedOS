@@ -85,13 +85,25 @@ def bootscr(stock, out):
                   "if load mmc 0:1 ${fdt_addr_r} basedos/rk3576-gkd-atom.dtb; then\n"
                   "setenv basedos_fdt 1\n"
                   "else\n" + panel + "fi\n")
+    # initcall_blacklist=raid6_select_algo: the stock kernel has btrfs built in, and with it the
+    # RAID6 library, whose init benchmarks eight parity routines at every boot (0.51 s on the
+    # unit, 2026-11-19; CONFIG_RAID6_PQ_BENCHMARK=y). Its only users are btrfs RAID5/6 and md
+    # RAID, which nothing on this device uses; without that init they have no routine, so a btrfs
+    # RAID6 volume must never be mounted under BasedOS. Stock's own boot keeps it (stock_bootargs).
+    # rcupdate.rcu_expedited=1: closing an input device waits for an RCU grace period
+    # (input_close_device), 21-40 ms each on this kernel, so anything that scans /dev/input (the
+    # boot keys, spruce's key listeners, SDL at every emulator start) paid that per device: 150 ms
+    # for BasedOS's boot-key read of five devices. Expedited, under 1 ms (measured on the unit,
+    # 2026-11-19). The cost is an IPI to each core when something waits for a grace period, which
+    # is rare outside device setup.
     # Stock picks bootargs and the DTB; then BasedOS adds its initrd. booti only returns when it
     # fails (e.g. the ramdisk's CRC), and load fails when the file is missing: either way, put
     # stock's bootargs back and boot stock's kernel without the initrd, so a bad or missing
     # initrd can never leave the eMMC unbootable. (This U-Boot has no iminfo to check first.)
     s = s.replace("booti ${kernel_addr_r} - ${fdt_addr_r}",
                   "setenv stock_bootargs \"${bootargs}\"\n"
-                  "setenv bootargs \"${bootargs} rdinit=/basedos/init vt.global_cursor_default=0\"\n"
+                  "setenv bootargs \"${bootargs} rdinit=/basedos/init vt.global_cursor_default=0"
+                  " initcall_blacklist=raid6_select_algo rcupdate.rcu_expedited=1\"\n"
                   "if load mmc 0:1 ${ramdisk_addr_r} basedos/initrd.uimg; then\n"
                   "booti ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r}\n"
                   "fi\n"

@@ -1,39 +1,16 @@
-# What BasedOS takes from the stock rootfs (the SYSTEM squashfs of a known
-# build, see stock-builds.txt). One path per line:
+# What BasedOS takes from the stock rootfs (the SYSTEM squashfs of a known build, see
+# stock-builds.txt) into the vendor layer: only what can't be BasedOS's own, the closed GPU
+# drivers, the Wi-Fi and Bluetooth firmware and the stock kernel's modules
+# (docs/vendor-minimal.md). Everything else comes from BasedOS's own build (manifest/base.list).
+# One path per line:
 #   /stock/path              copied to the same place (a directory recursively; symlinks kept)
 #   /stock/path => /dest     copied to a different place
-# Libraries that these need (ELF DT_NEEDED) are added automatically by
-# tools/harvest.py, which fails if one can't be found.
+# Libraries that these need (ELF DT_NEEDED) come from the system layer (tools/harvest.py
+# --provided); the build fails if one is in neither.
 
-## core: glibc's loader (the closure check adds libc and friends)
-/usr/lib/ld-linux-aarch64.so.1
-
-## ssh (dev access; keys live on /data)
-/usr/sbin/sshd
-/usr/bin/ssh-keygen
-/usr/lib/openssh/sftp-server
-/usr/lib/openssh/sshd-session
-
-## wifi: Broadcom AP6256/AP6255 (bcmdhd is the kernel's only module)
-/usr/bin/wpa_supplicant
-/usr/bin/wpa_passphrase
-# nl80211 settings (power save, link and signal); stock has no wpa_cli, BasedOS builds its own
-/usr/sbin/iw
-/usr/lib/kernel-overlays/base/lib/modules => /usr/lib/modules
-/usr/lib/kernel-overlays/base/lib/firmware => /usr/lib/firmware
-
-## filesystems: create and check /data (ext4), check the card (vfat, exfat)
-/usr/sbin/mke2fs
-/usr/sbin/mkfs.ext4
-/usr/sbin/e2fsck
-/usr/sbin/fsck.ext4
-/usr/sbin/resize2fs
-/usr/sbin/fsck.fat
-/usr/sbin/fsck.vfat
-/usr/sbin/fsck.exfat
-
-## GPU: libmali (Bifrost G52, wayland-gbm build) under the standard names.
-## Stock bind-mounts these at runtime ("gpudriver"); BasedOS installs them directly.
+## GPU: libmali (Bifrost G52, Rockchip's g24p0 wayland-gbm build) under the standard names, with
+## its own GL API wrappers. Stock bind-mounts these at runtime ("gpudriver"); BasedOS installs
+## them directly. It needs only glibc 2.28+, libstdc++, libgcc_s and libwayland (system layer).
 /usr/lib/libmali.so.1.9.0
 /usr/lib/libmali.so.1
 /usr/lib/libmali.so
@@ -44,52 +21,15 @@
 /usr/lib/mali/libGLESv2.so.2 => /usr/lib/libGLESv2.so.2
 /usr/lib/mali/libgbm.so.1 => /usr/lib/libgbm.so.1
 /usr/lib/mali/libwayland-egl.so.1 => /usr/lib/libwayland-egl.so.1
-## SDL2 is not stock's: tools/sdl2/build.sh builds dArkMoss's rotating SDL2 (RGA turns the DSI
-## panel to 1600x1440) and librga, and build-rootfs.sh installs them from prepared/sdl2.
 
-## GPU: Vulkan, the Khronos loader and Arm's Mali Vulkan driver for the G52 (stock's own pair).
-## spruce's DSperate draws through it: without it, it scales and turns the picture on the CPU,
-## too slow on this 1440x1600 portrait panel (2.4 fps; 59 fps with it, measured 2026-11-16).
+## GPU: Arm's Mali Vulkan driver for the G52, as the Khronos loader's ICD (the loader is
+## BasedOS's). spruce's DSperate draws through it: without it, it scales and turns the picture on
+## the CPU, too slow on this 1440x1600 portrait panel (2.4 fps; 59 fps with it, 2026-11-16).
 ## Stock's panfrost_icd json is left out: it names Mesa's PanVK, which BasedOS doesn't carry.
-/usr/lib/libvulkan.so.1
 /usr/lib/libMaliVulkan.so.1
 /usr/share/vulkan/icd.d/mali.json
 
-## audio: ALSA (ES9018K2M DAC; controls "Master", "Capture")
-/usr/bin/amixer
-/usr/bin/aplay
-/usr/share/alsa
-
-## input and display helpers
-/usr/bin/evtest
-
-## No python: spruce brings its own (flip/bin/python3.10, get_python_path), and BasedOS's
-## tools are C or shell.
-
-## loaded at runtime with dlopen(), so the DT_NEEDED closure can't see them
-/usr/lib/libdrm.so.2
-/usr/lib/libudev.so.1
-/usr/lib/libnss_files.so.2
-/usr/lib/libnss_dns.so.2
-/usr/lib/libresolv.so.2
-
-## frontend compatibility: libraries spruce's own card binaries (flip/bin python3.10, flip/lib,
-## App/PyUI/dll) expect from the base. Found by tools/needs-check.py against a spruce card.
-/usr/lib/libutil.so.1
-/usr/lib/librt.so.1
-/usr/lib/libtinfo.so.6
-/usr/lib/libfontconfig.so.1
-/usr/lib/libfreetype.so.6
-/usr/lib/libsndfile.so.1
-/usr/lib/libvorbisenc.so.2
-# Came in with stock's python until it was dropped: spruce's bin64 wget (libuuid), xz (liblzma)
-# and rnano (libncursesw), flip/lib's libspeechd (glib) and libkrb5 (sqlite3).
-/usr/lib/libuuid.so.1
-/usr/lib/liblzma.so.5
-/usr/lib/libncursesw.so.6
-/usr/lib/libglib-2.0.so.0
-/usr/lib/libsqlite3.so.0
-## spruce's display_text.elf (message screens, and USB Storage Mode's card-less screen, which runs
-## it with the rootfs's libraries only once the card is unmounted)
-/usr/lib/libSDL2_image-2.0.so.0.800.2 => /usr/lib/libSDL2_image-2.0.so.0
-/usr/lib/libSDL2_ttf-2.0.so.0.2000.2 => /usr/lib/libSDL2_ttf-2.0.so.0
+## Wi-Fi and Bluetooth: Broadcom AP6256/AP6255 firmware and nvram, and the stock kernel's
+## modules (bcmdhd is the one BasedOS loads; they must match the stock kernel BasedOS boots).
+/usr/lib/kernel-overlays/base/lib/modules => /usr/lib/modules
+/usr/lib/kernel-overlays/base/lib/firmware => /usr/lib/firmware

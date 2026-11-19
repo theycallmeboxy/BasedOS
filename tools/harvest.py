@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Copy the harvest list out of an unpacked stock rootfs, plus every library
-those files need (a closed set), into a staging tree.
+"""Copy the harvest list out of an unpacked root (stock's, or BasedOS's Buildroot output), plus
+every library those files need (a closed set), into a staging tree.
 
-  harvest.py <stock root> <manifest/harvest.list> <staging root>
+  harvest.py <source root> <list> <staging root> [--provided <root>] [--report <file>]
+
+--provided: a root whose libraries count as there already (the system layer's, when harvesting
+the vendor layer's blobs), so they aren't copied from the source again.
+--report: where the report goes (default <staging root>/../harvest-report.txt).
 
 Run it on a filesystem with real symlinks (WSL's ext4, not /mnt/c).
 Fails if any DT_NEEDED can't be found, like baseos-my355's prepare_stock.py.
@@ -57,8 +61,8 @@ def elf_needed(path):
 
 
 class Harvest:
-    def __init__(self, stock, dest):
-        self.stock, self.dest, self.why = stock, dest, {}
+    def __init__(self, stock, dest, provided=None):
+        self.stock, self.dest, self.provided, self.why = stock, dest, provided, {}
 
     def s(self, p):
         return os.path.join(self.stock, p.lstrip("/"))
@@ -124,6 +128,13 @@ class Harvest:
                 for lib in elf_needed(full) or []:
                     if any(os.path.lexists(self.d(f"{d}/{lib}")) for d in LIBDIRS):
                         continue
+                    # Beside the file that needs it ($ORIGIN): glibc's gconv modules and their
+                    # helper libraries (libJIS.so, libGB.so, ...) in /usr/lib/gconv.
+                    if os.path.lexists(os.path.join(os.path.dirname(full), lib)):
+                        continue
+                    if self.provided and any(
+                            os.path.lexists(os.path.join(self.provided, d.lstrip("/"), lib)) for d in LIBDIRS):
+                        continue
                     src = self.find_lib(lib)
                     if not src:
                         missing.append(f"{lib} (needed by {p})")
@@ -133,10 +144,17 @@ class Harvest:
 
 
 def main():
-    if len(sys.argv) != 4:
+    args, opts = [], {}
+    it = iter(sys.argv[1:])
+    for a in it:
+        if a in ("--provided", "--report"):
+            opts[a] = next(it, None)
+        else:
+            args.append(a)
+    if len(args) != 3 or None in opts.values():
         sys.exit(__doc__)
-    stock, listfile, dest = sys.argv[1:]
-    h = Harvest(stock, dest)
+    stock, listfile, dest = args
+    h = Harvest(stock, dest, opts.get("--provided"))
     for line in open(listfile, encoding="utf-8"):
         line = line.split("#", 1)[0].strip()
         if not line:
@@ -144,7 +162,7 @@ def main():
         src, _, dst = (x.strip() for x in line.partition("=>"))
         h.copy(src, dst or src, "listed")
     missing = h.close()
-    report = os.path.join(os.path.dirname(os.path.abspath(dest)), "harvest-report.txt")
+    report = opts.get("--report") or os.path.join(os.path.dirname(os.path.abspath(dest)), "harvest-report.txt")
     with open(report, "w", encoding="utf-8") as r:
         for p in sorted(h.why):
             r.write(f"{p}\t{h.why[p]}\n")

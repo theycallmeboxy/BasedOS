@@ -1,0 +1,107 @@
+# What BasedOS takes from its own Buildroot root (tools/buildroot/build.sh, buildroot/) into the
+# system layer: the userland that used to come from stock (docs/vendor-minimal.md). Same format
+# as harvest.list; the libraries these need are added automatically, and the build fails if one
+# is missing. Everything here is built from source, so it ships in .bosupd updates.
+
+## glibc (2.41): the loader, and the parts loaded with dlopen() or by name, which the closure
+## can't see
+/usr/lib/ld-linux-aarch64.so.1
+/usr/lib/libc.so.6
+/usr/lib/libm.so.6
+/usr/lib/libmvec.so.1
+/usr/lib/libdl.so.2
+/usr/lib/libpthread.so.0
+/usr/lib/librt.so.1
+/usr/lib/libresolv.so.2
+/usr/lib/libutil.so.1
+/usr/lib/libanl.so.1
+/usr/lib/libnss_files.so.2
+/usr/lib/libnss_dns.so.2
+/usr/lib/gconv
+/usr/bin/getconf
+# (no iconv command: Buildroot's glibc installs getconf and ldd only; the gconv modules that
+# programs' iconv() needs are above)
+
+## GCC 14's runtime: the closed Mali drivers, spruce's binaries, ports (OpenMP)
+/usr/lib/libstdc++.so.6
+/usr/lib/libgcc_s.so.1
+/usr/lib/libgomp.so.1
+/usr/lib/libatomic.so.1
+
+## what the closed Mali drivers need (vendor layer)
+/usr/lib/libwayland-client.so.0
+/usr/lib/libwayland-server.so.0
+/usr/lib/libdrm.so.2
+## the Khronos Vulkan loader (Mali's Vulkan driver is its ICD)
+/usr/lib/libvulkan.so.1
+
+## ssh (BasedOS's own, maintenance mode; keys live on /data)
+/usr/sbin/sshd
+/usr/bin/ssh-keygen
+/usr/libexec/sshd-session
+/usr/libexec/sftp-server
+
+## wifi: the frontend runs its own wpa_supplicant; BasedOS's in maintenance mode
+/usr/sbin/wpa_supplicant
+/usr/sbin/wpa_cli
+/usr/sbin/wpa_passphrase
+/usr/sbin/iw
+
+## filesystems: create and check /data (ext4), check the card (vfat, exfat)
+/usr/sbin/mke2fs
+/usr/sbin/mkfs.ext4
+/usr/sbin/e2fsck
+/usr/sbin/fsck.ext4
+/usr/sbin/resize2fs
+/usr/sbin/fsck.fat
+/usr/sbin/fsck.vfat
+/usr/sbin/fsck.exfat
+
+## audio and input
+/usr/bin/amixer
+/usr/bin/aplay
+/usr/share/alsa
+/usr/bin/evtest
+
+## spruce's display_text.elf (message screens; USB Storage Mode runs it with the root's
+## libraries only). Built against Buildroot's SDL2; BasedOS's own SDL2 is the one installed.
+/usr/lib/libSDL2_image-2.0.so.0
+/usr/lib/libSDL2_ttf-2.0.so.0
+
+## what spruce's card binaries expect from the base (tools/needs-check.py, 2026-11-19)
+/usr/lib/libssl.so.3
+/usr/lib/libcrypto.so.3
+/usr/lib/libdbus-1.so.3
+/usr/lib/libexpat.so.1
+/usr/lib/libfontconfig.so.1
+/usr/lib/libfreetype.so.6
+/usr/lib/libglib-2.0.so.0
+/usr/lib/libncursesw.so.6
+/usr/lib/libtinfo.so.6
+/usr/lib/libsndfile.so.1
+/usr/lib/libsqlite3.so.0
+/usr/lib/libuuid.so.1
+/usr/lib/libvorbisenc.so.2
+/usr/lib/libz.so.1
+/usr/lib/liblzma.so.5
+
+## for PortMaster's ports (2026-11-19)
+/usr/lib/libluajit-5.1.so.2
+/usr/lib/libenet.so.7
+/usr/lib/libjson-c.so.5
+/usr/lib/libevdev.so.2
+/usr/lib/libspeexdsp.so.1
+/usr/lib/libusb-1.0.so.0
+/usr/lib/libcurl.so.4
+/usr/lib/libfluidsynth.so.3
+# libxml2 waits for a port that needs it: Buildroot's is 2.15 (libxml2.so.16), and ports built
+# against the old ABI look for libxml2.so.2.
+/usr/lib/libharfbuzz.so.0
+/usr/lib/libturbojpeg.so.0
+/usr/lib/libtiff.so.6
+/usr/bin/taskset
+/usr/bin/stdbuf
+/usr/libexec/coreutils/libstdbuf.so
+/usr/bin/file
+/usr/share/misc/magic.mgc
+/usr/bin/zstd

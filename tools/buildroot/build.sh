@@ -9,6 +9,8 @@
 # Needs (Ubuntu in WSL): build-essential file wget cpio unzip rsync bc python3 perl
 # Downloads go to ~/basedos-br-dl (BR2_DL_DIR) and are checked against Buildroot's own hashes.
 set -euo pipefail
+# WSL appends Windows' PATH (folders with spaces), which Buildroot refuses.
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 W=${BR_WORK:-$HOME/basedos-br}
 BR_OUT=${BR_OUT:-$W/out}

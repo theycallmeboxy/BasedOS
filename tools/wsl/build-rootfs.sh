@@ -1,34 +1,41 @@
 #!/bin/sh
 # Build BasedOS's two root images. Runs in WSL (needs real symlinks, python3, mksquashfs).
 # Usage: build-rootfs.sh <repo> <work dir> <busybox.static> <busybox.list>
-#   <work>/stock-root must hold the unpacked stock SYSTEM (tools/wsl/unpack-stock.sh).
+#   <work>/stock-root must hold the unpacked stock SYSTEM (tools/wsl/unpack-stock.sh), and
+#   $BR_TARGET (default ~/basedos-br/out/target) BasedOS's own Buildroot root
+#   (tools/buildroot/build.sh build).
 #
 # The root is two read-only layers, stacked by the initrd with overlayfs (docs/plan.md):
-#   vendor    only what manifest/harvest.list takes from stock (and the libraries those need).
-#             Built from your own device's firmware, never published. Named by a hash of its
-#             contents (VENDOR_ID), so the same stock build always gives the same id.
-#   system    everything of BasedOS's own, on top: BusyBox, the overlay, SDL2, librga, wpa_cli, bash,
-#             the boot tools, identity files, and BasedOS's edits of stock files as whole copies.
+#   vendor    only what manifest/harvest.list takes from stock: the closed GPU drivers, the
+#             firmware and the stock kernel's modules (docs/vendor-minimal.md). Built from your own
+#             device's firmware, never published. Named by a hash of its contents (VENDOR_ID), so
+#             the same stock build always gives the same id.
+#   system    everything of BasedOS's own, on top: its userland from its Buildroot root
+#             (manifest/base.list: glibc, OpenSSH, wpa_supplicant, ALSA, ...), BusyBox, the overlay,
+#             SDL2, librga, bash, the boot tools and identity files.
 #             It names the vendor layer it was built against (usr/share/basedos/needs-vendor);
 #             a .bosupd carries this one alone.
 # Outputs in <work>: vendor-<id>.squashfs, rootfs.squashfs (the system layer; the slot files
 # keep their names), and rootfs/ (the two merged, for the checks and tools that want one tree).
 set -eu
 REPO=$1 W=$2 BB=$3 BBLIST=$4
-VEN=$W/vendor SYS=$W/system OUT=$W/rootfs
+VEN=$W/vendor SYS=$W/system OUT=$W/rootfs BASE=$W/base
+BR_TARGET=${BR_TARGET:-$HOME/basedos-br/out/target}
 VERSION=$(cat "$REPO/VERSION")
 BUILD=$(git -C "$REPO" describe --always --dirty 2>/dev/null || echo unknown)
 case $BUILD in *dirty) BUILD="$BUILD-$(date -u +%Y%m%d%H%M)" ;; esac
 
-rm -rf "$VEN" "$SYS" "$OUT" "$W"/vendor-*.squashfs "$W/rootfs.squashfs"
-mkdir -p "$VEN" "$SYS"
+rm -rf "$VEN" "$SYS" "$OUT" "$BASE" "$W"/vendor-*.squashfs "$W/rootfs.squashfs"
+mkdir -p "$VEN" "$SYS" "$BASE"
 chmod 755 "$VEN" "$SYS"
 
+echo "--- base: BasedOS's userland from its Buildroot root"
+[ -d "$BR_TARGET/usr/lib" ] || { echo "no Buildroot root at $BR_TARGET (tools/buildroot/build.sh build)" >&2; exit 1; }
+python3 "$REPO/tools/harvest.py" "$BR_TARGET" "$REPO/manifest/base.list" "$BASE" --report "$W/base-report.txt"
+
 echo "--- vendor: harvest"
-python3 "$REPO/tools/harvest.py" "$W/stock-root" "$REPO/manifest/harvest.list" "$VEN"
-# ROCKNIX's PipeWire defaults: BasedOS runs no PipeWire. Left out of the vendor layer rather
-# than hidden by whiteouts in the system one.
-rm -f "$VEN/usr/share/alsa/alsa.conf.d/50-pipewire.conf" "$VEN/usr/share/alsa/alsa.conf.d/99-pipewire-default.conf"
+# The blobs' own libraries (libstdc++, libwayland, glibc) are BasedOS's: --provided.
+python3 "$REPO/tools/harvest.py" "$W/stock-root" "$REPO/manifest/harvest.list" "$VEN" --provided "$BASE" 	--report "$W/harvest-report.txt"
 mkdir -p "$VEN/usr/share/basedos"
 VENDOR_ID=$(cd "$VEN" && find . \( -type f -o -type l \) | LC_ALL=C sort | while read -r f; do
 	if [ -L "$f" ]; then echo "L $f $(readlink "$f")"; else echo "F $f $(sha256sum < "$f" | cut -c1-64) $(stat -c %a "$f")"; fi
@@ -45,19 +52,24 @@ mkdir -p usr/bin usr/sbin usr/lib usr/share/basedos etc dev proc sys run tmp var
 ln -s usr/bin bin
 ln -s usr/sbin sbin
 ln -s usr/lib lib
+# Buildroot's glibc (aarch64) searches /lib64 and /usr/lib64 by default, as its own root links
+# them to lib; without them a program started without LD_LIBRARY_PATH (rcS's e2fsck) finds only
+# what's in its RUNPATH.
+ln -s usr/lib lib64
+ln -s lib usr/lib64
 ln -s SDCARD mnt/sdcard
 
-# BasedOS's edits of stock files, as whole files in its own layer.
-# ROCKNIX's alsa.conf loads /storage/.config/asound.conf instead of ~/.asoundrc. BasedOS runs no
-# PipeWire, and frontends (spruce's asound-setup.sh) write ~/.asoundrc, so put upstream
-# alsa-lib's behaviour back.
-grep -q '"/storage/.config/asound.conf"' "$VEN/usr/share/alsa/alsa.conf" ||
-	{ echo "alsa.conf no longer has the ROCKNIX hook line; check it" >&2; exit 1; }
-mkdir -p usr/share/alsa
-sed 's#"/storage/.config/asound.conf"#"~/.asoundrc"#' "$VEN/usr/share/alsa/alsa.conf" > usr/share/alsa/alsa.conf
+echo "--- system: base"
+cp -a "$BASE/." "$SYS/"
+# Frontends (spruce's asound-setup.sh) write ~/.asoundrc, which upstream alsa-lib's alsa.conf
+# loads (ROCKNIX's loaded /storage/.config/asound.conf instead, which BasedOS had to edit).
+grep -q '~/.asoundrc' usr/share/alsa/alsa.conf ||
+	{ echo "alsa.conf doesn't load ~/.asoundrc; check it" >&2; exit 1; }
 
 echo "--- system: sdl2"
-# BasedOS's own SDL2 and librga (tools/sdl2/build.sh), over stock's SDL2.
+# BasedOS's own SDL2 and librga (tools/sdl2/build.sh). Buildroot's SDL2 came along as SDL2_image's
+# dependency; it is replaced, not kept beside.
+rm -f usr/lib/libSDL2-2.0.so.0.*
 S=$REPO/prepared/sdl2
 SDL=$(cd "$S" && ls libSDL2-2.0.so.0.*.*) RGA=$(cd "$S" && ls librga.so.*.*.*)
 install -m 755 "$S/$SDL" "$S/$RGA" usr/lib/
@@ -79,20 +91,15 @@ if missing:
 EOF
 grep -h '^sha256\|  lib' "$S/libSDL2.build-info" | head -3
 
-echo "--- system: wpa_cli"
-# The frontend's Wi-Fi tool (tools/wpa_cli/build.sh); stock has wpa_supplicant without it.
-install -m 755 "$REPO/prepared/wpa_cli/wpa_cli" usr/bin/wpa_cli
-install -D -m 644 "$REPO/prepared/wpa_cli/COPYING" usr/share/licenses/wpa_cli/COPYING
-
 echo "--- system: bash"
-# PortMaster and its ports run on bash (tools/bash/build.sh); stock has none. Linked against the
-# vendor layer's glibc only.
+# PortMaster and its ports run on bash (tools/bash/build.sh); stock has none. Linked against
+# glibc only.
 install -m 755 "$REPO/prepared/bash/bash" usr/bin/bash
 install -D -m 644 "$REPO/prepared/bash/COPYING" usr/share/licenses/bash/COPYING
 
 echo "--- system: busybox"
-# Links only where neither layer has the file: a stock tool beats BusyBox's applet, and
-# BasedOS's own (the overlay) beats both.
+# Links only where neither layer has the file: a real tool (BasedOS's userland, or a vendor
+# file) beats BusyBox's applet, and the overlay beats both.
 install -m 755 "$BB" usr/bin/busybox
 n=0
 while read -r p; do

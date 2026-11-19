@@ -6,8 +6,9 @@ W=$HOME/basedos-work
 cp "$REPO/prepared/rocknix-20260613-c8ed06c/BUILD" "$W/STOCK_BUILD"
 [ -f "$REPO/prepared/sdl2/libSDL2.build-info" ] ||
 	bash "$REPO/tools/sdl2/build.sh" "$REPO/prepared/rocknix-20260613-c8ed06c/SYSTEM" "$REPO/prepared/sdl2" 270
-[ -f "$REPO/prepared/wpa_cli/build-info" ] ||
-	bash "$REPO/tools/wpa_cli/build.sh" "$REPO/prepared/wpa_cli"
+# BasedOS's userland (glibc, OpenSSH, wpa_supplicant and wpa_cli, ALSA, ...): about an hour the first
+# time, then only what changed.
+bash "$REPO/tools/buildroot/build.sh" build
 [ -f "$REPO/prepared/bash/build-info" ] ||
 	bash "$REPO/tools/bash/build.sh" "$REPO/prepared/bash"
 sh "$REPO/tools/wsl/build-rootfs.sh" "$REPO" "$W" "$REPO/prepared/alpine/busybox.static" "$REPO/prepared/alpine/busybox.list"

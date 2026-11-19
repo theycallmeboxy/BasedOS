@@ -17,6 +17,8 @@
 ## wifi: Broadcom AP6256/AP6255 (bcmdhd is the kernel's only module)
 /usr/bin/wpa_supplicant
 /usr/bin/wpa_passphrase
+# nl80211 settings (power save, link and signal); stock has no wpa_cli, BasedOS builds its own
+/usr/sbin/iw
 /usr/lib/kernel-overlays/base/lib/modules => /usr/lib/modules
 /usr/lib/kernel-overlays/base/lib/firmware => /usr/lib/firmware
 

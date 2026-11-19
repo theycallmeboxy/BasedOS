@@ -30,6 +30,7 @@ A BasedOS image built with these tools contains:
 | BasedOS scripts and config (`overlay/`, `initrd/`) | this repo | MIT | yes |
 | The boot screen's font (`tools/boot-ui/font.h`, in `basedos-splash`) | converted from Terminus Font (bold 16x32), Copyright (c) 2010 Dimitar Toshkov Zhekov, by `tools/boot-ui/mkfont.py` | SIL Open Font License 1.1 (`tools/boot-ui/OFL-Terminus.txt`, also in the image at `/usr/share/licenses/basedos-splash/`) | yes |
 | BusyBox (`busybox-static`, aarch64) | Alpine Linux v3.20, downloaded at build time | GPL-2.0 | no |
+| `wpa_cli` 2.11 (hostap, https://w1.fi, Jouni Malinen and contributors) | built from the official release tarball (sha256 pinned) by `tools/wpa_cli/build.sh`, client only, static | BSD-3-Clause (in the image at `/usr/share/licenses/wpa_cli/COPYING`) | build script only |
 | SDL2 2.32.10 with ArkOS's SDL2 patches (christianhaitian/rk3566_core_builds, MIT; copies in `tools/sdl2/patches/`), and librga 1.10.5 (Rockchip, JeffyCN/mirrors linux-rga-multi) | built from source by `tools/sdl2/build.sh` | zlib (SDL), MIT (patches), Apache-2.0 (librga) | patches and build script only |
 | Kernel, DTBs, libmali, Wi-Fi firmware and module, glibc, Python, OpenSSH, ALSA, ... | the user's own stock firmware (harvested from their backup) | various: GPL, LGPL, proprietary (libmali, Broadcom firmware) | no, hashes only (`manifest/`) |
 

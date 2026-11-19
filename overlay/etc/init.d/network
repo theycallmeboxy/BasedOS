@@ -1,19 +1,28 @@
 #!/bin/sh
-# Wi-Fi: load bcmdhd, then wpa_supplicant and udhcpc on wlan0.
-# Networks come from /data/wpa_supplicant.conf (the v0 installer copies the
-# one stock had configured).
+# Wi-Fi belongs to the frontend: at boot BasedOS only loads the driver, so wlan0 is there for the
+# frontend's own wpa_supplicant and DHCP client (spruce runs them from the card's saved networks).
+#   network          load bcmdhd and wait for wlan0 (rcS, every boot)
+#   network up       also join a network from /data/wpa_supplicant.conf and get an address:
+#                    BasedOS's own Wi-Fi, for maintenance mode or when no frontend can run
 . /usr/lib/basedos/functions
+
+if [ ! -e /sys/class/net/wlan0 ]; then
+	modprobe bcmdhd || { log "modprobe bcmdhd failed"; exit 1; }
+	i=0
+	while [ ! -e /sys/class/net/wlan0 ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+	[ -e /sys/class/net/wlan0 ] || { log "no wlan0"; exit 1; }
+	mark wlan0
+fi
+[ "$1" = up ] || exit 0
+
 conf=/data/wpa_supplicant.conf
-[ -f "$conf" ] || { log "no $conf; Wi-Fi off"; exit 0; }
-
-modprobe bcmdhd || { log "modprobe bcmdhd failed"; exit 1; }
-i=0
-while [ ! -e /sys/class/net/wlan0 ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
-[ -e /sys/class/net/wlan0 ] || { log "no wlan0"; exit 1; }
-mark wlan0
-
+[ -f "$conf" ] || { log "no $conf; BasedOS has no network to join"; exit 0; }
+# A frontend's supplicant and DHCP client may still hold wlan0; one of each on it.
+killall wpa_supplicant udhcpc 2>/dev/null
+sleep 0.5
+ip link set wlan0 up
 mkdir -p /run/wpa_supplicant
 wpa_supplicant -B -i wlan0 -D nl80211,wext -c "$conf" -P /run/wpa_supplicant.pid -f /run/basedos/wpa_supplicant.log ||
 	{ log "wpa_supplicant failed"; exit 1; }
 udhcpc -i wlan0 -b -R -x hostname:"$(hostname)" -p /run/udhcpc.pid -s /usr/share/udhcpc/default.script
-log "wpa_supplicant and udhcpc started (the lease is logged when it arrives)"
+log "BasedOS Wi-Fi: wpa_supplicant and udhcpc started (the lease is logged when it arrives)"

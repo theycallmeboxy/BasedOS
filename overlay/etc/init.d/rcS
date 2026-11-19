@@ -62,8 +62,9 @@ ifconfig lo 127.0.0.1 up
 # Card first: the frontend is what the user is waiting for.
 /usr/sbin/mount-frontend
 
-# Everything slow goes to the background.
+# Everything slow goes to the background. Only the Wi-Fi driver: joining networks and SSH are
+# the frontend's (spruce's), and BasedOS's own (network up, sshd) start in maintenance mode or
+# when no frontend can run (frontend-session).
 /etc/init.d/network &
-/etc/init.d/sshd &
 /usr/sbin/basedos-shutdown-keys &
 mark rcS-done

@@ -9,10 +9,10 @@ Measured on the unit, 2026-11-16 (BasedOS b8121f5 plus the loglevel change, spru
 | Power to kernel | about 1.45 s | SPL (DDR init), TF-A, OP-TEE, U-Boot (logo, boot.scr, loading Image, DTB and initrd) |
 | Kernel to `/basedos/init` | about 1.57 s | driver probes. The biggest single item is the **RAID6 benchmark (0.46 s)**, then the display pipeline (VOP2 and DSI, about 0.2 s) and SD/SDIO bus setup |
 | initrd to `rcS` | under 0.1 s | mounts p1, loop-mounts the squashfs, `switch_root` |
-| `rcS` to frontend | about 0.1 s | the card is mounted first, and Wi-Fi and SSH are backgrounded |
+| `rcS` to frontend | about 0.1 s | the card is mounted first, and the Wi-Fi driver loads in the background |
 | spruce to the PyUI first frame | about 2 s | `runtime.sh`, `device_init`, Python start-up and imports |
 | **Power to menu** | **about 5 s** | |
-| Wi-Fi lease | 5 to 9 s, in the background | association plus DHCP |
+| Wi-Fi lease | 5 to 9 s, in the background | association plus DHCP, now spruce's (BasedOS only loads the driver) |
 
 ## What was tried
 

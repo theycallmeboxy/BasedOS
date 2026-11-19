@@ -49,6 +49,11 @@ if missing:
 EOF
 grep -h '^sha256\|  lib' "$S/libSDL2.build-info" | head -3
 
+echo "--- wpa_cli"
+# The frontend's Wi-Fi tool (tools/wpa_cli/build.sh); stock has wpa_supplicant without it.
+install -m 755 "$REPO/prepared/wpa_cli/wpa_cli" usr/bin/wpa_cli
+install -D -m 644 "$REPO/prepared/wpa_cli/COPYING" usr/share/licenses/wpa_cli/COPYING
+
 echo "--- busybox"
 install -m 755 "$BB" usr/bin/busybox
 n=0

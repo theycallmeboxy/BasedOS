@@ -15,14 +15,26 @@
 #
 # Safeguards:
 #   - A frontend that exits within 15 s, five times in a row, is not restarted again until
-#     the next boot (no hot loop draining the battery and writing to the card).
+#     the next boot (no hot loop draining the battery and writing to the card). BasedOS's own
+#     Wi-Fi and SSH come up then, as in maintenance mode, so it can be looked at.
+# Wi-Fi and SSH are otherwise the frontend's: BasedOS only loads the Wi-Fi driver at boot.
 export PATH=/usr/bin:/usr/sbin
 . /usr/lib/basedos/functions
 SD=/mnt/SDCARD
 STATE=/run/basedos
 
+# BasedOS's own Wi-Fi and SSH, when no frontend will provide them (once a boot).
+basedos_network() {
+	[ -f $STATE/basedos-network ] && return 0
+	touch $STATE/basedos-network
+	/etc/init.d/network up
+	/etc/init.d/sshd
+}
+
+# A frontend that keeps failing: stop, and bring up Wi-Fi and SSH so it can be looked at.
 stay_down() {
 	say "$1"
+	basedos_network
 	while :; do sleep 3600; done
 }
 
@@ -69,6 +81,7 @@ fi
 if [ -f $STATE/maintenance ]; then
 	log "maintenance mode: no frontend; SSH is up once Wi-Fi is"
 	maintenance_screen
+	basedos_network
 	while :; do sleep 3600; done
 fi
 

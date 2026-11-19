@@ -38,8 +38,8 @@ On the eMMC (stock's partition layout; the bootloader area is never written):
 | p2 ext4 `BASEDOS-DATA` | `/data`: SSH keys, Wi-Fi config, logs, boot counter |
 
 Boot: U-Boot runs `boot.scr` → kernel plus BasedOS's initrd → the initrd mounts the chosen slot
-(falling back to the other after failed boots, then to stock) → BusyBox init → `rcS` (Wi-Fi,
-`/data`, card, sshd) → `frontend-session` finds the frontend on the card (spruce's `runtime.sh`)
+(falling back to the other after failed boots, then to stock) → BusyBox init → `rcS` (`/data`,
+card, Wi-Fi driver) → `frontend-session` finds the frontend on the card (spruce's `runtime.sh`)
 and starts it, again if it exits.
 
 Sleep: frontends call `basedos-suspend`, which suspends and then runs BasedOS's wake fixes (what a

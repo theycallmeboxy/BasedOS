@@ -49,12 +49,16 @@ Without a card, BasedOS waits for one and says so once on screen.
 
 ## Wi-Fi and SSH
 
-- BasedOS joins the networks in `/data/wpa_supplicant.conf` on the eMMC. The installer fills it
-  from stock's saved networks. To change networks, edit that file over SSH (from maintenance mode
-  if needed) and reboot.
+- Wi-Fi is spruce's, as on its other devices: join, forget and switch it off from spruce's menu.
+  The networks are saved on the card, so they go wherever the card goes. BasedOS only loads the
+  Wi-Fi driver at boot.
+- BasedOS's own Wi-Fi is for maintenance mode, and for when the frontend keeps failing: then it
+  joins the networks in `/data/wpa_supplicant.conf` on the eMMC (the installer fills it from
+  stock's saved networks; edit it over SSH).
 - SSH: with spruce's "Enable SSH" on, spruce's own SSH answers: user `spruce`, password
-  `happygaming`. With it off, spruce turns SSH off. In maintenance mode, or without a card,
-  BasedOS's own SSH answers as `root` with **no password**. Use only on a network you trust.
+  `happygaming`. With it off there is no SSH. In maintenance mode, or when the frontend keeps
+  failing, BasedOS's own SSH answers as `root` with **no password**. Use only on a network you
+  trust.
 
 ## Safeguards
 

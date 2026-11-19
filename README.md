@@ -61,6 +61,7 @@ frontend draws straight to the display (KMS). Boot to SSH in about 2 s; 67 MB of
 | [docs/user-guide.md](docs/user-guide.md) | **start here**: install, everyday use, safeguards, recovery |
 | [docs/spruce-on-gkd.md](docs/spruce-on-gkd.md) | spruce support: the kit, status, what's left |
 | [docs/plan.md](docs/plan.md) | design, conventions, status |
+| [docs/vendor-minimal.md](docs/vendor-minimal.md) | shrinking the vendor layer to the closed drivers, firmware and kernel modules: inventory and plan |
 | [docs/boot-time.md](docs/boot-time.md), [docs/power.md](docs/power.md) | measurements |
 | [docs/recovery.md](docs/recovery.md) | eMMC backup, rescue SD card, USB disk mode, maskrom, full restore (all tested) |
 | [docs/recon.md](docs/recon.md) | hardware and stock-firmware notes |

@@ -117,3 +117,5 @@ Still open:
   `boot.scr` reads, or a payload member). Today `tools/dev/update-basedos.sh` and `install-dev.sh`
   write it.
 - The installer card for users: building the vendor layer on the device from its own stock.
+- A minimal vendor layer (decided 2026-11-19): only the closed GPU drivers, firmware and kernel
+  modules from stock, the rest built by BasedOS (Buildroot). Inventory and plan: vendor-minimal.md.

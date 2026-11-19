@@ -16,11 +16,11 @@ Build the kit: `python tools/spruce-kit.py <spruce repo> out/spruce-kit`. It mak
 Use the nightly built from the commit named in the notes, or later. Re-apply the overlay after a
 spruce update.
 
-## Status (2026-11-17)
+## Status (2026-11-19)
 
 | Area | State |
 |---|---|
-| Detection, platform files | done |
+| Detection, platform files | done. Two layers, as oakMOSS stacks its base: `basedos/BasedOSCommon.{cfg,sh}` for what is BasedOS's (SSH, Wi-Fi, sleep, power, firmware, the library path, no udev) and `basedos/GKD350HUltra.{cfg,sh}` for the board, which takes the dArkMoss RK3566 files first for the hardware they share (spruce `platform/README.md`) |
 | Keyboards in SDL apps | BasedOS has no udev, and SDL2 without udev only opened keyboards named in `SDL_EVDEV_DEVICES`: E-Reader and Gallery (`gptokeyb` turns the pad into a virtual keyboard) got no keys. BasedOS's patch 0006 scans `/dev/input` once at start, as udev's first scan would, and takes the classes udev's path takes (keyboards, mice, touch; not joysticks). On the unit (2026-11-19) the Gallery then opened `gptokeyb`'s keyboard and the power and volume keys, not the pad or the motion sensor, and moved on a Right press with no `SDL_EVDEV_DEVICES`. Nodes created after the app started are not picked up. The two launchers also pass the keyboard themselves (spruce fork 3a2a4daee), which a BasedOS from before 0006 needs |
 | Display rotation | as on dArkMoss's rotated panels: BasedOS's SDL2 turns the DSI panel with the RGA (ArkOS's Miniloong patch, ROT_270), so SDL apps see 1600x1440 at 0 and the cfg has `DISPLAY_ROTATION="0"`. Vulkan windows aren't turned (as on the Miniloong). Checked: the menu, spruce's message screens (`display_text.elf`), RetroArch, DSperate, PPSSPP. BasedOS's patch 0005 adds a GPU rotation path, used where there is no `/dev/rga` (a mainline kernel) or with `SDL_KMSDRM_ROTATION=gpu`; `SDL_KMSDRM_ROTATION_STATS=1` prints the rotation's time every 300 frames (stock: RGA 6.5 ms a frame in SDL's test). In games on stock with spruce (2026-11-18, `tools/dev/rotation-ab.sh`, 60 s a path: Star Fox 64, Sega Rally, Crazy Taxi in RetroArch, Burnout Legends in PPSSPP): RGA 2.1 ms a frame, steady; GPU 2.2-2.4 ms with stalls of 10-31 ms every minute or so (the game's own GPU work in the way); the games' frame pacing was the same on both. RGA stays the default. Since c0a58d1 the RGA path waits for the game's frame to be finished before copying it (Mali puts no implicit fences on the buffers, so it could otherwise copy a half-drawn frame); measured at 0.01-0.1 ms a frame |
 | PyUI menu (1600x1440) | works; PyUI has its own SDL2 and turns itself (`SCREEN_ROTATION="270"`, as the H700 cfg sets it) |
@@ -31,7 +31,7 @@ spruce update.
 | SSH (spruce's), Samba user | spruce login added |
 | CPU modes | the A72s in every mode, the A53s parked, as on the TrimUI Smart Pro S: Powersave 408-1416, Smart 408-2016, Performance 2016, Overclock 2208, all through spruce's shared functions (see power.md) |
 | RetroArch | works: games run upright (`video_rotation = "0"`, it draws through the rotating SDL) and full screen through spruce's launcher (NES `fceumm`, PS `pcsx_rearmed`). The pad goes through `linuxraw` (`/dev/input/js0`), since the `udev` driver needs udevd. Every button, the stick and the hotkeys (Select + B/R/L/Left/Right/R2/X/Y) checked in PadTest. L3 bound but not tested |
-| Wi-Fi | BasedOS manages it; spruce's switch takes the link up/down; networks added in spruce are saved to the card but not yet joined |
+| Wi-Fi | spruce's, as on its other wpa_supplicant devices: its own supplicant on the card's saved networks and udhcpc, joined, forgotten and switched off from spruce's menu. BasedOS only loads the driver at boot; its own Wi-Fi and SSH run only in maintenance mode or after a failing frontend |
 | Bluetooth | not brought up on BasedOS |
 | NDS (DSperate, spruce's default) | works: Castlevania DoS upright, 59.8 fps (100%) in Performance with the 60 Hz panel DTB (59 fps in Smart on stock's 59.11 Hz). DSperate's KMS sink needs the window to be a panel mode, which the turned SDL isn't, and its next choice (the window surface) scales 1600x1440 on the CPU: 52-54 fps in Smart. The cfg's `DS_SCANLINE_SCALE=0` (DSperate's own switch) picks its SDL renderer instead (GLES, emu 5.3 ms, GPU 7%). Reported upstream (beebono/DSperate). DSperate pins itself to cores 0-3 (the A53s). Controls checked on the unit; X/Y needed the cfg's `SDL_GAMECONTROLLER_MAP` (SDL had guessed them swapped). Smart mode held 59 fps too on the 59.11 Hz panel (about 2.7 W against Performance's 3.1 W). The renderer path ignores `DS_ROTATE` ("rotation 270 is not applied on the renderer path" in its log), so DSperate-Tate shows the game upright: the 350H Ultra's NDS list (`Emulator_BASEDOS`) offers DSperate, DraStic and pokedaisy_ds (RetroArch, 60 fps, checked) without it |
 | NDS (DraStic standalone, an option beside DSperate) | works: Castlevania DoS upright, both screens stacked, at 100% with BasedOS's 60 Hz panel DTB (98.1-98.5% and crackly sound on stock's 59.11 Hz; see power.md). The unmodified 64-bit DraStic, as on dArkMoss (`run_drastic_GKD350HUltra`); its config is the Miniloong's with this pad's d-pad (b12-b15) and touch press on L3. Checked on the unit |
@@ -39,7 +39,12 @@ spruce update.
 | N64 standalone (Mupen64Plus, an option beside the RetroArch default) | works: Star Fox 64 upright and centred, controls and Menu hotkeys checked on the unit. Pad table in this pad's raw numbers (the Anbernic one-stick layout), no gptokeyb2. The 4:3 canvas is centred vertically with M64P_VIEWPORT_Y, which spruce's Rice and Glide64mk2 gain in theycallmeboxy/mupen64plus-spruce (PR to spruceUI pending; the fork ships that build meanwhile). Rice gets some games wrong where GLideN64 is right (Star Fox 64 darker, Mario Golf with a navy sky and white terrain); Perfect Dark and Castlevania match. That is Rice itself, and it showed with spruce's stock Rice before the centring patch; the overlay switches plugin |
 | Dreamcast standalone (Flycast, an option beside the RetroArch default) | works: Crazy Taxi, Spider-Man and Sonic Adventure 2 upright in 4:3, OpenGL ES, smooth in Performance. Own pad map (Emu/DC/default_configs/flycast/pads/GKD350HUltra): positional A/B/X/Y, L1/R1 as Z/C, L2/R2 as the triggers (on/off, as on the other boards with button triggers). Flycast's menu at 240% (set_ui_scale); exit through it returns to spruce. |
 | Saturn standalone (YabaSanshiro, an option beside the RetroArch default) | works: Sega Rally upright, controls checked on the unit. Pad seed SATURN_PAD_TABLE=GKD350HUltra (Emu/SATURN/pad, the Miniloong layout with the d-pad on b12-b15); Menu opens Yaba's menu. Stock Yaba puts the picture against the top with all the black below (its fullscreen letterbox forgets to halve the gap, which also shifts 352-wide games on 4:3 screens); theycallmeboxy/YabaSanshiro-spruce fix-vertical-centring centres it (PR to spruceUI pending). The card runs that build, stock kept as Saves/yabasanshiro.stock |
-| DraStic, Flycast, YabaSanshiro, ScummVM | not set up for this platform yet (see below) |
+| ScummVM | not set up for this platform yet |
+| PortMaster | not tried yet; hidden on this platform (its device list has no `BASEDOS`) |
+| Firmware updates | spruce's BaseOS updater: a `baseos-gkd350hultra-<version>.bosupd` from `theycallmeboxy/BasedOS` releases or the card root, installed by BasedOS at the next boot. Checked on the unit, from the app and by hand |
+| E-Reader, Gallery | work: listed for `BASEDOS`, the H700 BaseOS library set and positional pad map, and `gptokeyb`'s keyboard passed to SDL (BasedOS's patch 0006 also finds it by itself). On the unit (2026-11-19): a book opened and the face buttons and D-pad answer; the Gallery moves between images |
+| Screenshots | upright: the capture is the panel's 1440x1600 scanout, turned back with `SCREENSHOT_TRANSPOSE=1` (dArkMossCommon's `take_screenshot`). The hotkey and the Game Switcher previews use it |
+| Low battery while charging | the shutdown check reads the bq25890 charger (`power_supply/bq25890-charger/online`); dArkMoss's `ac`/`usb` supplies don't exist here |
 | USB Storage Mode's card-less screen (`shutdown_ui.sh`) | its `display_text.elf` runs on the rootfs's libraries alone since BasedOS 0a82249 (stock's SDL2_image and SDL2_ttf harvested), checked by drawing a message that way; USB Storage Mode itself not tried yet |
 | Card on a plain `reboot` (outside spruce's shutdown) | unmounted cleanly since BasedOS 0a82249: rcK unmounts spruce's MainUI bind mount inside the card first and retries while killed processes let go. Checked twice, once with RetroArch running; before, two plain reboots had left the card dirty |
 | Emulator lists (`Emu/*/config.json`) | `BASEDOS` is listed wherever the choice is a RetroArch core (next to `OAKMOSS_A133P`); Dreamcast and N64 now show. On the unit, spruce's launcher resolves each to its RetroArch core; PS played (PadTest), the rest need games on the card. PSP is listed too. Other standalone-default systems (NDSI, ScummVM, 3DS, J2ME, CoCo, Ports) and Media left out |
@@ -47,14 +52,12 @@ spruce update.
 
 ## Still to do for spruce's onboarding checklist (CONTRIBUTING.md)
 
-- DraStic: `run_drastic_GKD350HUltra` (the launcher dispatches by family, and `basedos` has no
-  case), `Emu/NDS/config/drastic-GKD350HUltra.cfg` and its `.bak`, and screen rotation.
-- Flycast `FLYCAST_PAD_MAP`;
-  YabaSanshiro `SATURN_PAD_TABLE` and keymap; ScummVM target and ini.
-- Device lists in `Emu/*/config.json` for the standalone emulators, once each runs on BasedOS.
+- ScummVM target and ini; PortMaster (try it, then list it or mark it unsupported).
+- Device lists in `Emu/*/config.json` for the other standalone emulators (NDSI, ScummVM, Ports),
+  once each runs on BasedOS.
 - A PyUI system json of its own (the dArkMoss Pixel 2's is borrowed) and
   `App/ButtonReader/devices/GKD350HUltra.json`.
-- Apps with per-family cases: FileManagement, Gallery, PixelReader, Netplay.
+- Apps with per-family cases still to check: FileManagement, Netplay.
 - Validation: clean install and upgrade, a game per emulator.
 - PS games: spruce's own `PCSX-ReARMed.rmp` remap (every device) makes port 1 a digital pad and
   drives the D-pad from the left stick; set a DualShock per game for analog. Not specific to the 350H Ultra.

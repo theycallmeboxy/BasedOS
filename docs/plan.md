@@ -2,22 +2,25 @@
 
 ## Status
 
-**v0 boots on the device (2026-11-16, build `61371a3`), installed next to stock** with
-`tools/install-dev.sh`. Verified:
-- `rcS` starts at 1.58 s after the kernel, `sshd` at 1.79 s, `wlan0` at 2.17 s, and
-  the DHCP lease arrives at 10.1 s (Wi-Fi association dominates). RAM in use: 67 MB.
-- Root is the read-only squashfs on p1. `/data` is `basedos-data/` on p2, and
-  stock's `/storage` is untouched. `/mnt/SDCARD` exists, with `/mnt/sdcard`
-  pointing to it.
-- Wi-Fi uses the network copied from stock's connman. SSH uses stock's host
-  keys, so the fingerprints are the same.
-- `frontend-session` waits for a card quietly and prints one on-screen notice.
+**Runs spruce on the device (2026-11-19, build `39ab987`), installed next to stock** with
+`tools/install-dev.sh`. Power to spruce's menu takes about 4 s (boot-time.md); spruce starts at
+about 1.3 s of the kernel's uptime. Working and checked on the unit:
 
-Not yet tried: the frontend handoff with a real card, RTC time (`hwclock`),
-sleep and power key, audio, and the display from a frontend.
+- The layered root: the vendor layer (stock's files, built on the device's own stock, never
+  published) and the system layer (BasedOS's, about 2.4 MB), stacked by the initrd; A/B slots with
+  a boot counter that falls back to the other slot, then to stock.
+- Updates: a `.bosupd` at the card root, from spruce's BaseOS updater or by hand, installed at the
+  next boot into the spare slot and confirmed once it boots (`basedos-update`). The boot script is
+  not in a payload (see below).
+- spruce: menu, emulators (RetroArch, DSperate, DraStic, PPSSPP, Mupen64Plus, Flycast,
+  YabaSanshiro), E-Reader, Gallery, sleep and wake, clean shutdown, Wi-Fi and SSH (spruce's own,
+  as on its other devices), screenshots. Details in spruce-on-gkd.md.
+- Maintenance mode (Select held at power-on): BasedOS's own Wi-Fi and root SSH, no frontend.
+- The boot screen, quiet boot, boot keys, and the Volume Up + Volume Down shutdown watcher.
 
-Fixed during bring-up: OpenSSH 9.8 needs `/usr/lib/openssh/sshd-session`
-(added to the harvest list), and stock's sshd has no PAM (`UsePAM` removed).
+Not done yet: an installer card for users (the vendor layer is built on a PC from a backup today),
+a way for an update to change the boot script and its kernel options, Bluetooth, USB storage mode,
+PortMaster and ScummVM on spruce, and a clean-install test of `install-dev.sh` since the layer split.
 
 ## Starting point (verified on the device, 2026-11-16)
 
@@ -65,9 +68,9 @@ A/B is two system-layer files on p1 (`rootfs.squashfs`, `rootfs-b.squashfs`) and
 
 ## Boot flow
 
-1. U-Boot runs BasedOS's `boot.scr`, which loads `Image`, the DTB and `basedos-initrd.img`, then `booti` with the initrd.
-2. The kernel unpacks its built-in initramfs and then ours over it, so our `/init` replaces stock's. Our `/basedos/init` counts the boot on p2, mounts p1 read-only, loop-mounts the chosen slot's squashfs (falling back to the other slot, then to stock), then `switch_root`s and execs `/sbin/init`. `rcS` mounts p2 on `/data` and the tmpfs dirs.
-3. BusyBox init runs `rcS`: proc/sys/devpts, splash, the Wi-Fi module and firmware, dbus if needed, `/data` setup, the card mount, a pending update, then sshd in the background.
+1. U-Boot runs BasedOS's `boot.scr` (stock's, rewritten by `mkboot.py bootscr`), which loads `Image`, the panel DTB (BasedOS's 60 Hz one when present) and `basedos/initrd.uimg`, adds BasedOS's kernel options (`rdinit=/basedos/init`, `initcall_blacklist=raid6_select_algo`, `rcupdate.rcu_expedited=1`), then `booti` with the initrd. A missing or rejected initrd boots stock with stock's options.
+2. The kernel unpacks its built-in initramfs and then ours over it, so our `/init` replaces stock's. Our `/basedos/init` counts the boot on p2, mounts p1 read-only, loop-mounts the chosen slot's system layer and the vendor layer it names, stacks them with overlayfs (falling back to the other slot, then to stock), then `switch_root`s and execs `/sbin/init`. `rcS` mounts p2 on `/data` and the tmpfs dirs.
+3. BusyBox init runs `rcS`: proc/sys/devpts and the `/dev` links, the boot screen, the clock, `/data` (checked, then mounted), the card mount, a pending update (installed, then straight to a reboot), then the Wi-Fi driver and the shutdown-key watcher in the background. Joining Wi-Fi and SSH are the frontend's; BasedOS's own start only in maintenance mode or after a failing frontend.
 4. `frontend-session` (respawned) runs the frontend probe. With no card or frontend, it shows a splash and retries.
 
 ## Rootfs
@@ -91,19 +94,26 @@ The harvest source is either the backup image (`mmcblk0.img`: FAT p1, then its `
 
 ## Install paths
 
-- **Developer:** build on the PC, copy the files onto p1 and p2 from the rescue card (it boots stock from SD with the eMMC unmounted), then reboot.
+- **Developer:** build on the PC (`tools/wsl/build.sh`), then run `tools/install-dev.sh` on the device under stock, over SSH (user-guide.md). Later builds go in with `tools/dev/update-basedos.sh` from BasedOS, or as a `.bosupd`.
 - **Users, later:** an installer SD card built on the device from its own files (the rescue card mechanism): back up, harvest, install. Nothing vendor-made is published.
 
 ## Versions
 
-- **v0:** boots to BusyBox init. SSH over Wi-Fi, the card mounted at `/mnt/SDCARD`, frontend probe, splash. No updates, no A/B. Success means BasedOS hands off to a test frontend, then to spruce, whatever spruce does after that.
-- **v1:** power key handling, battery and charging, sleep, audio routing, a USB gadget (adb or storage), `.bosupd` with A/B and trial boots, boot log on the card.
-- **v2:** the installer card for users, boot time work, NextUI.
-- **spruce side** (in the spruce repo, in parallel): a `BASEOS_TARGET=gkd350hultra` platform checked before the CPU-ID case (the 350H Ultra's `0xd03` cores would otherwise match H700), a PyUI rotation like the RG28XX, and RetroArch on KMS/GBM.
+- **v0 (done 2026-11-16):** boots to BusyBox init. SSH over Wi-Fi, the card mounted at `/mnt/SDCARD`, frontend probe, splash. No updates, no A/B. Success means BasedOS hands off to a test frontend, then to spruce, whatever spruce does after that.
+- **v1 (mostly done):** power key handling, battery and charging, sleep and audio (spruce's, on BasedOS), `.bosupd` with A/B and trial boots. Left: a USB gadget (adb or storage), the boot log on the card.
+- **v2:** the installer card for users, boot time work (begun: boot-time.md), NextUI.
+- **spruce side (done; spruce-on-gkd.md)** (in the spruce repo, in parallel): a `BASEOS_TARGET=gkd350hultra` platform checked before the CPU-ID case (the 350H Ultra's `0xd03` cores would otherwise match H700), a PyUI rotation like the RG28XX, and RetroArch on KMS/GBM.
 
 ## Open questions
 
-- Is `BASEOS_PANEL_ROTATION_CCW` 90 or 270? Stock sway uses `transform 270` on DSI-1. To be checked on the device.
-- Can the display be driven without sway? spruce's RetroArch has no Wayland or KMS backend. We need to check that SDL2 KMSDRM on libmali's GBM can drive the panel.
-- How long does `bcmdhd` take to load and associate without connman (wpa_supplicant plus udhcpc)?
-- Where does `BASEOS_TARGET` resolve in spruce's `baseos_repo()` (which repo releases BasedOS)?
+Answered on the unit: the panel turns 270 (SDL's RGA path, `SCREEN_ROTATION=270` for PyUI); SDL2
+KMSDRM on libmali's GBM drives the panel without sway; `bcmdhd` loads in about 0.5 s and joins in
+5 to 9 s with wpa_supplicant and udhcpc; spruce's `baseos_repo` maps `gkd350hultra` to
+`theycallmeboxy/BasedOS`.
+
+Still open:
+
+- How an update changes the boot script or its kernel options (a small options file on p1 that
+  `boot.scr` reads, or a payload member). Today `tools/dev/update-basedos.sh` and `install-dev.sh`
+  write it.
+- The installer card for users: building the vendor layer on the device from its own stock.

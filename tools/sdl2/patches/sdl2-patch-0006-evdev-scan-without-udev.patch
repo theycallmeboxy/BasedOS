@@ -1,0 +1,81 @@
+diff --git a/src/core/linux/SDL_evdev.c b/src/core/linux/SDL_evdev.c
+index de1b758db..6b946928e 100644
+--- a/src/core/linux/SDL_evdev.c
++++ b/src/core/linux/SDL_evdev.c
+@@ -37,6 +37,7 @@
+ #include <fcntl.h>
+ #include <sys/ioctl.h>
+ #include <linux/input.h>
++#include <dirent.h>
+ 
+ #include "SDL.h"
+ #include "SDL_endian.h"
+@@ -160,6 +161,59 @@ static void SDL_EVDEV_UpdateKeyboardMute(void)
+     }
+ }
+ 
++#ifndef SDL_USE_LIBUDEV
++/* BasedOS: no udev, so do what its initial scan would: open every event node once, classify it
++   as udev's input_id does (SDL_EVDEV_GuessDeviceClass), and take the same classes the udev
++   callback takes. Without it only SDL_EVDEV_DEVICES was read, and keyboards such as gptokeyb's
++   virtual one never reached the app. Nodes created later are not picked up (no hotplug). */
++static void SDL_EVDEV_scan_devices(void)
++{
++    DIR *dir = opendir("/dev/input");
++    struct dirent *entry;
++
++    if (!dir) {
++        return;
++    }
++    while ((entry = readdir(dir)) != NULL) {
++        unsigned long bitmask_ev[NBITS(EV_MAX)];
++        unsigned long bitmask_abs[NBITS(ABS_MAX)];
++        unsigned long bitmask_key[NBITS(KEY_MAX)];
++        unsigned long bitmask_rel[NBITS(REL_MAX)];
++        char path[300];
++        int fd, devclass;
++
++        if (SDL_strncmp(entry->d_name, "event", 5) != 0) {
++            continue;
++        }
++        (void)SDL_snprintf(path, sizeof(path), "/dev/input/%s", entry->d_name);
++        fd = open(path, O_RDONLY | O_CLOEXEC);
++        if (fd < 0) {
++            continue;
++        }
++        SDL_zeroa(bitmask_ev);
++        SDL_zeroa(bitmask_abs);
++        SDL_zeroa(bitmask_key);
++        SDL_zeroa(bitmask_rel);
++        if (ioctl(fd, EVIOCGBIT(0, sizeof(bitmask_ev)), bitmask_ev) < 0) {
++            close(fd);
++            continue;
++        }
++        (void)ioctl(fd, EVIOCGBIT(EV_ABS, sizeof(bitmask_abs)), bitmask_abs);
++        (void)ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(bitmask_key)), bitmask_key);
++        (void)ioctl(fd, EVIOCGBIT(EV_REL, sizeof(bitmask_rel)), bitmask_rel);
++        close(fd);
++
++        devclass = SDL_EVDEV_GuessDeviceClass(bitmask_ev, bitmask_abs, bitmask_key, bitmask_rel);
++        if (!(devclass & (SDL_UDEV_DEVICE_MOUSE | SDL_UDEV_DEVICE_KEYBOARD | SDL_UDEV_DEVICE_TOUCHSCREEN | SDL_UDEV_DEVICE_TOUCHPAD)) ||
++            (devclass & SDL_UDEV_DEVICE_JOYSTICK)) {
++            continue;
++        }
++        SDL_EVDEV_device_added(path, devclass);
++    }
++    closedir(dir);
++}
++#endif /* !SDL_USE_LIBUDEV */
++
+ int SDL_EVDEV_Init(void)
+ {
+     if (!_this) {
+@@ -207,7 +261,7 @@ int SDL_EVDEV_Init(void)
+                     }
+                 }
+             } else {
+-                /* TODO: Scan the devices manually, like a caveman */
++                SDL_EVDEV_scan_devices();
+             }
+         }
+ #endif /* SDL_USE_LIBUDEV */

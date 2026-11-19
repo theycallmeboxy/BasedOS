@@ -5,6 +5,8 @@
 # Vulkan windows are left alone. The 350H Ultra's 1440x1600 panel is shown as 1600x1440.
 # BasedOS's patch 0005 turns it on the GPU instead when there is no /dev/rga (mainline kernels);
 # SDL_KMSDRM_ROTATION=gpu|rga picks one, SDL_KMSDRM_ROTATION_STATS=1|2|3 times it.
+# Patch 0006 finds keyboards, mice and touch devices without udev (BasedOS has none): one scan of
+# /dev/input at start, classified as udev's input_id does.
 #
 # librga is built here too, from Rockchip's open source (JeffyCN/mirrors linux-rga-multi, 1.10.5,
 # Apache-2.0): the stock image's librga is 1.3.2, older than the RK3576, and the kernel's RGA

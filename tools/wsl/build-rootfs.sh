@@ -7,7 +7,7 @@
 #   vendor    only what manifest/harvest.list takes from stock (and the libraries those need).
 #             Built from your own device's firmware, never published. Named by a hash of its
 #             contents (VENDOR_ID), so the same stock build always gives the same id.
-#   system    everything of BasedOS's own, on top: BusyBox, the overlay, SDL2, librga, wpa_cli,
+#   system    everything of BasedOS's own, on top: BusyBox, the overlay, SDL2, librga, wpa_cli, bash,
 #             the boot tools, identity files, and BasedOS's edits of stock files as whole copies.
 #             It names the vendor layer it was built against (usr/share/basedos/needs-vendor);
 #             a .bosupd carries this one alone.
@@ -79,6 +79,12 @@ echo "--- system: wpa_cli"
 # The frontend's Wi-Fi tool (tools/wpa_cli/build.sh); stock has wpa_supplicant without it.
 install -m 755 "$REPO/prepared/wpa_cli/wpa_cli" usr/bin/wpa_cli
 install -D -m 644 "$REPO/prepared/wpa_cli/COPYING" usr/share/licenses/wpa_cli/COPYING
+
+echo "--- system: bash"
+# PortMaster and its ports run on bash (tools/bash/build.sh); stock has none. Linked against the
+# vendor layer's glibc only.
+install -m 755 "$REPO/prepared/bash/bash" usr/bin/bash
+install -D -m 644 "$REPO/prepared/bash/COPYING" usr/share/licenses/bash/COPYING
 
 echo "--- system: busybox"
 # Links only where neither layer has the file: a stock tool beats BusyBox's applet, and

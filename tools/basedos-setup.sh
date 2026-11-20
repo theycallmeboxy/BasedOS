@@ -77,7 +77,7 @@ done
 
 say() { printf '%s\n' "$*"; }
 step() { printf '\n== %s\n' "$*"; }
-die() { printf '\nSTOPPED: %s\n' "$*" >&2; cleanup; exit 1; }
+die() { printf '\nSTOPPED: %s\n' "$*" >&2; cleanup; grep -q " $T/" /proc/mounts || rm -rf "$T"; exit 1; }
 cleanup() {
 	for m in $(awk -v t="$T/mnt/" 'index($2, t) == 1 { print $2 }' /proc/mounts | sort -r); do umount "$m" 2>/dev/null; done
 	[ -n "${UDEV_HELD:-}" ] && udevadm control --start-exec-queue 2>/dev/null
@@ -466,19 +466,27 @@ loader() {
 		"$(dd if="$D" bs=512 skip=64 count=32704 2>/dev/null | md5sum)" ] || die "the loader copy doesn't read back"
 }
 
-# backup_emmc <dir on the card>: the whole eMMC in 2000 MiB pieces, each read straight from the
-# eMMC (dd skip/count) and zstd-compressed to its own file (.aa, .ab, ...; zstd decompresses
-# them back to back as one stream). The MD5 of everything read is taken on the way, through one
-# md5sum on a FIFO, and the backup is checked against it. With the boot areas, the partition
-# table, backup.info (what the recovery card checks) and SHA256SUMS. BK is the folder made.
+# backup_emmc <drive>: a full backup of the built-in storage in <drive>/backup/, images only:
+#   GKD350HUltra-eMMC-<date>.img.zst.001, .002, ...   the main area (mmcblk0) byte for byte, in
+#       2000 MiB pieces, each read straight from the eMMC (dd skip/count) and zstd-compressed on
+#       its own (zstd decompresses them back to back as one stream; every piece carries zstd's
+#       own checksum)
+#   GKD350HUltra-eMMC-<date>-boot0.img.zst, -boot1.img.zst   the eMMC's two boot areas
+# The main area's MD5 is taken while it's read (one md5sum on a FIFO), and the backup is read back
+# and checked against it, the boot areas likewise. Sets BK_DIR, BK_NAME (the name before the
+# extensions), BK_MD5, BK_BOOT0_MD5 and BK_BOOT1_MD5.
 backup_emmc() {
 	step "Backing up the built-in storage"
-	BK=$1/basedos-emmc-backup-$(date +%Y%m%d-%H%M)
-	mkdir -p "$BK" || die "can't write $BK"
+	BK_DIR=$1/backup
+	BK_NAME=GKD350HUltra-eMMC-$(date +%Y%m%d-%H%M)
+	mkdir -p "$BK_DIR" || die "can't write $BK_DIR"
 	sync
 	w0=$(awk '{ print $5 }' /sys/block/$EMMC/${EMMC}p2/stat)
-	for b in boot0 boot1; do dd if=/dev/${EMMC}$b of="$BK/${EMMC}$b.img" bs=1M 2>/dev/null || die "couldn't read ${EMMC}$b"; done
-	parted -s /dev/$EMMC unit s print > "$BK/partitions.txt" 2>/dev/null
+	BK_BOOT0_MD5=$(md5sum < /dev/${EMMC}boot0 | cut -c1-32)
+	BK_BOOT1_MD5=$(md5sum < /dev/${EMMC}boot1 | cut -c1-32)
+	for b in boot0 boot1; do
+		zstd -3 -q -c < /dev/$EMMC$b > "$BK_DIR/$BK_NAME-$b.img.zst" || die "couldn't back up the $b area"
+	done
 	_bytes=$(( $(cat /sys/block/$EMMC/size) * 512 ))
 	_piece=500                              # 4 MiB blocks: 2000 MiB a piece
 	_np=$(( (_bytes + _piece * 4194304 - 1) / (_piece * 4194304) ))
@@ -487,10 +495,10 @@ backup_emmc() {
 	exec 3> "$T/fifo"
 	_i=0
 	while [ $_i -lt $_np ]; do
-		_s=$(awk -v i=$_i 'BEGIN { printf "%c%c", 97 + int(i / 26), 97 + i % 26 }')
+		_s=$(printf '%03d' $((_i + 1)))
 		say "reading and compressing part $((_i + 1)) of $_np..."
 		dd if=/dev/$EMMC bs=4M skip=$((_i * _piece)) count=$_piece 2>/dev/null | tee /dev/fd/3 |
-			zstd -3 -T0 -q -c > "$BK/$EMMC.img.zst.$_s" || { exec 3>&-; die "the backup didn't complete (is the card full?)"; }
+			zstd -3 -T0 -q -c > "$BK_DIR/$BK_NAME.img.zst.$_s" || { exec 3>&-; die "the backup didn't complete (is the card full?)"; }
 		_i=$((_i + 1))
 	done
 	exec 3>&-
@@ -499,39 +507,16 @@ backup_emmc() {
 	sync
 	echo 3 > /proc/sys/vm/drop_caches
 	say "checking the backup (reading it back from the card)..."
-	want=$(cat "$T/read.md5")
-	got=$(cat "$BK/$EMMC.img.zst."* | zstd -dc -q | md5sum | cut -c1-32)
+	BK_MD5=$(cat "$T/read.md5")
 	rm -f "$T/fifo" "$T/read.md5"
-	[ ${#want} -eq 32 ] && [ "$want" = "$got" ] || die "the backup on the card doesn't read back as the eMMC was read"
-	echo "$want  $EMMC.img" > "$BK/$EMMC.img.md5"
-	cat > "$BK/backup.info" <<EOF
-IMG=$EMMC.img
-IMG_MD5=$want
-EMMC_CID=$(cat /sys/block/$EMMC/device/cid)
-EMMC_SECTORS=$(cat /sys/block/$EMMC/size)
-DATE=$(date '+%Y-%m-%d %H:%M')
-STOCK=$STOCK_DESC$([ -d "$STOCK_P1/basedos" ] && echo ", with BasedOS")
-EOF
-	cat > "$BK/README.txt" <<EOF
-GKD 350H Ultra eMMC backup, $(date), $STOCK_DESC, made by basedos-setup.
-
-$EMMC.img.zst.aa, .ab, ...   the whole eMMC ($EMMC.img), zstd-compressed, in parts of 2000 MiB of
-                   the eMMC each. Join them in order (aa, ab, ac, ...) before decompressing:
-                     Windows:  copy /b $EMMC.img.zst.aa + $EMMC.img.zst.ab + ... $EMMC.img.zst
-                     Linux:    cat $EMMC.img.zst.* > $EMMC.img.zst
-                   then  zstd -d $EMMC.img.zst  gives $EMMC.img (md5 in $EMMC.img.md5).
-${EMMC}boot0.img, ${EMMC}boot1.img   the eMMC's hardware boot areas.
-partitions.txt     the partition table, as parted printed it.
-backup.info        what a BasedOS recovery card checks before restoring (this eMMC's ID and size).
-SHA256SUMS         every file here.
-
-On a BasedOS recovery card, the card restores it by itself. Otherwise, write $EMMC.img over the
-whole eMMC: see BasedOS's docs/recovery.md (maskrom mode, or from a rescue card).
-EOF
-	(cd "$BK" && sha256sum $(ls | grep -v '^SHA256SUMS$') > SHA256SUMS)
+	[ ${#BK_MD5} -eq 32 ] && [ "$(cat "$BK_DIR/$BK_NAME.img.zst."* | zstd -dc -q | md5sum | cut -c1-32)" = "$BK_MD5" ] ||
+		die "the backup on the card doesn't read back as the built-in storage was read"
+	[ "$(zstd -dc -q "$BK_DIR/$BK_NAME-boot0.img.zst" | md5sum | cut -c1-32)" = "$BK_BOOT0_MD5" ] &&
+		[ "$(zstd -dc -q "$BK_DIR/$BK_NAME-boot1.img.zst" | md5sum | cut -c1-32)" = "$BK_BOOT1_MD5" ] ||
+		die "the boot areas' backup doesn't read back as they were read"
 	[ "$w0" = "$w1" ] || say "Note: stock wrote to its data while this copied; the backup is the built-in storage as it was read."
 	sync
-	say "saved in $(basename "$BK")"
+	say "backup made and checked: $(du -sk "$BK_DIR" | awk '{ printf "%.1f", $1 * 1024 / 1e9 }') GB"
 }
 
 # The recovery card: MBR, one FAT32 partition (U-Boot reads FAT, not exFAT), bootable.
@@ -553,7 +538,19 @@ if [ "$REC" = yes ]; then
 		put "$STOCK_P1/$f" "$C/recovery/$f"
 	done
 	put "$HERE/recovery-initrd.uimg" "$C/recovery/initrd.uimg"
-	basename "$BK" > "$T/backup"; put "$T/backup" "$C/recovery/backup"
+	# What the recovery system checks before it restores: the backup's name, the images' MD5s,
+	# and the eMMC it's of (its ID and size).
+	cat > "$T/backup.info" <<EOF
+NAME=$BK_NAME
+IMG_MD5=$BK_MD5
+BOOT0_MD5=$BK_BOOT0_MD5
+BOOT1_MD5=$BK_BOOT1_MD5
+EMMC_CID=$(cat /sys/block/$EMMC/device/cid)
+EMMC_SECTORS=$(cat /sys/block/$EMMC/size)
+DATE=$(date '+%Y-%m-%d %H:%M')
+STOCK=$STOCK_DESC$([ -d "$STOCK_P1/basedos" ] && echo ", with BasedOS")
+EOF
+	put "$T/backup.info" "$C/recovery/backup.info"
 	cat > "$C/RECOVERY.txt" <<EOF
 BasedOS recovery card for one GKD 350H Ultra (eMMC ID $(cat /sys/block/$EMMC/device/cid)), made
 $(date) by basedos-setup, from $STOCK_DESC.
@@ -563,8 +560,9 @@ backup, then puts the built-in storage back exactly as it was when this card was
 once you hold A for 5 seconds. B powers off without writing anything. Take the card out to start
 normally.
 
-Keep this card as it is. $(basename "$BK")/ is the backup (its README.txt says how to restore it
-from a PC as well).
+Keep this card as it is. The backup is in backup/: images of the built-in storage, the main area
+in numbered pieces (join them in order, then zstd -d, for a plain image a PC can write) and its
+two boot areas.
 EOF
 	# Its boot script last: until it's there, the card doesn't boot.
 	put "$HERE/recovery.scr" "$C/boot.scr"
@@ -739,7 +737,7 @@ EOF
 	done
 	if [ "$FE" = yes ]; then RESULT="BasedOS $VERSION and $FE_NAME are on the card. Restart the device with the card in to start them."
 	else RESULT="BasedOS $VERSION is on the card. Power off, copy your frontend (spruce) onto the card's BASEOS drive from a PC, put the card back in and power on."; fi
-	[ "$BACKUP" = yes ] && RESULT="$RESULT The backup image is in $(basename "$BK")/ on the BASEOS drive: copy it to your PC and keep it."
+	[ "$BACKUP" = yes ] && RESULT="$RESULT The backup is in the backup folder on the BASEOS drive: copy it to your PC and keep it."
 elif [ "$TARGET" = emmc ]; then
 	vendor_set
 	step "Installing BasedOS on the built-in storage"
@@ -767,11 +765,13 @@ else
 	RESULT="The recovery card is ready. Power off and take it out; keep it safe. To restore the built-in storage: power off, put the card in, power on, and follow the screen."
 fi
 
-rm -rf "${VS:-$T/none}" "$T/boot.env" "$T/backup" "$T/mismatch" "$DL"
+rm -rf "${VS:-$T/none}"
 # The card stays out of stock's automounter until the next power-on: released now, it would mount
 # the new card's partitions and write to them.
 [ -n "${UDEV_HELD:-}" ] && UDEV_HELD=""
 cleanup
+# setup's own folder in RAM, once nothing is mounted under it.
+grep -q " $T/" /proc/mounts || rm -rf "$T"
 step "Done"
 say "$RESULT"
 exit 0

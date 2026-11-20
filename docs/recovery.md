@@ -65,30 +65,39 @@ They are hashes only, so no vendor files are redistributed.
 Whole-image and partition hashes are specific to each unit (`/storage`, the
 resize log, the MBR disk ID), so they aren't listed here.
 
-## Recovery card (basedos-setup; written 2026-11-20, not yet tested on a unit)
+## Recovery card (basedos-setup; 2026-11-20)
 
 `basedos-setup.sh`, choice 3 (or offered before an eMMC install), makes a card that restores the
-eMMC with no PC, then or later:
+eMMC with no PC, then or later. Tested 2026-11-20 (pre.2's layout): the card boots, the recovery
+system checks the backup, and B powers off without writing. The restore itself is untested.
 
 - The card: MBR, the eMMC's loader copied to sectors 64 to 32767 (as on the rescue card, for an
   eMMC whose own loader is damaged), one bootable FAT32 partition `RECOVERY` from 16 MiB (U-Boot
-  reads FAT, not exFAT) holding
-  `boot.scr` (`tools/recovery/boot.cmd`), `recovery/` (this device's own stock `Image` and DTBs,
-  copied when the card is made, and the recovery initrd) and the backup folder
-  `basedos-emmc-backup-<date>/` (the whole eMMC as zstd in 2 GB parts, boot0 and boot1, the
-  partition table, `backup.info` with the eMMC's ID, size and the image's MD5, and SHA256SUMS).
-- The backup is checked when it's made: the parts are decompressed again and compared with an
-  MD5 taken while the eMMC was read.
+  reads FAT, not exFAT) holding `boot.scr` (`tools/recovery/boot.cmd`), `RECOVERY.txt`,
+  `recovery/` (this device's own stock `Image` and DTBs, copied when the card is made, the
+  recovery initrd, and `backup.info`: the backup's name, the images' MD5s, the eMMC's ID and
+  size) and `backup/`.
+- A backup (the same on a recovery card and, optionally, on a BasedOS SD card's `BASEOS` drive)
+  is a `backup/` folder of images only: `GKD350HUltra-eMMC-<date>.img.zst.001`, `.002`, ... (the
+  eMMC's main area, byte for byte, from sector 0: partition table, the Rockchip loader at sector
+  64, stock's p1 and p2; 2000 MiB of it per piece, each piece its own zstd stream with zstd's
+  checksum, so they decompress back to back as one image) and `-boot0.img.zst`, `-boot1.img.zst`
+  (the eMMC's two boot areas; on this unit they hold an unrelated Amlogic loader that the RK3576
+  never runs, kept for completeness). The main area alone is enough to boot: joined and
+  decompressed (`cat *.img.zst.* | zstd -d > emmc.img`), it is what maskrom writes from offset 0.
+  The eMMC's RPMB area can't be read without its key and isn't touched by a restore.
+- Every backup is checked when it's made: read back and compared with MD5s taken while the eMMC
+  was read.
 - Booted, the recovery initrd (`tools/recovery/init`: static BusyBox, zstd, BasedOS's boot screen
   and key reader; nothing of stock's) writes nothing until you confirm. It refuses a backup of
-  another unit's eMMC (ID) or a different size, checks every file against SHA256SUMS and wants
-  30 % battery or the charger. Then it shows what it would restore: hold A 5 s to restore, B to
-  power off.
-- The restore writes boot0 and boot1 only where they differ, then the image, with the MD5 of what
-  it wrote checked against the backup's, then reads the whole eMMC back and checks it again. On a
-  failure it says so and offers to try again.
-- It needs the eMMC's own U-Boot to still start (U-Boot runs the card's script). A device that
-  only reaches maskrom needs the PC route below.
+  another unit's eMMC (ID) or a different size, decompresses the backup and checks it against the
+  recorded MD5s, and wants 30 % battery or the charger. Then it shows what it would restore: hold
+  A 5 s to restore, B to power off.
+- The restore writes boot0 and boot1 only where they differ, then the main area, with the MD5 of
+  what it wrote checked, then reads the whole eMMC back and checks it again. On a failure it says
+  so and offers to try again.
+- It needs the eMMC's own U-Boot, or the card's copy of the loader, to start. A device that only
+  reaches maskrom needs the PC route below.
 
 ## Rescue SD card (built and boot-tested 2026-11-16)
 

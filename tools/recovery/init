@@ -2,8 +2,9 @@
 # BasedOS recovery card's init (rdinit=/recovery/init; tools/recovery/boot.cmd starts it with the
 # device's own stock kernel). It puts the eMMC back byte for byte from the backup on the card:
 #
-#   1. checks, writing nothing: the card's backup is this device's eMMC (its ID and size), every
-#      file matches SHA256SUMS, and the battery has enough charge (or the charger is in);
+#   1. checks, writing nothing: the card's backup (backup/, named in recovery/backup.info) is this
+#      device's eMMC (its ID and size), the images decompress to the MD5s recorded when it was
+#      made, and the battery has enough charge (or the charger is in);
 #   2. shows what it would restore, and restores only once A has been held for 5 seconds
 #      (B powers off);
 #   3. writes the image to the eMMC, checking the MD5 of what it wrote, then reads the whole eMMC
@@ -80,21 +81,28 @@ EMMC=$(disk_of 2a330000.mmc)
 [ -b /dev/${CARD}p1 ] || usleep 500000
 mount -t vfat -o ro /dev/${CARD}p1 /card || stop "The card's partition doesn't mount."
 
-# The backup this card was made with (recovery/backup names its folder).
-BK=/card/$(head -1 /card/recovery/backup 2>/dev/null)
-[ -f "$BK/backup.info" ] || stop "This card has no backup (recovery/backup, backup.info)."
-info() { sed -n "s/^$1=//p" "$BK/backup.info" | head -1; }
-IMG=$(info IMG) WANT_MD5=$(info IMG_MD5) WANT_CID=$(info EMMC_CID) WANT_SECTORS=$(info EMMC_SECTORS)
-WHEN=$(info DATE) WHAT=$(info STOCK)
-[ -n "$IMG" ] && [ ${#WANT_MD5} -eq 32 ] && [ -n "$WANT_SECTORS" ] || stop "The backup's backup.info is incomplete."
+# The backup this card was made with: its images in backup/, named in recovery/backup.info.
+BK=/card/backup
+[ -f /card/recovery/backup.info ] || stop "This card has no recovery/backup.info."
+info() { sed -n "s/^$1=//p" /card/recovery/backup.info | head -1; }
+NAME=$(info NAME) WANT_MD5=$(info IMG_MD5) WANT_CID=$(info EMMC_CID) WANT_SECTORS=$(info EMMC_SECTORS)
+WANT_BOOT0=$(info BOOT0_MD5) WANT_BOOT1=$(info BOOT1_MD5) WHEN=$(info DATE) WHAT=$(info STOCK)
+[ -n "$NAME" ] && [ ${#WANT_MD5} -eq 32 ] && [ -n "$WANT_SECTORS" ] || stop "The card's recovery/backup.info is incomplete."
+[ -f "$BK/$NAME.img.zst.001" ] || stop "The backup's images aren't in backup/ ($NAME)."
 SECTORS=$(cat /sys/block/$EMMC/size)
 CID=$(cat /sys/block/$EMMC/device/cid)
 [ "$CID" = "$WANT_CID" ] || stop "This backup is of another 350H Ultra's eMMC" "(ID $WANT_CID; this one is $CID)." "Nothing was written."
 [ "$SECTORS" = "$WANT_SECTORS" ] || stop "The backup is $WANT_SECTORS sectors; this eMMC is $SECTORS." "Nothing was written."
 
-screen "checking the backup (a minute or two)" "!RECOVERY CARD" "Backup of $WHEN" "$WHAT" "Checking every file against SHA256SUMS..."
-(cd "$BK" && sha256sum -c SHA256SUMS > /tmp/check 2>&1) ||
-	stop "The backup on this card is damaged:" "$(grep -v ': OK$' /tmp/check | head -3)" "Nothing was written."
+screen "checking the backup (a few minutes)" "!RECOVERY CARD" "Backup of $WHEN" "$WHAT" "Checking the backup..."
+[ "$(cat "$BK/$NAME.img.zst."* | zstd -dcq | md5sum | cut -c1-32)" = "$WANT_MD5" ] ||
+	stop "The backup on this card is damaged or incomplete" "(it doesn't decompress to what was backed up)." "Nothing was written."
+for b in boot0 boot1; do
+	[ -f "$BK/$NAME-$b.img.zst" ] || continue
+	case $b in boot0) _w=$WANT_BOOT0 ;; *) _w=$WANT_BOOT1 ;; esac
+	[ "$(zstd -dcq "$BK/$NAME-$b.img.zst" | md5sum | cut -c1-32)" = "$_w" ] ||
+		stop "The backup's $b image is damaged." "Nothing was written."
+done
 log "backup $BK checks out"
 
 # Enough charge for a write of about 15 GB: 30 %, or the charger in.
@@ -124,20 +132,21 @@ progress() {
 restore() {
 	# The boot areas first, only where they differ (they're tiny).
 	for b in boot0 boot1; do
-		[ -f "$BK/$EMMC$b.img" ] && [ -b /dev/$EMMC$b ] || continue
-		[ "$(md5sum < /dev/$EMMC$b)" = "$(md5sum < "$BK/$EMMC$b.img")" ] && continue
+		[ -f "$BK/$NAME-$b.img.zst" ] && [ -b /dev/$EMMC$b ] || continue
+		case $b in boot0) _w=$WANT_BOOT0 ;; *) _w=$WANT_BOOT1 ;; esac
+		[ "$(md5sum < /dev/$EMMC$b | cut -c1-32)" = "$_w" ] && continue
 		echo 0 > /sys/block/$EMMC$b/force_ro
-		dd if="$BK/$EMMC$b.img" of=/dev/$EMMC$b bs=1M conv=fsync 2>/dev/null
+		zstd -dcq "$BK/$NAME-$b.img.zst" | dd of=/dev/$EMMC$b bs=1M conv=fsync 2>/dev/null
 		echo 1 > /sys/block/$EMMC$b/force_ro
 		echo 3 > /proc/sys/vm/drop_caches
-		[ "$(md5sum < /dev/$EMMC$b)" = "$(md5sum < "$BK/$EMMC$b.img")" ] || { FAIL="$b didn't write"; return 1; }
+		[ "$(md5sum < /dev/$EMMC$b | cut -c1-32)" = "$_w" ] || { FAIL="$b didn't write"; return 1; }
 		log "$b restored"
 	done
 	# The image, the MD5 of what's written taken on the way.
 	rm -f /tmp/fifo /tmp/w.md5; mkfifo /tmp/fifo
 	md5sum < /tmp/fifo | cut -c1-32 > /tmp/w.md5 & M=$!
 	progress 7 writing & P=$!
-	cat "$BK/$IMG.zst."* | zstd -dcq | tee /tmp/fifo | dd of=/dev/$EMMC bs=4M conv=fsync 2>/tmp/dd.err
+	cat "$BK/$NAME.img.zst."* | zstd -dcq | tee /tmp/fifo | dd of=/dev/$EMMC bs=4M conv=fsync 2>/tmp/dd.err
 	rc=$?
 	wait $M; kill $P 2>/dev/null; wait $P 2>/dev/null
 	sync
@@ -165,7 +174,7 @@ while :; do
 		"Press B to power off (nothing is written)."
 	hold_a 5 || off
 	FAIL=""
-	log "restoring $BK to $EMMC"
+	log "restoring $NAME to $EMMC"
 	if restore; then
 		screen "Press B to power off" "!DONE" "The eMMC is back as it was on $WHEN." \
 			"Power off, take this card out, and the device" "starts from the eMMC."

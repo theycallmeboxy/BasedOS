@@ -17,6 +17,28 @@ between the 350H Ultra and your other spruce devices.
   [spruce-on-gkd.md](spruce-on-gkd.md)).
 - A PC with Python 3 and WSL (Ubuntu) for building. The scripts are in `tools/`.
 
+## Setup on the device (basedos-setup; not yet tested on a unit)
+
+`basedos-setup.sh` runs on the 350H Ultra itself, under stock, over SSH, from a BasedOS release
+folder (`out/` of a build, without the `vendor-*` folder: setup makes that from your device):
+`ssh root@<device>` (stock's root has no password), copy the folder to `/tmp`, then
+`sh /tmp/<folder>/basedos-setup.sh`. It asks everything first, shows what it will do, asks you to
+type the confirmations, and only then writes. Three choices:
+
+1. **Install BasedOS to the eMMC**, next to stock. It recommends making a recovery card (3) first
+   and offers to in the same run (the install happens only once the card is made and checked).
+   You type `INSTALL` to confirm you understand the eMMC is modified, know the risks and have a
+   backup.
+2. **Create a BasedOS SD card.** The eMMC is not modified. The card gets BasedOS's hidden
+   partitions and a `BASEOS` drive you copy spruce to from your PC. It asks whether to dual boot
+   stock (a copy of stock on the card, started once from the maintenance menu) and whether to put
+   a backup image of the eMMC on the card. You type `ERASE` to confirm the card.
+3. **Create a recovery SD card**: see "Recovery" below.
+
+Every card it makes is erased (`ERASE`), and it states the card size it needs first. With
+`--target emmc|sd|recovery` and the other options (the script's header lists them) plus `--card
+<ID> --yes`, it runs without questions.
+
 ## Install (developer install, next to stock)
 
 1. Back up the eMMC: `tools/dev/backup-emmc.sh` (see recovery.md). Keep two copies.
@@ -100,6 +122,9 @@ Without a card, BasedOS waits for one and says so once on screen.
 
 If anything goes wrong, see [recovery.md](recovery.md). In short, from gentlest to strongest:
 
+0. **Recovery card** (basedos-setup, choice 3; not yet tested on a unit): power on with it in; it
+   checks its backup, and when you hold A for 5 seconds it writes the eMMC back exactly as it was
+   when the card was made, then checks it. B powers off without writing. No PC needed.
 1. **Rescue SD card**: boots stock from the card; the eMMC is untouched and can be restored.
 2. **USB disk mode**: hold **Menu + Home** and power on; the whole eMMC appears on your PC.
 3. **Maskrom**: hold **Volume Down** and power on; RKDevTool can rewrite the whole eMMC.

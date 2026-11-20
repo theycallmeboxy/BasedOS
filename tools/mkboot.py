@@ -3,8 +3,12 @@
 
   mkboot.py initrd <busybox.static> <out initrd.uimg>
   mkboot.py script <initrd/boot.cmd> <out boot.scr>
+  mkboot.py recovery-initrd <dir> <out initrd.uimg>       (the recovery card's)
   mkboot.py bootscr <stock boot.scr> <out boot.scr>       (the old, stock-derived script)
   mkboot.py dtb <stock rk3576-gkd-atom.dtb> <out rk3576-gkd-atom.dtb>
+
+recovery-initrd: the same, holding every file in <dir> as /recovery/<name> (tools/recovery/
+build.sh assembles it: init, busybox, zstd, the boot screen and keys, their licences).
 
 initrd: a gzip cpio (newc) holding /basedos/init and /basedos/busybox, wrapped
 as a legacy U-Boot ramdisk image. The kernel unpacks it over its built-in
@@ -57,6 +61,29 @@ def initrd(busybox, out):
     with open(out, "xb") as f:
         f.write(uimage(gz, typ=3, name=b"BasedOS initrd"))  # IH_TYPE_RAMDISK, uncompressed wrapper
     print(f"{out}: cpio {len(cpio)} B, gzip {len(gz)} B")
+
+
+def recovery_initrd(src, out):
+    entries = [("recovery", 0o40755, b"")]
+    for root, dirs, files in sorted(os.walk(src)):
+        dirs.sort()
+        rel = os.path.relpath(root, src).replace(os.sep, "/")
+        base = "recovery" if rel == "." else "recovery/" + rel
+        if rel != ".":
+            entries.append((base, 0o40755, b""))
+        for n in sorted(files):
+            data = open(os.path.join(root, n), "rb").read()
+            if data.startswith(b"#!"):
+                data = data.replace(b"\r\n", b"\n")
+            exe = data.startswith(b"#!") or data.startswith(b"\x7fELF")
+            entries.append((base + "/" + n, 0o100755 if exe else 0o100644, data))
+    if not any(e[0] == "recovery/init" for e in entries):
+        sys.exit(f"{src} has no init")
+    cpio = cpio_newc(entries)
+    gz = gzip.compress(cpio, 9, mtime=0)
+    with open(out, "xb") as f:
+        f.write(uimage(gz, typ=3, name=b"BasedOS recovery initrd"))
+    print(f"{out}: {len(entries)} entries, cpio {len(cpio)} B, gzip {len(gz)} B")
 
 
 def script(src, out):
@@ -211,6 +238,8 @@ def dtb(stock, out):
 def main():
     if len(sys.argv) == 4 and sys.argv[1] == "initrd":
         initrd(sys.argv[2], sys.argv[3])
+    elif len(sys.argv) == 4 and sys.argv[1] == "recovery-initrd":
+        recovery_initrd(sys.argv[2], sys.argv[3])
     elif len(sys.argv) == 4 and sys.argv[1] == "script":
         script(sys.argv[2], sys.argv[3])
     elif len(sys.argv) == 4 and sys.argv[1] == "bootscr":

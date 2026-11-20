@@ -5,7 +5,9 @@
 # same script serves an eMMC install (beside stock's own files, which it leaves alone) and an SD
 # card install.
 #
-#   basedos/boot.env               vendor=<id>: the base this install is built on (docs/plan.md)
+#   basedos/boot.env               basedos_vendor=<id>: the base this install is built on
+#                                  (docs/plan.md); basedos_card_stock=1 on an SD card that also
+#                                  carries a copy of stock (basedos-setup's dual boot)
 #   basedos/vendor-<id>/Image      the kernel, from that base's stock firmware
 #   basedos/vendor-<id>/*.dtb      stock's device trees, unchanged
 #   basedos/initrd.uimg            BasedOS's initrd: picks the A/B system slot, stacks it on the
@@ -16,11 +18,24 @@
 # disk.
 setenv bdev "${devtype} ${devnum}:${distro_bootpart}"
 setenv basedos_vendor
+setenv basedos_card_stock
 # boot.env goes where the kernel will be loaded, not over this script (${scriptaddr}).
 if load ${bdev} ${kernel_addr_r} basedos/boot.env; then
 	env import -t ${kernel_addr_r} ${filesize}
 fi
 setenv vset basedos/vendor-${basedos_vendor}
+
+# An SD card carrying a copy of stock (on its p1 and p2, laid out as on the eMMC): stock's init
+# mounts mmcblk0p1 and p2 by name, so for stock to start from the card (stock once, or the
+# initrd's fallback) the card has to be mmcblk0. The kernel numbers mmcblk disks by the DT's
+# aliases, so they are swapped below (the card mmc0, the eMMC mmc1), as the old rescue card's
+# DTBs had them (tools/rescue). Every other boot keeps stock's numbering.
+setenv swap 0
+if test "${devnum}" != "0"; then
+	if test "${basedos_card_stock}" = "1"; then
+		setenv swap 1
+	fi
+fi
 
 # Which output U-Boot's display menu chose (GKD's board code sets hdmi_detect): the panel, HDMI
 # or the USB-C port. The panel is portrait, hence its console rotation.
@@ -42,8 +57,8 @@ fi
 # rcupdate.rcu_expedited=1: closing an input device waits for an RCU grace period; expedited,
 # the frontend's input reopens don't stall.
 # basedos.disk, basedos.vendor: the initrd's disk (U-Boot's mmc N is the kernel's mmcblkN, by
-# the DT aliases) and the vendor set this boot's kernel came from.
-setenv bootargs "fbcon=rotate:${rotate} console=/dev/ttyFIQ0 quiet loglevel=1 consoleblank=0 vt.global_cursor_default=0 rdinit=/basedos/init initcall_blacklist=raid6_select_algo rcupdate.rcu_expedited=1 basedos.disk=mmcblk${devnum} basedos.vendor=${basedos_vendor}"
+# the DT aliases, unless they were swapped) and the vendor set this boot's kernel came from. Set
+# just before booti, once the aliases are known.
 
 # (U-Boot's shell is old: one condition per if.)
 setenv loaded 0
@@ -67,6 +82,20 @@ if test "${loaded}" = "1"; then
 		fdt set /dsi@27d80000/panel@0/display-timings/timing0 clock-frequency <169715000>
 		fdt set /dsi@27d80000/panel@0/display-timings/timing0 hfront-porch <124>
 	fi
+	setenv bdisk mmcblk${devnum}
+	if test "${swap}" = "1"; then
+		fdt addr ${fdt_addr_r}
+		fdt resize
+		fdt set /aliases mmc0 "/mmc@2a310000"
+		fdt set /aliases mmc1 "/mmc@2a330000"
+		# Only if it took: otherwise the card stays mmcblk1, and BasedOS still finds it.
+		setenv a0
+		fdt get value a0 /aliases mmc0
+		if test "${a0}" = "/mmc@2a310000"; then
+			setenv bdisk mmcblk0
+		fi
+	fi
+	setenv bootargs "fbcon=rotate:${rotate} console=/dev/ttyFIQ0 quiet loglevel=1 consoleblank=0 vt.global_cursor_default=0 rdinit=/basedos/init initcall_blacklist=raid6_select_algo rcupdate.rcu_expedited=1 basedos.disk=${bdisk} basedos.vendor=${basedos_vendor}"
 	booti ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r}
 fi
 

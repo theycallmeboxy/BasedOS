@@ -1,0 +1,181 @@
+#!/recovery/busybox sh
+# BasedOS recovery card's init (rdinit=/recovery/init; tools/recovery/boot.cmd starts it with the
+# device's own stock kernel). It puts the eMMC back byte for byte from the backup on the card:
+#
+#   1. checks, writing nothing: the card's backup is this device's eMMC (its ID and size), every
+#      file matches SHA256SUMS, and the battery has enough charge (or the charger is in);
+#   2. shows what it would restore, and restores only once A has been held for 5 seconds
+#      (B powers off);
+#   3. writes the image to the eMMC, checking the MD5 of what it wrote, then reads the whole eMMC
+#      back and checks it again; the eMMC's boot areas (boot0, boot1) too, if they differ;
+#   4. says so, and powers off when B is pressed: take the card out and the device starts from
+#      the eMMC as it was when the backup was made.
+#
+# Only the eMMC is ever written, and only in step 3. The card is mounted read-only.
+R=/recovery
+bb=$R/busybox
+$bb mkdir -p /proc /sys /dev /run/basedos /card /tmp $R/bin
+$bb mount -t proc proc /proc
+$bb mount -t sysfs sys /sys
+$bb mount -t devtmpfs dev /dev 2>/dev/null
+$bb --install -s $R/bin
+export PATH=$R/bin:$R
+set -o pipefail
+log() { echo "recovery: $*" > /dev/kmsg; }
+
+A=305 B=304
+INFO=/run/basedos/splash
+# screen <status> <line>...: the boot screen, its lines ('!' first: highlighted) and status.
+screen() {
+	_s=$1; shift
+	printf '%s\n' "$@" > $INFO
+	$R/basedos-splash "$_s" >/dev/null 2>&1
+}
+held() { echo " $($R/basedos-keys 2>/dev/null | tr '\n' ' ') "; }
+is_held() { case "$(held)" in *" $1 "*) return 0 ;; esac; return 1; }
+# let_go: until A and B are both up (a press meant for one screen isn't taken by the next).
+let_go() { while is_held $A || is_held $B; do usleep 50000; done; }
+off() {
+	sync
+	screen "powering off" "!RECOVERY CARD" "Powering off."
+	sleep 1
+	poweroff -f
+}
+# stop <line>...: a screen that only offers B (power off).
+stop() {
+	log "$*"
+	screen "Press B to power off" "!RECOVERY CARD" "$@"
+	let_go
+	until is_held $B; do usleep 100000; done
+	off
+}
+# hold_a <seconds>: 0 once A has been held that long, 1 if B is pressed first.
+hold_a() {
+	let_go
+	_t=0
+	while :; do
+		_h=$(held)
+		case "$_h" in *" $B "*) return 1 ;; esac
+		case "$_h" in *" $A "*) _t=$((_t + 1)); [ $_t -ge $(($1 * 10)) ] && return 0 ;; *) _t=0 ;; esac
+		usleep 100000
+	done
+}
+# disk_of <controller>: the mmcblk disk on it (the SD slot 2a310000.mmc, the eMMC 2a330000.mmc).
+disk_of() {
+	for _b in /sys/block/mmcblk*; do
+		case "$_b" in *boot*|*rpmb*) continue ;; esac
+		case "$(readlink -f "$_b")" in */$1/*) echo "${_b##*/}"; return ;; esac
+	done
+}
+
+screen "starting" "!RECOVERY CARD" "Checking the card and the backup..."
+i=0
+while { [ -z "$(disk_of 2a310000.mmc)" ] || [ -z "$(disk_of 2a330000.mmc)" ]; } && [ $i -lt 100 ]; do
+	usleep 100000; i=$((i + 1))
+done
+CARD=$(disk_of 2a310000.mmc)
+EMMC=$(disk_of 2a330000.mmc)
+[ -n "$CARD" ] || stop "The card isn't there any more."
+[ -n "$EMMC" ] || stop "This device's eMMC isn't there: nothing to restore to."
+[ -b /dev/${CARD}p1 ] || usleep 500000
+mount -t vfat -o ro /dev/${CARD}p1 /card || stop "The card's partition doesn't mount."
+
+# The backup this card was made with (recovery/backup names its folder).
+BK=/card/$(head -1 /card/recovery/backup 2>/dev/null)
+[ -f "$BK/backup.info" ] || stop "This card has no backup (recovery/backup, backup.info)."
+info() { sed -n "s/^$1=//p" "$BK/backup.info" | head -1; }
+IMG=$(info IMG) WANT_MD5=$(info IMG_MD5) WANT_CID=$(info EMMC_CID) WANT_SECTORS=$(info EMMC_SECTORS)
+WHEN=$(info DATE) WHAT=$(info STOCK)
+[ -n "$IMG" ] && [ ${#WANT_MD5} -eq 32 ] && [ -n "$WANT_SECTORS" ] || stop "The backup's backup.info is incomplete."
+SECTORS=$(cat /sys/block/$EMMC/size)
+CID=$(cat /sys/block/$EMMC/device/cid)
+[ "$CID" = "$WANT_CID" ] || stop "This backup is of another 350H Ultra's eMMC" "(ID $WANT_CID; this one is $CID)." "Nothing was written."
+[ "$SECTORS" = "$WANT_SECTORS" ] || stop "The backup is $WANT_SECTORS sectors; this eMMC is $SECTORS." "Nothing was written."
+
+screen "checking the backup (a minute or two)" "!RECOVERY CARD" "Backup of $WHEN" "$WHAT" "Checking every file against SHA256SUMS..."
+(cd "$BK" && sha256sum -c SHA256SUMS > /tmp/check 2>&1) ||
+	stop "The backup on this card is damaged:" "$(grep -v ': OK$' /tmp/check | head -3)" "Nothing was written."
+log "backup $BK checks out"
+
+# Enough charge for a write of about 15 GB: 30 %, or the charger in.
+power_ok() {
+	_cap="" _chg=""
+	for _p in /sys/class/power_supply/*; do
+		case "$(cat $_p/type 2>/dev/null)" in
+		Battery)
+			_cap=$(cat $_p/capacity 2>/dev/null)
+			case "$(cat $_p/status 2>/dev/null)" in Charging|Full) _chg=1 ;; esac ;;
+		*) [ "$(cat $_p/online 2>/dev/null)" = 1 ] && _chg=1 ;;
+		esac
+	done
+	[ -n "$_chg" ] || [ -z "$_cap" ] || [ "$_cap" -ge 30 ]
+}
+
+# progress <stat field> <what>: the share of the eMMC's sectors read (3) or written (7) since
+# it started, on the screen every 2 s, until killed.
+progress() {
+	_base=$(awk -v f=$1 '{ print $f }' /sys/block/$EMMC/stat)
+	while sleep 2; do
+		_now=$(awk -v f=$1 '{ print $f }' /sys/block/$EMMC/stat)
+		screen "$2: $(( (_now - _base) * 100 / SECTORS )) %  (don't power off)" "!RESTORING THE eMMC" "Backup of $WHEN" "$WHAT"
+	done
+}
+
+restore() {
+	# The boot areas first, only where they differ (they're tiny).
+	for b in boot0 boot1; do
+		[ -f "$BK/$EMMC$b.img" ] && [ -b /dev/$EMMC$b ] || continue
+		[ "$(md5sum < /dev/$EMMC$b)" = "$(md5sum < "$BK/$EMMC$b.img")" ] && continue
+		echo 0 > /sys/block/$EMMC$b/force_ro
+		dd if="$BK/$EMMC$b.img" of=/dev/$EMMC$b bs=1M conv=fsync 2>/dev/null
+		echo 1 > /sys/block/$EMMC$b/force_ro
+		echo 3 > /proc/sys/vm/drop_caches
+		[ "$(md5sum < /dev/$EMMC$b)" = "$(md5sum < "$BK/$EMMC$b.img")" ] || { FAIL="$b didn't write"; return 1; }
+		log "$b restored"
+	done
+	# The image, the MD5 of what's written taken on the way.
+	rm -f /tmp/fifo /tmp/w.md5; mkfifo /tmp/fifo
+	md5sum < /tmp/fifo | cut -c1-32 > /tmp/w.md5 & M=$!
+	progress 7 writing & P=$!
+	cat "$BK/$IMG.zst."* | zstd -dcq | tee /tmp/fifo | dd of=/dev/$EMMC bs=4M conv=fsync 2>/tmp/dd.err
+	rc=$?
+	wait $M; kill $P 2>/dev/null; wait $P 2>/dev/null
+	sync
+	[ $rc -eq 0 ] || { FAIL="the write stopped ($(tail -1 /tmp/dd.err))"; return 1; }
+	[ "$(cat /tmp/w.md5)" = "$WANT_MD5" ] || { FAIL="what was written isn't the backup (MD5)"; return 1; }
+	# Read back, past the page cache.
+	echo 3 > /proc/sys/vm/drop_caches
+	progress 3 checking & P=$!
+	got=$(dd if=/dev/$EMMC bs=4M 2>/dev/null | md5sum | cut -c1-32)
+	kill $P 2>/dev/null; wait $P 2>/dev/null
+	[ "$got" = "$WANT_MD5" ] || { FAIL="the eMMC doesn't read back as the backup (MD5)"; return 1; }
+	log "eMMC restored and read back: $got"
+}
+
+while :; do
+	if ! power_ok; then
+		screen "Press B to power off" "!RECOVERY CARD" "The battery is low: plug in the charger" "(it carries on once it's charging)."
+		until power_ok; do is_held $B && off; usleep 500000; done
+	fi
+	screen "Hold A 5 s to restore, B to power off" "!RESTORE THE eMMC" \
+		"Backup of $WHEN" "$WHAT" \
+		"This puts the eMMC back exactly as it was then:" \
+		"EVERYTHING ON THE eMMC NOW IS REPLACED." \
+		"Hold A for 5 seconds to restore." \
+		"Press B to power off (nothing is written)."
+	hold_a 5 || off
+	FAIL=""
+	log "restoring $BK to $EMMC"
+	if restore; then
+		screen "Press B to power off" "!DONE" "The eMMC is back as it was on $WHEN." \
+			"Power off, take this card out, and the device" "starts from the eMMC."
+		let_go
+		until is_held $B; do usleep 100000; done
+		off
+	fi
+	log "restore failed: $FAIL"
+	screen "Hold A 5 s to try again, B to power off" "!RESTORE FAILED" "$FAIL" \
+		"The eMMC may be incomplete, and the device may" "not start without this card: try again first." \
+		"Hold A for 5 seconds to try again." "Press B to power off."
+	hold_a 5 || off
+done

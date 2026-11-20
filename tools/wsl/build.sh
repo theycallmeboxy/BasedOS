@@ -62,6 +62,10 @@ rm -f "$W/boot.scr.new"
 python3 "$REPO/tools/mkboot.py" script "$REPO/initrd/boot.cmd" "$W/boot.scr.new"
 mv "$W/boot.scr.new" "$REPO/out/boot.scr"
 echo "basedos_vendor=$VENDOR_ID" > "$REPO/out/boot.env"
+# The recovery card's initrd and boot script (tools/recovery), and the setup script itself: with
+# rootfs.squashfs, initrd.uimg and boot.scr, that's the release folder basedos-setup runs from.
+sh "$REPO/tools/recovery/build.sh" "$REPO" "$W" "$REPO/prepared/alpine/busybox.static" "$REPO/out"
+cp "$REPO/tools/basedos-setup.sh" "$REPO/out/basedos-setup.sh"
 rm -f "$REPO"/out/baseos-*.bosupd
 python3 "$REPO/tools/mkupdate.py" "$W/rootfs.squashfs" "$REPO/out/initrd.uimg" 	"$(sed -n 's/^BASEOS_VENDOR=//p' "$W/system/etc/baseos-release")" "$(cat "$REPO/VERSION")" 	"$(sed -n 's/^BASEOS_BUILD=//p' "$W/system/etc/baseos-release")" "$REPO/out"
 for r in harvest-report.txt base32-report.txt lib32-gaps.txt; do

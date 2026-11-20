@@ -129,6 +129,9 @@ EOF
 }
 
 stock_once() {
+	# From an SD card, only stock on the card itself (its dual boot): the eMMC's stock is the device
+	# without the card, and may not be the build this card's kernel came from.
+	on_sd_card && ! card_has_stock && die "this card carries no copy of stock: take the card out to start the eMMC's stock"
 	# The flag must be on p2: /data in RAM (p2 unusable this boot) would lose it.
 	grep -q "^$BOOT_P2 /data " /proc/mounts || die "/data isn't on the boot disk this boot; can't leave the flag"
 	: > /data/boot-stock-once && sync && [ -f /data/boot-stock-once ] || die "couldn't write /data/boot-stock-once"

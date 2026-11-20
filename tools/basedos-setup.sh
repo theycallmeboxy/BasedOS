@@ -19,8 +19,9 @@
 #      legacy-bootable, which is what U-Boot boots), data (BasedOS's /data), BASEOS (the rest: the
 #      frontend's drive), the first two marked no-automount. Optionally a copy of stock first, on
 #      p1 and p2 (where stock's init looks; basedos is then p3), which the maintenance menu
-#      starts once; a backup of the eMMC on BASEOS; and the frontend, downloaded onto BASEOS when
-#      the release names one. The card stays in the device.
+#      starts once; a backup of the eMMC on BASEOS; and a frontend (spruce, ...) downloaded onto
+#      BASEOS from its own upstream GitHub release, once one supports the device
+#      (manifest/frontends.txt). The card stays in the device.
 #   3. Create a recovery SD card: a backup of the whole eMMC as it is now, and a small recovery
 #      system that boots from the card and, when A is held, writes the eMMC back byte for byte
 #      (tools/recovery). No PC needed, then or later.
@@ -40,7 +41,7 @@
 #
 # Not interactive: --target emmc|sd|recovery, and
 #   emmc: --recovery-card or --no-recovery-card
-#   sd:   --dual-boot or --no-dual-boot, --backup or --no-backup, --frontend or --no-frontend
+#   sd:   --dual-boot or --no-dual-boot, --backup or --no-backup, --frontend <name> or --no-frontend
 #   any card: --card <ID> (--card-id prints the inserted card's)
 # and --yes. Every check still runs, and the card must have that ID.
 set -u
@@ -64,7 +65,7 @@ while [ $# -gt 0 ]; do
 	--no-dual-boot) DUAL=no ;;
 	--backup) BACKUP=yes ;;
 	--no-backup) BACKUP=no ;;
-	--frontend) FE=yes ;;
+	--frontend) FE=$2; shift ;;
 	--no-frontend) FE=no ;;
 	--card) CARD_WANT=$2; shift ;;
 	--card-id) CARD_ID=1 ;;
@@ -191,16 +192,43 @@ grep '^P1 ' "$INFO" | while read -r _k _sha _f; do
 	[ "$(sha256sum < "$STOCK_P1/$_f" 2>/dev/null | cut -c1-64)" = "$_sha" ] || { echo "$_f"; break; }
 done > "$T/mismatch"
 [ -s "$T/mismatch" ] && die "this device's stock isn't the build this BasedOS release is for ($STOCK_BUILD; its $(cat "$T/mismatch") differs)"
-# The frontend this release offers to download (FRONTEND <name> <version> <url> <sha256> <archive
-# MiB> <unpacked MiB>, and FRONTEND_OVERLAY <url> <sha256> for this device's parts), if any.
-FE_LINE=$(grep '^FRONTEND ' "$INFO" | head -1)
-FE_NAME="" FE_MIB=0 FE_DL_MIB=0
-if [ -n "$FE_LINE" ]; then
-	set -- $FE_LINE
-	FE_NAME="$2 $3" FE_URL=$4 FE_SHA=$5 FE_DL_MIB=$6 FE_MIB=$(( $6 + $7 ))
-	FE_OVL_URL=$(awk '$1 == "FRONTEND_OVERLAY" { print $2 }' "$INFO") FE_OVL_SHA=$(awk '$1 == "FRONTEND_OVERLAY" { print $3 }' "$INFO")
-	set --
-fi
+# The frontends this release can download (FRONTEND <name> <repository> <asset> <first version>
+# <unpacked %>, from manifest/frontends.txt): each one's latest upstream release, asked of GitHub
+# now (a few KB), and offered only if it's a version that supports this device and GitHub gives
+# its asset's SHA-256. $T/frontends: name|version|url|sha256|download MiB|download + unpacked MiB.
+ver_ge() {  # ver_ge <a> <b>: 0 if version a >= b (v4.10.0 > v4.9.1)
+	awk -v a="$1" -v b="$2" 'BEGIN { sub(/^[^0-9]*/, "", a); sub(/^[^0-9]*/, "", b)
+		n = split(a, x, /[^0-9]+/); m = split(b, y, /[^0-9]+/)
+		for (i = 1; i <= (n > m ? n : m); i++) { if (x[i] + 0 > y[i] + 0) exit 0; if (x[i] + 0 < y[i] + 0) exit 1 }
+		exit 0 }'
+}
+: > "$T/frontends"
+grep '^FRONTEND ' "$INFO" | while read -r _k _n _repo _glob _first _pct; do
+	[ "$_first" = "-" ] && continue
+	command -v jq >/dev/null 2>&1 || continue
+	fetch "https://api.github.com/repos/$_repo/releases/latest" "$T/fe.json" || continue
+	_tag=$(jq -r '.tag_name // empty' "$T/fe.json")
+	[ -n "$_tag" ] && ver_ge "$_tag" "$_first" || continue
+	_re="^$(printf '%s' "$_glob" | sed 's/[.]/\\./g; s/[*]/.*/g')\$"
+	_a=$(jq -r --arg re "$_re" '[.assets[] | select(.name | test($re))][0] // empty | "\(.browser_download_url) \(.size) \(.digest // "-")"' "$T/fe.json")
+	set -f; set -- $_a; set +f
+	[ $# -eq 3 ] || continue
+	case "$3" in sha256:????????????????????????????????????????????????????????????????) ;; *) continue ;; esac
+	_dl=$(( ($2 + 1048575) / 1048576 ))
+	echo "$_n|$_tag|$1|${3#sha256:}|$_dl|$(( _dl + _dl * _pct / 100 ))" >> "$T/frontends"
+done
+rm -f "$T/fe.json"
+FE_COUNT=$(grep -c . "$T/frontends")
+FE_MAX_MIB=$(awk -F'|' '$6 > m { m = $6 } END { print m + 0 }' "$T/frontends")
+FE_MAX_DL=$(awk -F'|' '$5 > m { m = $5 } END { print m + 0 }' "$T/frontends")
+FE_NAME="" FE_MIB=0
+# fe_pick <line number>: the frontend chosen.
+fe_pick() {
+	IFS='|' read -r _n _v FE_URL FE_SHA FE_DL_MIB FE_MIB <<EOF
+$(sed -n "${1}p" "$T/frontends")
+EOF
+	FE_NAME="$_n $_v"
+}
 
 # Power: 30 %, or the charger in.
 PCT="" CHG=""
@@ -230,7 +258,9 @@ sd_mib() {  # sd_mib <dual> <backup> <frontend>: what a BasedOS card needs
 	echo $_m
 }
 REC_MIB=$(( 16 + BK_MIB + 512 ))
-WORST_MIB=$(sd_mib yes yes $([ -n "$FE_LINE" ] && echo yes || echo no))
+FE_MIB=$FE_MAX_MIB
+WORST_MIB=$(sd_mib yes yes $([ "$FE_COUNT" -gt 0 ] && echo yes || echo no))
+FE_MIB=0
 
 say ""
 say "BasedOS $VERSION setup for the GKD 350H Ultra$(case "$RELEASE_TAG" in @*) ;; *) echo " (release $RELEASE_TAG)" ;; esac)"
@@ -239,7 +269,7 @@ say "Before you start:"
 say "  - Stock ROCKNIX $(echo "$STOCK_BUILD" | sed 's/^rocknix-//'): this device has it."
 if [ -n "$CHG" ]; then say "  - Power: the charger is in."
 else say "  - Power: at least 30 % battery, or the charger plugged in (now ${PCT:-?} %)."; fi
-say "  - Wi-Fi: setup downloads BasedOS (about 35 MB)$([ -n "$FE_LINE" ] && echo ", and $FE_NAME if you choose it (about $(gb $FE_DL_MIB) GB)")."
+say "  - Wi-Fi: setup downloads BasedOS (about 35 MB)$([ "$FE_COUNT" -gt 0 ] && echo ", and a frontend if you choose one (up to $(gb $FE_MAX_DL) GB)")."
 say "  - An SD card you can erase: everything on it is lost. $(a_card $WORST_MIB | sed 's/^a/A/') covers every choice"
 say "    (the largest, on this device, needs $(gb $WORST_MIB) GB); setup says what yours needs once you've chosen."
 say "  - About 10 to 30 minutes. Don't power off or take the card out while it runs."
@@ -284,13 +314,33 @@ if [ "$TARGET" = sd ]; then
 		say "Also save a backup image of the built-in storage on the card, to copy to your PC?"
 		if yes_no "Save a backup image?" n; then BACKUP=yes; else BACKUP=no; fi
 	fi
-	if [ -n "$FE_LINE" ] && [ -z "$FE" ]; then
+	# A frontend from its own upstream release: --frontend <name>, or asked.
+	if [ -n "$FE" ] && [ "$FE" != no ]; then
+		_l=$(awk -F'|' -v n="$FE" 'tolower($1) == tolower(n) { print NR; exit }' "$T/frontends")
+		[ -n "$_l" ] || die "--frontend $FE: no release of it that supports this device"
+		fe_pick $_l; FE=yes
+	elif [ -z "$FE" ] && [ "$FE_COUNT" -eq 1 ]; then
+		fe_pick 1
 		say ""
 		say "Download $FE_NAME onto the card, so it's ready to use? (about $(gb $FE_DL_MIB) GB to download)"
-		say "Otherwise you copy your frontend to the card's BASEOS drive from a PC later."
+		say "Otherwise you copy a frontend to the card's BASEOS drive from a PC later."
 		if yes_no "Download $FE_NAME?" y; then FE=yes; else FE=no; fi
+	elif [ -z "$FE" ] && [ "$FE_COUNT" -gt 1 ]; then
+		say ""
+		say "Download a frontend onto the card, so it's ready to use?"
+		_i=0
+		while IFS='|' read -r _n _v _u _s _d _m; do
+			_i=$((_i + 1)); say "  $_i) $_n $_v (about $(gb $_d) GB to download)"
+		done < "$T/frontends"
+		say "  $((_i + 1))) None: I'll copy one from a PC later"
+		ask "Choose 1 to $((_i + 1)):" _a
+		case "$_a" in ''|*[!0-9]*) die "no choice made" ;; esac
+		if [ "$_a" -ge 1 ] && [ "$_a" -le "$_i" ]; then fe_pick "$_a"; FE=yes
+		elif [ "$_a" -eq $((_i + 1)) ]; then FE=no
+		else die "no choice made"; fi
 	fi
-	[ -n "$FE_LINE" ] || FE=no
+	[ "$FE" = yes ] || { FE=no; FE_MIB=0; }
+	[ "$FE" = no ] || command -v 7z >/dev/null 2>&1 || die "stock has no 7z, which unpacking $FE_NAME needs"
 	NEED_MIB=$(sd_mib $DUAL $BACKUP $FE)
 else
 	DUAL=no FE=no
@@ -588,28 +638,21 @@ seed_data() {
 	} > $DATA/wpa_supplicant.conf)
 }
 
-# frontend <BASEOS mount>: the release's frontend, downloaded onto the card's BASEOS drive (not
-# RAM: it's large), checked, unpacked; then this device's parts over it (the overlay zip, and
-# the files its REMOVED.txt lists removed).
+# frontend <BASEOS mount>: the chosen frontend's upstream release asset, downloaded onto the
+# card's BASEOS drive (not RAM: it's large), checked against GitHub's SHA-256, its unpacked size
+# checked against the free space, then unpacked (7z unpacks .7z and .zip alike).
 frontend() {
 	step "Downloading $FE_NAME"
-	_a=$1/.basedos-frontend.7z
+	_a=$1/.basedos-frontend-download
 	fetch "$FE_URL" "$_a" || die "can't download $FE_URL"
-	[ "$(sha256sum < "$_a" | cut -c1-64)" = "$FE_SHA" ] || die "the $FE_NAME download doesn't match its checksum"
+	[ "$(sha256sum < "$_a" | cut -c1-64)" = "$FE_SHA" ] || die "the $FE_NAME download doesn't match GitHub's checksum"
+	_need=$(7z l -slt "$_a" 2>/dev/null | awk '/^Size = / { s += $3 } END { print int(s / 1048576) + 1 }')
+	_free=$(df -m "$1" | awk 'NR == 2 { print $4 }')
+	[ "$_need" -gt 1 ] || die "couldn't read the $FE_NAME archive"
+	[ "$_need" -lt "$_free" ] || die "$FE_NAME needs $(gb $_need) GB unpacked; the card has $(gb $_free) GB free"
 	say "unpacking..."
 	7z x -y -bd -o"$1" "$_a" >/dev/null || die "couldn't unpack $FE_NAME"
 	rm -f "$_a"
-	if [ -n "$FE_OVL_URL" ]; then
-		_o=$1/.basedos-overlay.zip
-		fetch "$FE_OVL_URL" "$_o" || die "can't download $FE_OVL_URL"
-		[ "$(sha256sum < "$_o" | cut -c1-64)" = "$FE_OVL_SHA" ] || die "the 350H Ultra overlay doesn't match its checksum"
-		unzip -o -q "$_o" -d "$1" || die "couldn't unpack the 350H Ultra overlay"
-		rm -f "$_o"
-		if [ -f "$1/REMOVED.txt" ]; then
-			while read -r _r; do [ -n "$_r" ] && rm -f "$1/$_r"; done < "$1/REMOVED.txt"
-			rm -f "$1/REMOVED.txt"
-		fi
-	fi
 	sync
 	say "$FE_NAME is on the card"
 }

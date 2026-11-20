@@ -73,6 +73,8 @@ REC=$W/system/usr/share/basedos/vendor-recipe
 	sed -n 's/^BASEOS_\(VERSION\|BUILD\|VENDOR\)=/\1=/p' "$W/system/etc/baseos-release"
 	grep '^STOCK_BUILD=' "$REC"
 	awk '$1 == "F" && $5 ~ /^p1:/ { sub(/^p1:/, "", $5); print "P1", $3, $5 }' "$REC"
+	# The frontends setup can download from their own upstream releases (manifest/frontends.txt).
+	awk '!/^#/ && NF == 5 { print "FRONTEND", $1, $2, $3, $4, $5 }' "$REPO/manifest/frontends.txt"
 } > "$REPO/out/release.info"
 [ "$(grep -c '^P1 ' "$REPO/out/release.info")" -ge 1 ] || { echo "release.info: no p1 hashes" >&2; exit 1; }
 sh "$REPO/tools/recovery/build.sh" "$REPO" "$W" "$REPO/prepared/alpine/busybox.static" "$REPO/out"

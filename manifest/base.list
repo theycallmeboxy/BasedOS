@@ -125,3 +125,16 @@
 /usr/bin/file
 /usr/share/misc/magic.mgc
 /usr/bin/zstd
+
+## what PortMaster's ports load from the system that neither BasedOS nor spruce's card had
+## (docs/portmaster-libs.md, all 1,511 ports scanned 2026-11-19): glib's object libraries (glib is
+## here already). The rest of the ports' usual libraries (SDL2_mixer, OpenAL, ...) come from
+## spruce's spruce/flip/lib, which spruce puts on every port's library path.
+/usr/lib/libgobject-2.0.so.0
+/usr/lib/libgmodule-2.0.so.0
+/usr/lib/libgio-2.0.so.0
+# and what spruce's spruce/flip/lib needs from the base that it doesn't carry (tools/dev/lib-closure.py
+# on the device): libbsd (+ libmd) for its libXdmcp and libICE, on the PulseAudio client chain that
+# ports' bundled libmikmod and libfluidsynth load; libtheora's encoder for its FFmpeg 4.
+/usr/lib/libbsd.so.0
+/usr/lib/libtheoraenc.so.1

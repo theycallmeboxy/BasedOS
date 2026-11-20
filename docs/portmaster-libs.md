@@ -25,31 +25,36 @@ for bionic's `libc.so`, `liblog.so`; gmloader supplies those) are not counted.
 | | 64-bit ports | 32-bit ports |
 |---|---|---|
 | With binaries that load system libraries | 1,075 | 252 |
-| Needing a library BasedOS lacks | **392** | 18 |
-| ... of which stock ROCKNIX has every one | 377 | 3 |
+| Needing a library BasedOS alone lacks | 392 | 18 |
+| ... counting spruce's own libraries too (what ports see on spruce) | 75 | 18 |
+| ... after the additions below (build of 2026-11-19) | **41** | **14** |
 
-64-bit, ports still needing a missing library if BasedOS adds:
+**spruce supplies most of it.** spruce puts its `spruce/flip/lib` (and PortMaster's `lib`) on
+every port's library path on this platform (`BasedOSCommon.cfg`); it has SDL2_mixer, OpenAL,
+libvorbisfile, PulseAudio's client libraries, mpg123, libmodplug and most of what ports load. So
+BasedOS adds only what neither has, rather than shadowing spruce's copies (`/usr/lib` comes first
+on that path):
 
-| Added | Ports left |
-|---|---|
-| nothing (today) | 392 |
-| **tier 1**: libvorbisfile, SDL2_mixer, OpenAL, mpg123, libmodplug, SDL2_gfx, SDL2_net, opusfile, speex, libtheora, pixman, GMP, and glib's gobject/gmodule/gio (built already, not installed) | 136 |
-| **+ PulseAudio's client libraries** (`libpulse-simple`, `libpulse`; no daemon). Linked by the `libmikmod.so.3` (59 ports) and `libfluidsynth.so.1`/`.2` (59) that ports bundle, built with a PulseAudio output; through SDL_mixer they decode into SDL's buffers and don't use it, but the library must be there for them to load | 73 |
-| + cairo, GnuTLS, readline 8, nghttp2, libidn2, libgcrypt, libgpg-error, fribidi, WildMidi | 47 |
-| + the X11 client libraries (linked, not used, by Aleph One, Doom Engines and the Java runtimes) | 45 |
+- 64-bit: glib's gobject, gmodule and gio (47, 40 and 2 ports; glib was built already) and what
+  `flip/lib` itself needs from the base and doesn't carry (`tools/dev/lib-closure.py` on the
+  device): libbsd, for its libXdmcp and libICE on its PulseAudio client chain (the
+  `libmikmod`/`libfluidsynth` that ports bundle link `libpulse-simple`), and libtheora's encoder
+  for its FFmpeg 4. Without libbsd every port whose music libraries go through that chain failed
+  to load them (Apricots: "Error loading libfluidsynth.so.1"), though the port scan, which looks
+  only at a port's own binaries, counted them as covered.
+- 32-bit: dbus, libgpg-error, LAME, glib's gobject/gmodule (spruce has no 32-bit libraries).
 
-The top missing ones: libvorbisfile 180 ports, SDL2_mixer 135, OpenAL 127, libpulse-simple 82,
-gobject 48, mpg123 44. All in Buildroot.
+Checked on the device: Meritous didn't start (libgmodule, then libbsd) and now loads every library
+(it then aborts with "buffer overflow detected" in the game itself, not looked into); Apricots
+runs with its music library loaded.
 
-What's left after all of that is old ABI versions Buildroot can't build (stock has most of them in
-its compat folder): FFmpeg 4 (`libavcodec.so.58` and family, 10 ports), FLAC 1.3
-(`libFLAC.so.8`, 13), OpenSSL 1.1 (2), readline 7 (2), and a few single cases (SDL 1.2, librga 2,
-sndio, JACK, ICU 66).
-
-32-bit: adding dbus, libgpg-error, LAME and glib's gobject/gmodule takes 18 to 14. The 14 left are
-mostly OpenSSL 1.1 (`libcrypto.so.1.1`: Climb, Super Hydorah, Mable and the Wood, Relic Hunters,
-Sulka and two more), which stock's `/usr/lib32` lacks too: those ports were made for another
-system.
+**What's left** (64-bit, 41 ports): old ABI versions Buildroot can't build, most of them in stock's
+compat folder: FLAC 1.3 (`libFLAC.so.8`, 13 ports), OpenSSL 1.1 (`libcrypto.so.1.1`, 7 including
+the Python runtimes; spruce's own `libssl.so.1.1` and `libzip.so.5` need it too), `libxml2.so.2`
+(7), readline 7 and 8, desktop GL and X11 test libraries (Half-Life, Quake 2, Bugdom, the Java
+runtimes), and single cases. 32-bit (14 ports): mostly OpenSSL 1.1 (`libcrypto.so.1.1`: Climb,
+Super Hydorah, Mable and the Wood, Relic Hunters, Sulka and two more), which stock's `/usr/lib32`
+lacks too: those ports were made for another system.
 
 Tools ports call by bare name: `zip` (246 ports, mostly GameMaker setup steps), `unzip` (44),
 `python3` (19), `mono`/`java`/`dotnet` (their runtimes provide them). spruce supplies `zip`
@@ -57,9 +62,11 @@ Tools ports call by bare name: `zip` (246 ports, mostly GameMaker setup steps), 
 Only one port calls a system `box64` (Super Hexagon). No port uses ROCKNIX's `clibs`: its compat
 folder reaches ports only through ROCKNIX's own `get_controls`.
 
-## Recommendation
+## Next
 
-Tier 1 and PulseAudio's client libraries for 64-bit, and the four for 32-bit: all Buildroot
-packages, a few MB, and they take the 64-bit ports with a missing library from 392 to 73. The
-rest (old ABIs) only if particular ports are wanted, as a separate compat folder rather than on
-the normal library path.
+The old-ABI set (FLAC 1.3, OpenSSL 1.1, libxml2.so.2, ...) only if particular ports are wanted,
+as a separate compat folder rather than on the normal library path. A frontend other than spruce
+would need the libraries spruce supplies (rerun the scan without its list to see them).
+To rerun: the scan with spruce's library list (`ls spruce/flip/lib Persistent/portmaster/lib`
+on the card) as the last argument, and `lib-closure.py` on the device after any change to
+either side.

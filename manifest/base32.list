@@ -88,3 +88,10 @@
 /usr/lib/libspeex.so.1
 /usr/lib/libvorbisidec.so.1
 /usr/lib/libzstd.so.1
+
+## what 32-bit ports load from the system (docs/portmaster-libs.md, all 1,511 ports scanned)
+/usr/lib/libdbus-1.so.3
+/usr/lib/libgpg-error.so.0
+/usr/lib/libmp3lame.so.0
+/usr/lib/libgobject-2.0.so.0
+/usr/lib/libgmodule-2.0.so.0

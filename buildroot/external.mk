@@ -7,6 +7,10 @@ include $(sort $(wildcard $(BR2_EXTERNAL_BASEDOS_PATH)/package/*/*.mk))
 # reads it when it runs.
 NCURSES_CONF_OPTS += --with-termlib=tinfo
 
+# LAME: the library only (libmp3lame, which 32-bit ports load). Its command-line encoder links
+# -lncurses for terminfo calls that are in libtinfo with the split above, and fails to link.
+LAME_CONF_OPTS += --disable-frontend
+
 # The 32-bit root (basedos_gkd350hultra_armhf_defconfig): its libraries go to /usr/lib32 of the
 # system layer, beside the 64-bit ones in /usr/lib (docs/lib32.md). glibc reads configparms from
 # its build folder (written here after configure, before the build):

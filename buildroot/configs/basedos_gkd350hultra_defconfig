@@ -104,3 +104,8 @@ BR2_PACKAGE_UTIL_LINUX_SCHEDUTILS=y
 BR2_PACKAGE_COREUTILS=y
 BR2_PACKAGE_FILE=y
 BR2_PACKAGE_ZSTD=y
+# What spruce's own libraries for ports (spruce/flip/lib) expect from the base and BasedOS lacked
+# (docs/portmaster-libs.md): libbsd for its libXdmcp and libICE (on its PulseAudio client chain,
+# which ports' music libraries load), libtheora's encoder for its FFmpeg.
+BR2_PACKAGE_LIBBSD=y
+BR2_PACKAGE_LIBTHEORA=y

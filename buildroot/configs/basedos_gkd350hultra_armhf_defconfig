@@ -92,3 +92,8 @@ BR2_PACKAGE_PIXMAN=y
 BR2_PACKAGE_SPEEX=y
 BR2_PACKAGE_TREMOR=y
 BR2_PACKAGE_ZSTD=y
+
+# What 32-bit ports load from the system and this lacked (docs/portmaster-libs.md, 2026-11-19).
+BR2_PACKAGE_DBUS=y
+BR2_PACKAGE_LIBGPG_ERROR=y
+BR2_PACKAGE_LAME=y

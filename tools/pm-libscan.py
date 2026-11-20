@@ -2,6 +2,11 @@
 """What do PortMaster's ports load from the system? A scan of the ports themselves.
 
   pm-libscan.py <catalogue json> <download dir> <BasedOS root> <stock root> <out dir>
+                [<frontend libs>]
+
+<frontend libs>: a file of library file names the frontend itself puts on the ports' library
+path (for spruce: `ls spruce/flip/lib Persistent/portmaster/lib` on the card); they count as
+there for 64-bit ports, as BasedOS's own do.
 
 <catalogue json> is PortMaster's port list (its ports.json, "data" -> "info"); <download dir>
 holds ports/<name>.zip and runtimes/<arch>-<name>.squashfs (fetched from the URLs in that list).
@@ -144,6 +149,9 @@ def names_in(d):
 
 def main():
     catalogue, dl, basedos, stock, out = sys.argv[1:6]
+    frontend = set()
+    if len(sys.argv) > 6:
+        frontend = {l.strip() for l in open(sys.argv[6], encoding="utf-8") if l.strip()}
     info = json.load(open(catalogue, encoding="utf-8"))["data"]["info"]
     os.makedirs(out, exist_ok=True)
     have = {
@@ -152,6 +160,7 @@ def main():
         "stock64": names_in(os.path.join(stock, "usr/lib")),
         "stockcompat": names_in(os.path.join(stock, "usr/lib/compat/compat")),
         "stock32": names_in(os.path.join(stock, "usr/lib32")),
+        "frontend64": frontend,
     }
 
     # Runtimes: what each ships (by name, per architecture), and what its own binaries need.
@@ -231,7 +240,7 @@ def main():
 
 def where(lib, arch, have):
     if arch == "aarch64":
-        b = lib in have["basedos64"]
+        b = lib in have["basedos64"] or lib in have["frontend64"]
         s = "lib" if lib in have["stock64"] else ("compat" if lib in have["stockcompat"] else "")
     else:
         b = lib in have["basedos32"]
@@ -259,7 +268,10 @@ def write_md(results, have, path):
             clibs.append(k)
     with open(path, "w", encoding="utf-8") as f:
         f.write(f"# PortMaster ports: libraries loaded from the system\n\n{len(ports)} ports and "
-                f"{len(results) - len(ports)} runtimes scanned (tools/pm-libscan.py).\n\n")
+                f"{len(results) - len(ports)} runtimes scanned (tools/pm-libscan.py)."
+                + (f" 64-bit libraries count as there when BasedOS or the frontend's own folders "
+                   f"({len(have['frontend64'])} files) have them." if have["frontend64"] else "")
+                + "\n\n")
         for arch in ("aarch64", "armhf"):
             with_arch = [k for k in ports if arch in results[k]["system"]]
             bp = [k for k in broken[arch] if not k.startswith("runtime:")]

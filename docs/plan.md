@@ -32,6 +32,57 @@ on-device vendor build), BasedOS on the SD card alone with the eMMC never writte
 update to change the boot script and its kernel options, Bluetooth, USB storage mode, ScummVM on
 spruce, and the old-library compat set some ports want (portmaster-libs.md).
 
+## Architecture (decided 2026-11-20; being built, see "Today" below)
+
+Three pieces, the same whether BasedOS runs from the eMMC or from an SD card:
+
+1. **Stock source**: stock's own files, verbatim (`SYSTEM`, `Image`, DTBs, its boot script),
+   checked against the known stock builds (`manifest/stock-builds.txt`). Read **only at setup**,
+   to harvest the vendor set; BasedOS never boots from it. On the eMMC it's stock's p1, left as
+   it is (stock stays bootable). An SD card doesn't need it; it can carry a copy as an option
+   (for booting stock from the card later).
+2. **Vendor set** (`basedos/vendor-<id>/`): everything BasedOS uses that comes from stock, as one
+   unit with one id (a hash of its contents) and one recipe: the kernel `Image` and stock's DTBs
+   as plain files (U-Boot loads them: it reads FAT and ext4, not squashfs), and
+   `vendor.squashfs` with the kernel's modules, the Wi-Fi and Bluetooth firmware and the closed
+   Mali drivers, 64- and 32-bit (Linux needs their links and modes). The kernel and its modules
+   always come from the same stock build. Generous on purpose (all modules, all firmware), so it
+   needn't change between bases. Never published: harvested on each device, or for each card,
+   from its own stock source.
+3. **BasedOS's own** (published): its boot script, written by BasedOS (not derived from stock's),
+   which reads `basedos/boot.env` (the slot and the vendor id), loads the kernel and DTB from the
+   vendor set, applies BasedOS's panel overlay (`fdt apply`: the 60 Hz timing, instead of a
+   patched copy of stock's DTB) and boots BasedOS's initrd; the initrd; and the A/B system
+   slots. Stock fallback is stock booting itself, from its own saved boot script.
+
+**A base is one vendor set.** Every BasedOS release says which base it's built on (today the one
+from ROCKNIX `c8ed06c`); the vendor id is the same on every device with that stock build.
+
+- **Setup** (installing on the eMMC, or making an SD card) is the only time the stock source is
+  read: it harvests the vendor set (`basedos-vendor`, by the base's recipe), then installs the
+  system layer, initrd and boot script.
+- **Updates** (`.bosupd`) change BasedOS's own files only, never the vendor set. A release for
+  another base is refused ("built for a different stock base; needs a fresh setup").
+- **Rebasing** onto a newer stock firmware is a fresh setup from that firmware's image file,
+  rare by design. BasedOS keeps little state of its own (the frontend keeps the user's settings
+  and games), so a fresh setup costs the user little; a rebase helper can come if a release
+  ever needs one.
+
+Why: no drift. A stock update can't change the kernel BasedOS boots or split it from its
+modules; BasedOS's build doesn't depend on one exact stock boot script; and the eMMC and SD card
+installs are the same files on different partitions.
+
+### Today (2026-11-20), where it differs
+
+- The boot script is stock's, rewritten (`mkboot.py bootscr`), and loads stock's own `Image` and
+  (when BasedOS's isn't there) DTB from p1; BasedOS's panel DTB is a patched copy of stock's.
+- The vendor layer is the squashfs alone (`vendor-<id>.squashfs`); the kernel and DTBs aren't in
+  it.
+- Updates can build a missing vendor layer on the device (`basedos-update` with
+  `basedos-vendor`, from stock's `SYSTEM` on p1) and prune unused ones: to be removed (updates
+  never change the vendor set).
+- No SD card install yet.
+
 ## Starting point (verified on the device, 2026-11-16)
 
 - **Device:** RK3576S, 2 GB RAM, 16 GB eMMC (`mmcblk0`), one SD slot (`mmcblk1`),
@@ -85,6 +136,8 @@ SD card alone with the eMMC never written.
 
 ## Boot flow
 
+(Today's; the target is in Architecture above.)
+
 1. U-Boot runs BasedOS's `boot.scr` (stock's, rewritten by `mkboot.py bootscr`), which loads `Image`, the panel DTB (BasedOS's 60 Hz one when present) and `basedos/initrd.uimg`, adds BasedOS's kernel options (`rdinit=/basedos/init`, `initcall_blacklist=raid6_select_algo`, `rcupdate.rcu_expedited=1`), then `booti` with the initrd. A missing or rejected initrd boots stock with stock's options.
 2. The kernel unpacks its built-in initramfs and then ours over it, so our `/init` replaces stock's. Our `/basedos/init` counts the boot on p2, mounts p1 read-only, loop-mounts the chosen slot's system layer and the vendor layer it names, stacks them with overlayfs (falling back to the other slot, then to stock), then `switch_root`s and execs `/sbin/init`. `rcS` mounts p2 on `/data` and the tmpfs dirs.
 3. BusyBox init runs `rcS`: proc/sys/devpts and the `/dev` links, the boot screen, the clock, `/data` (checked, then mounted), the card mount, a pending update (installed, then straight to a reboot), then the Wi-Fi driver and the shutdown-key watcher in the background. Joining Wi-Fi and SSH are the frontend's; BasedOS's own start only in maintenance mode or after a failing frontend.
@@ -92,7 +145,7 @@ SD card alone with the eMMC never written.
 
 ## Rootfs
 
-The root is two squashfs layers built on the PC (WSL has `mksquashfs`), stacked by the initrd with
+(Today's layout; the target is in Architecture above.) The root is two squashfs layers built on the PC (WSL has `mksquashfs`), stacked by the initrd with
 overlayfs, the system layer on top:
 
 - **vendor** (`vendor-<id>.squashfs`): the stock harvest (2 below), named by a hash of its
@@ -113,7 +166,7 @@ The harvest source is either the backup image (`mmcblk0.img`: FAT p1, then its `
 
 - **Developer:** build on the PC (`tools/wsl/build.sh`), then run `tools/install-dev.sh` on the device under stock, over SSH (user-guide.md). Later builds go in with `tools/dev/update-basedos.sh` from BasedOS, or as a `.bosupd`.
 - **Users, later:** an installer SD card built on the device from its own files (the rescue card mechanism): back up, harvest, install. Nothing vendor-made is published.
-- **The vendor layer on the device (2026-11-19):** every system layer carries a recipe for the vendor layer it needs (`usr/share/basedos/vendor-recipe`: each file's place, mode, SHA-256 and where it is in stock's SYSTEM, written by `build-rootfs.sh` from the harvest), and `basedos-vendor` builds that layer from the stock image on p1 (`/boot/SYSTEM`), checking every hash and the id (`usr/lib/basedos/vendor-id`, the one function both sides use). `basedos-update` uses it when a payload needs a vendor layer the device lacks, so a vendor change no longer strands `.bosupd` updates. This is also the core of the user installer: with a published system layer and its recipe, a device needs only its own stock image, not a PC or Buildroot.
+- **The vendor layer on the device (2026-11-19; to become setup only, see Architecture):** every system layer carries a recipe for the vendor layer it needs (`usr/share/basedos/vendor-recipe`: each file's place, mode, SHA-256 and where it is in stock's SYSTEM, written by `build-rootfs.sh` from the harvest), and `basedos-vendor` builds that layer from the stock image on p1 (`/boot/SYSTEM`), checking every hash and the id (`usr/lib/basedos/vendor-id`, the one function both sides use). `basedos-update` uses it when a payload needs a vendor layer the device lacks, so a vendor change no longer strands `.bosupd` updates. This is also the core of the user installer: with a published system layer and its recipe, a device needs only its own stock image, not a PC or Buildroot.
 
 ## Versions
 

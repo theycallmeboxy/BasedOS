@@ -3,8 +3,8 @@
 #   update-basedos.sh <dir with rootfs.squashfs [initrd.uimg] [boot.scr]>
 # Writes the rootfs (the system layer) to the slot that is NOT running (rootfs.squashfs /
 # rootfs-b.squashfs on p1), verifies it from the card, then points /boot/basedos/slot at it. Like
-# a .bosupd it never changes the vendor set (docs/plan.md, Architecture): a rootfs built on
-# another one is refused; that needs a fresh setup (install-dev.sh). Reboot to use it; the
+# a .bosupd, a rootfs made for another stock build (its needs-stock) is refused (docs/plan.md,
+# Architecture). Reboot to use it; the
 # initrd's boot counter falls back to the other slot if the new one never reaches rcS.
 # The running slot is read from the loop device itself, not the slot file, so running this
 # twice without rebooting can never overwrite the image that is running.
@@ -40,19 +40,19 @@ put() {
 	sync
 }
 
-# Which vendor layer an image names (empty for a whole root from before the split).
-needs_vendor() {
-	mkdir -p /tmp/.needs-vendor
-	mount -t squashfs -o ro,loop "$1" /tmp/.needs-vendor || die "$1 does not mount"
-	cat /tmp/.needs-vendor/usr/share/basedos/needs-vendor 2>/dev/null || true
-	umount /tmp/.needs-vendor
+# The stock build an image is made for (empty for an older BasedOS, made for a vendor set).
+needs_stock() {
+	mkdir -p /tmp/.needs-stock
+	mount -t squashfs -o ro,loop "$1" /tmp/.needs-stock || die "$1 does not mount"
+	cat /tmp/.needs-stock/usr/share/basedos/needs-stock 2>/dev/null || true
+	umount /tmp/.needs-stock
 }
-new_vendor=$(needs_vendor "$SRC/rootfs.squashfs")
+new_stock=$(needs_stock "$SRC/rootfs.squashfs")
 
 mount -o remount,rw /boot
 trap 'sync; mount -o remount,ro /boot || echo "WARNING: /boot stayed read-write" >&2' EXIT
-[ -n "$new_vendor" ] && [ -f "$B/vendor-$new_vendor/vendor.squashfs" ] ||
-	die "the new rootfs is built on vendor set '$new_vendor', which this install doesn't have: a fresh setup, not an update"
+[ -n "$new_stock" ] && [ "$new_stock" = "$(cat /stock/etc/os-release 2>/dev/null | sed -n 's/^BUILD_ID="\{0,1\}\([0-9a-f]*\)"\{0,1\}$/\1/p')" ] ||
+	die "the new rootfs is made for stock build '$new_stock', not this device's"
 put "$SRC/rootfs.squashfs" "$B/$newfile"
 # The initrd and boot.scr are not A/B: the slot fallback can't undo them, so each
 # one replaced keeps the file it replaces as <name>.prev (boot.scr's as basedos/boot.scr.prev). To
@@ -80,4 +80,4 @@ else
 	rm -f "$B/slot"
 fi
 sync
-echo "running slot: $running; next boot: $new ($newfile, on vendor set $new_vendor). Reboot to switch."
+echo "running slot: $running; next boot: $new ($newfile, for stock $new_stock). Reboot to switch."

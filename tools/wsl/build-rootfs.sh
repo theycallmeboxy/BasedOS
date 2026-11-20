@@ -1,26 +1,30 @@
 #!/bin/sh
-# Build BasedOS's two root images. Runs in WSL (needs real symlinks, python3, mksquashfs).
+# Build BasedOS's root image, the system layer. Runs in WSL (needs real symlinks, python3,
+# mksquashfs).
 # Usage: build-rootfs.sh <repo> <work dir> <busybox.static> <busybox.list>
 #   <work>/stock-root must hold the unpacked stock SYSTEM (tools/wsl/unpack-stock.sh), and
 #   $BR_TARGET (default ~/basedos-br/out/target) BasedOS's own Buildroot root
 #   (tools/buildroot/build.sh build), and $BR32_TARGET (default ~/basedos-br/out-armhf/target)
-#   its 32-bit one (build.sh --armhf build), and $STOCK_P1 the stock build's boot files (Image,
-#   DTBs: prepared/<build>/).
+#   its 32-bit one (build.sh --armhf build).
 #
-# The root is two read-only layers, stacked by the initrd with overlayfs (docs/plan.md):
-#   vendor    the vendor set, the base this BasedOS is built on: the stock kernel and DTBs, and
-#             what manifest/harvest.list takes from stock (the closed GPU drivers, the firmware,
-#             the kernel's modules; docs/vendor-minimal.md). Built from your own device's
-#             firmware, never published. Named by a hash of its contents (VENDOR_ID), so the same
-#             stock build always gives the same id. Comes out as vendor-<id>/: Image and the DTBs
-#             as plain files (U-Boot loads them), vendor.squashfs with the rest.
-#   system    everything of BasedOS's own, on top: its userland from its Buildroot root
+# BasedOS runs next to stock on the eMMC and uses stock's own files in place (docs/plan.md,
+# Architecture): U-Boot loads stock's kernel and DTBs from stock's boot partition, and the initrd
+# mounts stock's own SYSTEM read-only at /stock. What BasedOS takes from stock
+# (manifest/harvest.list: the closed GPU drivers, the firmware, the kernel's modules) is a link in
+# the system layer into /stock, never a copy, so nothing of stock's is ever in a BasedOS image.
+# The system layer is pinned to the stock build those links were made against (its BUILD_ID, in
+# usr/share/basedos/needs-stock); the initrd refuses any other stock.
+#
+#   system    everything of BasedOS's own: its userland from its Buildroot root
 #             (manifest/base.list: glibc, OpenSSH, wpa_supplicant, ALSA, ...), BusyBox, the overlay,
-#             SDL2, librga, bash, the boot tools and identity files.
-#             It names the vendor layer it was built against (usr/share/basedos/needs-vendor);
-#             a .bosupd carries this one alone.
-# Outputs in <work>: vendor-<id>/, rootfs.squashfs (the system layer; the slot files
-# keep their names), and rootfs/ (the two merged, for the checks and tools that want one tree).
+#             SDL2, librga, bash, the boot tools and identity files, and the links into /stock.
+#             A .bosupd carries it.
+#   stock     what the links point at, harvested here only as a build-time view (<work>/vendor):
+#             the checks below and the merged view use it; it never leaves the PC.
+# Outputs in <work>: rootfs.squashfs (the system layer; the slot files keep their names), and
+# rootfs/ (the system layer with stock's linked files in place, for the checks and tools that want
+# one tree).
+set -eu
 set -eu
 REPO=$1 W=$2 BB=$3 BBLIST=$4
 VEN=$W/vendor SYS=$W/system OUT=$W/rootfs BASE=$W/base
@@ -30,7 +34,6 @@ VERSION=$(cat "$REPO/VERSION")
 BUILD=$(git -C "$REPO" describe --always --dirty 2>/dev/null || echo unknown)
 case $BUILD in *dirty) BUILD="$BUILD-$(date -u +%Y%m%d%H%M)" ;; esac
 
-VENDOR_BOOT_FILES="Image rk3576-gkd-atom.dtb rk3576-gkd-atom-hdmi.dtb rk3576-gkd-atom-usbdp.dtb"
 rm -rf "$VEN" "$SYS" "$OUT" "$BASE" "$W"/vendor-* "$W/rootfs.squashfs"
 mkdir -p "$VEN" "$SYS" "$BASE"
 chmod 755 "$VEN" "$SYS"
@@ -52,77 +55,22 @@ cp -a "$W/base32/usr/lib/." "$BASE/usr/lib32/"
 # What stock's /usr/lib32 has and this doesn't (ports may load it): a note, not a failure.
 python3 "$REPO/tools/lib32-gaps.py" "$W/stock-root" "$BASE" > "$W/lib32-gaps.txt" || true
 
-echo "--- vendor: harvest"
+echo "--- stock: what BasedOS uses of it"
+# A build-time view only ($VEN): on the device these stay in stock's SYSTEM, linked from /stock.
 # The blobs' own libraries (libstdc++, libwayland, glibc) are BasedOS's: --provided.
-python3 "$REPO/tools/harvest.py" "$W/stock-root" "$REPO/manifest/harvest.list" "$VEN" --provided "$BASE" 	--report "$W/harvest-report.txt" --sources "$W/vendor-sources.txt"
-# The kernel and stock's DTBs, from the stock build's boot partition ($STOCK_P1): part of the vendor
-# set, so BasedOS boots the kernel its modules came from, never stock's own copy (docs/plan.md,
-# Architecture). Staged under boot/ for the id and the recipe; they come out as plain files beside
-# vendor.squashfs (U-Boot can't read squashfs), which leaves boot/ out.
-[ -f "${STOCK_P1:?STOCK_P1: the prepared stock boot files}/Image" ] || { echo "no $STOCK_P1/Image" >&2; exit 1; }
-mkdir -p "$VEN/boot"
-for f in $VENDOR_BOOT_FILES; do
-	install -m 644 "$STOCK_P1/$f" "$VEN/boot/$f"
-	printf '/boot/%s\tp1:%s\n' "$f" "$f" >> "$W/vendor-sources.txt"
-done
-mkdir -p "$VEN/usr/share/basedos"
-# The same function basedos-vendor uses on the device, so both name the same files alike.
-. "$REPO/overlay/usr/lib/basedos/vendor-id"
-VENDOR_ID=$(vendor_id "$VEN")
-cat > "$VEN/usr/share/basedos/vendor-release" <<EOF
-VENDOR_ID=$VENDOR_ID
+python3 "$REPO/tools/harvest.py" "$W/stock-root" "$REPO/manifest/harvest.list" "$VEN" --provided "$BASE" \
+	--report "$W/harvest-report.txt" --sources "$W/stock-sources.txt"
+# The stock build the links are made against: its BUILD_ID, the full commit (stock's
+# /etc/os-release, which the initrd reads at /stock/etc/os-release on every boot).
+STOCK_BUILD_ID=$(sed -n 's/^BUILD_ID="\{0,1\}\([0-9a-f]*\)"\{0,1\}$/\1/p' "$W/stock-root/etc/os-release")
+[ ${#STOCK_BUILD_ID} -ge 7 ] || { echo "stock's /etc/os-release has no BUILD_ID" >&2; exit 1; }
 STOCK_BUILD=$(cat "$W/STOCK_BUILD" 2>/dev/null || echo unknown)
-EOF
-echo "vendor $VENDOR_ID"
-
-echo "--- vendor: recipe"
-# How to cut this same vendor layer out of a device's own stock image, so the device can build it
-# itself (overlay/usr/sbin/basedos-vendor): each file's place, mode and SHA-256 and where it is in
-# stock's SYSTEM, and each link. Only paths and hashes, nothing of stock's; it goes in the system
-# layer (usr/share/basedos/vendor-recipe). Checked here: the id the recipe gives must be this one.
-python3 - "$VEN" "$W/vendor-sources.txt" "$VENDOR_ID" "$(cat "$W/STOCK_BUILD" 2>/dev/null || echo unknown)" "$W/vendor-recipe" <<'EOF'
-import hashlib, os, sys
-ven, sources, vid, stock, out = sys.argv[1:]
-src = {}
-for line in open(sources, encoding="utf-8"):
-    dst, s = line.rstrip("\n").split("\t")
-    src[dst.lstrip("/")] = s.lstrip("/")
-entries, idlines = [], []
-for root, dirs, files in os.walk(ven):
-    for n in dirs + files:
-        p = os.path.join(root, n)
-        rel = os.path.relpath(p, ven)
-        if rel == "usr/share/basedos/vendor-release" or (os.path.isdir(p) and not os.path.islink(p)):
-            continue
-        if any(c.isspace() for c in rel):
-            sys.exit(f"vendor recipe: a space in {rel}")
-        if os.path.islink(p):
-            t = os.readlink(p)
-            entries.append(f"L {rel} {t}")
-            idlines.append((rel, f"L ./{rel} {t}"))
-        else:
-            if rel not in src:
-                sys.exit(f"vendor recipe: no stock source for {rel}")
-            h = hashlib.sha256(open(p, "rb").read()).hexdigest()
-            mode = format(os.stat(p).st_mode & 0o7777, "o")
-            entries.append(f"F {mode} {h} {rel} {src[rel]}")
-            idlines.append((rel, f"F ./{rel} {h} {mode}"))
-# The id as vendor_id computes it: lines sorted by "./path" bytes (LC_ALL=C sort of find's output).
-idlines.sort(key=lambda x: ("./" + x[0]).encode())
-got = hashlib.sha256("".join(l + "\n" for _, l in idlines).encode()).hexdigest()[:12]
-if got != vid:
-    sys.exit(f"vendor recipe gives id {got}, not {vid}")
-with open(out, "w", encoding="utf-8") as f:
-    f.write("# BasedOS vendor recipe (tools/wsl/build-rootfs.sh; basedos-vendor reads it)\n")
-    f.write(f"VENDOR_ID={vid}\nSTOCK_BUILD={stock}\n")
-    for e in sorted(entries, key=lambda e: e.split()[1] if e[0] == "L" else e.split()[3]):
-        f.write(e + "\n")
-print(f"recipe: {len(entries)} entries")
-EOF
+echo "stock $STOCK_BUILD ($STOCK_BUILD_ID)"
 
 echo "--- system: skeleton"
 cd "$SYS"
-mkdir -p usr/bin usr/sbin usr/lib usr/share/basedos etc dev proc sys run tmp var data boot root mnt/SDCARD
+# /stock: where the initrd mounts stock's SYSTEM, read-only.
+mkdir -p usr/bin usr/sbin usr/lib usr/share/basedos etc dev proc sys run tmp var data boot root mnt/SDCARD stock
 ln -s usr/bin bin
 ln -s usr/sbin sbin
 ln -s usr/lib lib
@@ -196,12 +144,12 @@ ln -sf /usr/lib32/ld-linux-armhf.so.3 usr/lib/ld-linux-armhf.so.3
 echo "--- system: GL library names"
 # The Mali package's unversioned names, as stock's /usr/lib/mali/ carries them beside each library:
 # programs built against them (PortMaster's Weston, for one) ask for libGLESv2.so, not .so.2. The
-# targets are the vendor layer's files, 64-bit in /usr/lib and 32-bit in /usr/lib32.
+# targets are stock's files (links into /stock), 64-bit in /usr/lib and 32-bit in /usr/lib32.
 for l in libEGL.so:libEGL.so.1 libGLESv1_CM.so:libGLESv1_CM.so.1 libGLESv2.so:libGLESv2.so.2 \
 	libgbm.so:libgbm.so.1 libwayland-egl.so:libwayland-egl.so.1 libmali-hook.so:libmali-hook.so.1 \
 	libmali-bifrost-g52-g24p0-wayland-gbm.so:libmali.so.1; do
 	for d in usr/lib usr/lib32; do
-		[ -e "$VEN/$d/${l#*:}" ] || { echo "vendor layer has no $d/${l#*:}" >&2; exit 1; }
+		[ -e "$VEN/$d/${l#*:}" ] || { echo "stock's files have no $d/${l#*:}" >&2; exit 1; }
 		ln -sf "${l#*:}" "$d/${l%%:*}"
 	done
 done
@@ -213,7 +161,7 @@ install -m 755 "$REPO/prepared/bash/bash" usr/bin/bash
 install -D -m 644 "$REPO/prepared/bash/COPYING" usr/share/licenses/bash/COPYING
 
 echo "--- system: busybox"
-# Links only where neither layer has the file: a real tool (BasedOS's userland, or a vendor
+# Links only where neither BasedOS nor stock's linked files have it: a real tool (BasedOS's userland, or a stock
 # file) beats BusyBox's applet, and the overlay beats both.
 install -m 755 "$BB" usr/bin/busybox
 n=0
@@ -233,12 +181,51 @@ find "$SYS" -name __pycache__ -prune -exec rm -rf {} +
 # poweroff's wrapper (it notes which of the three was asked for) answers to all three names.
 for a in reboot halt; do rm -f usr/sbin/$a; ln -s poweroff usr/sbin/$a; done
 find "$SYS/etc" "$SYS/usr/lib/basedos" "$SYS/usr/share/udhcpc" "$SYS/usr/share/basedos" -type f -exec chmod 644 {} +
-chmod 755 etc/init.d/* usr/sbin/poweroff usr/sbin/mount-frontend usr/sbin/frontend-session usr/sbin/basedos-suspend usr/sbin/basedos-update usr/sbin/basedos-udev usr/sbin/basedos-vendor usr/sbin/basedos-boot usr/sbin/basedos-menu usr/share/udhcpc/default.script
+chmod 755 etc/init.d/* usr/sbin/poweroff usr/sbin/mount-frontend usr/sbin/frontend-session usr/sbin/basedos-suspend usr/sbin/basedos-update usr/sbin/basedos-udev usr/sbin/basedos-boot usr/sbin/basedos-menu usr/share/udhcpc/default.script
 # Accounts are on /data (rcS seeds them from these defaults), so a frontend can add users.
 chmod 644 usr/share/basedos/accounts/passwd usr/share/basedos/accounts/group
 chmod 600 usr/share/basedos/accounts/shadow
 for f in passwd group shadow; do ln -sf /data/etc/$f etc/$f; done
 chmod 700 root
+
+echo "--- system: links into /stock"
+# Every file of the stock view becomes a link to its place in stock's SYSTEM, mounted at /stock
+# (stock-sources.txt: its path there, links followed); stock's own links among them are kept as
+# they are. BasedOS's own files win: a path the system layer already has is left alone, as the
+# old overlay stacking did. usr/share/basedos/stock-links lists them for the device's checks.
+python3 - "$SYS" "$VEN" "$W/stock-sources.txt" "$W/stock-root" <<'EOF'
+import os, sys
+sys_root, ven, sources, stock = sys.argv[1:]
+src = {}
+for line in open(sources, encoding="utf-8"):
+    dst, s = line.rstrip("\n").split("\t")
+    src[dst.lstrip("/")] = s.lstrip("/")
+made, kept, mine = [], 0, 0
+for root, dirs, files in os.walk(ven):
+    for n in sorted(dirs + files):
+        p = os.path.join(root, n)
+        rel = os.path.relpath(p, ven)
+        if os.path.isdir(p) and not os.path.islink(p):
+            continue
+        out = os.path.join(sys_root, rel)
+        if os.path.lexists(out):
+            mine += 1
+            continue
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        if os.path.islink(p):
+            os.symlink(os.readlink(p), out)
+            kept += 1
+        else:
+            if rel not in src:
+                sys.exit(f"links: no stock source for {rel}")
+            if not os.path.isfile(os.path.join(stock, src[rel])):
+                sys.exit(f"links: stock has no {src[rel]}")
+            os.symlink("/stock/" + src[rel], out)
+            made.append(f"{rel} /stock/{src[rel]}")
+with open(os.path.join(sys_root, "usr/share/basedos/stock-links"), "w", encoding="utf-8") as f:
+    f.write("".join(l + "\n" for l in made))
+print(f"{len(made)} links into /stock, {kept} of stock's own links, {mine} paths BasedOS has itself")
+EOF
 
 echo "--- system: boot screen and keys"
 # BasedOS's own small static tools (tools/boot-ui); the boot screen's font comes from Terminus
@@ -256,8 +243,8 @@ ln -sf /run/resolv.conf etc/resolv.conf
 ln -sf /run/machine-id etc/machine-id
 
 echo "--- system: identity"
-echo "$VENDOR_ID" > usr/share/basedos/needs-vendor
-install -m 644 "$W/vendor-recipe" usr/share/basedos/vendor-recipe
+# The stock build this system layer's links are made against (the initrd checks stock's).
+echo "$STOCK_BUILD_ID" > usr/share/basedos/needs-stock
 # The known stock builds' boot.scr hashes (manifest/stock-builds.txt): basedos-boot checks the
 # saved stock script against them before it puts it back.
 awk '$2 == "boot.scr" && length($1) == 64 { print $1 }' "$REPO/manifest/stock-builds.txt" > usr/share/basedos/stock-boot-scr.sha256
@@ -275,12 +262,12 @@ BASEOS_WIFI=true
 BASEOS_BLUETOOTH=false
 BASEOS_VERSION=$VERSION
 BASEOS_BUILD=$BUILD
-BASEOS_STOCK=$(cat "$W/STOCK_BUILD" 2>/dev/null || echo unknown)
-BASEOS_VENDOR=$VENDOR_ID
+BASEOS_STOCK=$STOCK_BUILD
+BASEOS_STOCK_BUILD_ID=$STOCK_BUILD_ID
 EOF
 # What the device and setup read as text: no carriage returns (a Windows-written name once put
-# one in BASEOS_STOCK and the recipe).
-for f in etc/baseos-release usr/share/basedos/vendor-recipe "$VEN/usr/share/basedos/vendor-release"; do
+# one in BASEOS_STOCK).
+for f in etc/baseos-release usr/share/basedos/needs-stock usr/share/basedos/stock-links; do
 	[ -f "$f" ] || continue
 	! grep -q "$(printf '\r')" "$f" || { echo "$f has a carriage return" >&2; exit 1; }
 done
@@ -292,7 +279,8 @@ PRETTY_NAME="BasedOS $VERSION (GKD 350H Ultra)"
 EOF
 
 echo "--- check: nothing of stock's in the system layer"
-# The system layer is what gets published: no file in it may be a copy of a vendor file.
+# The system layer is what gets published: no file in it may be a copy of a stock file (the
+# links into /stock aren't files).
 python3 - "$SYS" "$VEN" <<'EOF'
 import hashlib, os, sys
 sys_root, ven = sys.argv[1], sys.argv[2]
@@ -320,20 +308,26 @@ print("ok")
 EOF
 
 echo "--- merged view"
-# vendor, then system on top, as the initrd stacks them.
-cp -a "$VEN" "$OUT"
-cp -a "$SYS/." "$OUT/"
+# The system layer with stock's linked files in place of the links, as the running system sees it.
+cp -a "$SYS" "$OUT"
+python3 - "$OUT" "$VEN" <<'EOF'
+import os, shutil, sys
+out, ven = sys.argv[1:]
+n = 0
+for root, dirs, files in os.walk(out):
+    for f in files + dirs:
+        p = os.path.join(root, f)
+        if os.path.islink(p) and os.readlink(p).startswith("/stock/"):
+            os.remove(p)
+            shutil.copy2(os.path.join(ven, os.path.relpath(p, out)), p)
+            n += 1
+print(f"{n} stock files in place")
+EOF
 # /boot is the boot partition's mount point in the running system, not part of the root.
 rm -rf "$OUT/boot"
 mkdir -p "$OUT/boot"
 
 echo "--- squashfs"
-# The vendor set: vendor-<id>/ with the kernel and DTBs as plain files and vendor.squashfs with
-# the rest (boot/ left out of it).
-mkdir -p "$W/vendor-$VENDOR_ID"
-for f in $VENDOR_BOOT_FILES; do install -m 644 "$VEN/boot/$f" "$W/vendor-$VENDOR_ID/$f"; done
-# (-e takes the rest of the line as names to leave out, so it goes last.)
-mksquashfs "$VEN" "$W/vendor-$VENDOR_ID/vendor.squashfs" -noappend -all-root -comp zstd -Xcompression-level 15 -b 256K -quiet -e boot
 mksquashfs "$SYS" "$W/rootfs.squashfs" -noappend -all-root -comp zstd -Xcompression-level 15 -b 256K -quiet
-ls -l "$W/vendor-$VENDOR_ID" "$W/rootfs.squashfs"
-grep -E "^BASEOS_(VERSION|BUILD|VENDOR)=" "$SYS/etc/baseos-release"
+ls -l "$W/rootfs.squashfs"
+grep -E "^BASEOS_(VERSION|BUILD|STOCK)" "$SYS/etc/baseos-release"

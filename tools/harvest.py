@@ -6,14 +6,13 @@ every library those files need (a closed set), into a staging tree.
              [--lib32 <dir>] [--sources <file>]
 
 --provided: a root whose libraries count as there already (the system layer's, when harvesting
-the vendor layer's blobs), so they aren't copied from the source again.
+stock's blobs), so they aren't copied from the source again.
 --lib32: where 32-bit (armhf) libraries are looked for, in every root (default /usr/lib32, as
 the system layer and stock lay them out; /usr/lib for BasedOS's 32-bit Buildroot root, whose
 libraries build-rootfs.sh then moves to /usr/lib32). 64-bit ones are looked for in /usr/lib.
 --report: where the report goes (default <staging root>/../harvest-report.txt).
 --sources: also write, for each regular file copied, "<staging path> TAB <source path>" (the
-source path with its links followed): what build-rootfs.sh's vendor recipe needs, so a device
-can cut the same files out of its own stock image (basedos-vendor).
+source path with its links followed): where build-rootfs.sh points each link into /stock.
 
 Run it on a filesystem with real symlinks (WSL's ext4, not /mnt/c).
 Fails if any DT_NEEDED can't be found, like baseos-my355's prepare_stock.py.

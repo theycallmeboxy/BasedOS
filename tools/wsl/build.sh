@@ -1,5 +1,6 @@
 #!/bin/sh
-# Full rootfs build (vendor and system layers) in WSL from the repo on /mnt/e.
+# Full BasedOS build (the system layer, the initrd, the boot scripts, the recovery card's files) in
+# WSL from the repo on /mnt/e.
 set -eu
 REPO=/mnt/e/projects/spruceOS-gkd350hultra/basedos
 W=$HOME/basedos-work
@@ -7,7 +8,7 @@ STOCK=$REPO/prepared/rocknix-20260613-c8ed06c
 mkdir -p "$W"
 # The stock build's name, without the carriage return a Windows-written BUILD file carries.
 tr -d '\r' < "$STOCK/BUILD" > "$W/STOCK_BUILD"
-# Stock's root, unpacked once (the vendor harvest and lib32-gaps read it).
+# Stock's root, unpacked once (the links into /stock are made against it; lib32-gaps reads it).
 [ -d "$W/stock-root/usr/lib" ] || sh "$REPO/tools/wsl/unpack-stock.sh" "$STOCK/SYSTEM" "$W/stock-root"
 
 # sdl2_current <prepared dir> <arch>: 0 if that SDL2 build is of the SDL and librga commits and
@@ -47,40 +48,37 @@ sdl2_current "$REPO/prepared/sdl2-armhf" armhf || {
 }
 [ -f "$REPO/prepared/bash/build-info" ] ||
 	bash "$REPO/tools/bash/build.sh" "$REPO/prepared/bash"
-STOCK_P1=$STOCK sh "$REPO/tools/wsl/build-rootfs.sh" "$REPO" "$W" "$REPO/prepared/alpine/busybox.static" "$REPO/prepared/alpine/busybox.list"
-VENDOR_ID=$(sed -n 's/^BASEOS_VENDOR=//p' "$W/system/etc/baseos-release")
+sh "$REPO/tools/wsl/build-rootfs.sh" "$REPO" "$W" "$REPO/prepared/alpine/busybox.static" "$REPO/prepared/alpine/busybox.list"
+STOCK_BUILD_ID=$(cat "$W/system/usr/share/basedos/needs-stock")
 mkdir -p "$REPO/out"
 cp "$W/rootfs.squashfs" "$REPO/out/rootfs.squashfs"
-# The vendor set stays local: built from your own stock, never published (NOTICE.md).
-rm -rf "$REPO"/out/vendor-*
-cp -r "$W/vendor-$VENDOR_ID" "$REPO/out/"
+# (Older builds' vendor sets and boot.env: BasedOS no longer has either.)
+rm -rf "$REPO"/out/vendor-* "$REPO/out/boot.env"
 # The update payload: the system layer and the initrd, nothing of stock's (publishable).
 python3 "$REPO/tools/mkboot.py" initrd "$REPO/prepared/alpine/busybox.static" "$W/initrd.uimg.new" >/dev/null
 mv "$W/initrd.uimg.new" "$REPO/out/initrd.uimg"
-# BasedOS's own boot script (initrd/boot.cmd), and boot.env naming the vendor set it boots
-# (setup puts both on the boot partition; not in a payload: the vendor set doesn't change).
+# BasedOS's own boot script (initrd/boot.cmd; setup puts it in place of stock's).
 rm -f "$W/boot.scr.new"
 python3 "$REPO/tools/mkboot.py" script "$REPO/initrd/boot.cmd" "$W/boot.scr.new"
 mv "$W/boot.scr.new" "$REPO/out/boot.scr"
-echo "basedos_vendor=$VENDOR_ID" > "$REPO/out/boot.env"
 # The recovery card's initrd and boot script (tools/recovery), and the setup script itself: with
 # rootfs.squashfs, initrd.uimg and boot.scr, that's the release folder basedos-setup runs from.
 # release.info: what basedos-setup checks before it asks anything or downloads the rest: this
-# build, the vendor set it's built on, and the stock build's kernel and DTB hashes (the recipe's
-# p1 lines), so the device's own stock can be matched first.
-REC=$W/system/usr/share/basedos/vendor-recipe
+# build, and the stock build it runs on (its BUILD_ID, and the SHA-256 of the stock files BasedOS
+# boots and mounts: the kernel, the DTBs, SYSTEM), so the device's own stock is matched first.
 {
-	sed -n 's/^BASEOS_\(VERSION\|BUILD\|VENDOR\)=/\1=/p' "$W/system/etc/baseos-release"
-	grep '^STOCK_BUILD=' "$REC"
-	awk '$1 == "F" && $5 ~ /^p1:/ { sub(/^p1:/, "", $5); print "P1", $3, $5 }' "$REC"
-	# The frontends setup can download from their own upstream releases (manifest/frontends.txt).
-	awk '!/^#/ && NF == 5 { print "FRONTEND", $1, $2, $3, $4, $5 }' "$REPO/manifest/frontends.txt"
+	sed -n 's/^BASEOS_\(VERSION\|BUILD\)=/\1=/p' "$W/system/etc/baseos-release"
+	echo "STOCK_BUILD=$(cat "$W/STOCK_BUILD")"
+	echo "STOCK_BUILD_ID=$STOCK_BUILD_ID"
+	for f in Image rk3576-gkd-atom.dtb rk3576-gkd-atom-hdmi.dtb rk3576-gkd-atom-usbdp.dtb SYSTEM; do
+		echo "P1 $(sha256sum < "$STOCK/$f" | cut -c1-64) $f"
+	done
 } > "$REPO/out/release.info"
-[ "$(grep -c '^P1 ' "$REPO/out/release.info")" -ge 1 ] || { echo "release.info: no p1 hashes" >&2; exit 1; }
+[ "$(grep -c '^P1 ' "$REPO/out/release.info")" -eq 5 ] || { echo "release.info: stock's file hashes missing" >&2; exit 1; }
 sh "$REPO/tools/recovery/build.sh" "$REPO" "$W" "$REPO/prepared/alpine/busybox.static" "$REPO/out"
 cp "$REPO/tools/basedos-setup.sh" "$REPO/out/basedos-setup.sh"
 rm -f "$REPO"/out/baseos-*.bosupd
-python3 "$REPO/tools/mkupdate.py" "$W/rootfs.squashfs" "$REPO/out/initrd.uimg" 	"$(sed -n 's/^BASEOS_VENDOR=//p' "$W/system/etc/baseos-release")" "$(cat "$REPO/VERSION")" 	"$(sed -n 's/^BASEOS_BUILD=//p' "$W/system/etc/baseos-release")" "$REPO/out"
+python3 "$REPO/tools/mkupdate.py" "$W/rootfs.squashfs" "$REPO/out/initrd.uimg" 	"$STOCK_BUILD_ID" "$(cat "$REPO/VERSION")" 	"$(sed -n 's/^BASEOS_BUILD=//p' "$W/system/etc/baseos-release")" "$REPO/out"
 for r in harvest-report.txt base32-report.txt lib32-gaps.txt; do
 	cp "$W/$r" "$REPO/out/$r" 2>/dev/null || true
 done

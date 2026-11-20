@@ -10,7 +10,8 @@
 # mkbootscr-card.py and the three DTBs from dtb-swap-mmc.py.
 #
 # The card gets stock's own layout: MBR; the eMMC's loader (sectors 64-32767,
-# copied, so the card can boot even if the eMMC's loader is ever damaged);
+# copied; note: tested 2026-11-20, the boot ROM never starts a loader from the card, so this
+# copy doesn't help if the eMMC's loader is damaged);
 # p1 vfat at 32768 with stock's Image and SYSTEM plus the card boot.scr and
 # DTBs (aliases swapped so the card is mmcblk0); p2 ext4 to the end holding a
 # copy of stock's /storage (Wi-Fi, SSH and settings carry over).

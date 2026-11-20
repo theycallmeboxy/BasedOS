@@ -6,8 +6,8 @@
 # The release is what basedos-setup.sh downloads on the device: the setup script (with <tag>
 # written in, so it fetches the rest from that release), release.info (what setup checks first),
 # the system layer, the initrd, BasedOS's
-# boot script, the recovery card's initrd and boot script, and SHA256SUMS. Nothing of stock's: no
-# vendor set, no boot.env (setup makes both on the device). Refuses a build from a tree with
+# boot script, the recovery card's initrd and boot script, and SHA256SUMS. Nothing of stock's
+# (BasedOS uses the device's own stock files in place). Refuses a build from a tree with
 # uncommitted changes, so a release is always a commit.
 set -eu
 REPO=$(cd "$(dirname "$0")/../.." && pwd)

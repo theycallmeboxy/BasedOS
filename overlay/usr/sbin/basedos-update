@@ -9,9 +9,9 @@
 #             once the new slot has booted; note a rollback otherwise).
 #   status    what is installed, and what each payload on the card would do.
 #
-# A payload carries the system layer and the initrd, never stock's files. It names the vendor set
-# (the base: docs/plan.md, Architecture) it's built on; updates never change the vendor set, so a
-# payload for another base is refused: that needs a fresh setup, not an update. The
+# A payload carries the system layer and the initrd, never stock's files. It names the stock build
+# its links into /stock are made against (its BUILD_ID; docs/plan.md, Architecture), and a payload
+# for another stock build is refused. The
 # system layer goes to the slot that isn't running (A/B, as tools/dev/update-basedos.sh), the
 # initrd replaces the old one when it differs (kept as initrd.uimg.prev). Each file is written as
 # <name>.new, synced, re-read from the eMMC against the manifest's SHA-256 and only then renamed,
@@ -54,7 +54,7 @@ version_newer() {
 # Judge one payload: 0 = apply, 1 = nothing to do, 2 = refused. Sets EV_VERSION, EV_BUILD,
 # EV_SHA, EV_REASON, and leaves its manifest in $MANIFEST.
 evaluate() {
-	EV_VERSION="" EV_BUILD="" EV_SHA="" EV_REASON="" EV_VENDOR=""
+	EV_VERSION="" EV_BUILD="" EV_SHA="" EV_REASON="" EV_STOCK=""
 	if ! tar -xOf "$1" manifest > "$MANIFEST" 2>/dev/null || [ ! -s "$MANIFEST" ]; then
 		EV_REASON="not a BasedOS update"; return 2
 	fi
@@ -64,10 +64,10 @@ evaluate() {
 	[ "$(field "$MANIFEST" format)" = "$FORMAT" ] || { EV_REASON="format $(field "$MANIFEST" format), not $FORMAT"; return 2; }
 	[ "$(field "$MANIFEST" target)" = "$BASEOS_TARGET" ] || { EV_REASON="built for $(field "$MANIFEST" target), this is $BASEOS_TARGET"; return 2; }
 	case "$EV_SHA" in [0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) ;; *) EV_REASON="no rootfs-sha256"; return 2 ;; esac
-	EV_VENDOR=$(field "$MANIFEST" vendor)
-	[ -n "$EV_VENDOR" ] || { EV_REASON="names no vendor layer"; return 2; }
-	[ -f "$B/vendor-$EV_VENDOR/vendor.squashfs" ] ||
-		{ EV_REASON="built for another base (vendor set $EV_VENDOR; this device has ${BASEOS_VENDOR:-none}): that needs a fresh setup, not an update"; return 2; }
+	EV_STOCK=$(field "$MANIFEST" stock)
+	[ -n "$EV_STOCK" ] || { EV_REASON="names no stock build (made for an older BasedOS)"; return 2; }
+	[ "$EV_STOCK" = "${BASEOS_STOCK_BUILD_ID:-}" ] ||
+		{ EV_REASON="made for stock build $EV_STOCK; this device's is ${BASEOS_STOCK_BUILD_ID:-unknown}"; return 2; }
 	# Only forward, or a rebuild of the running version: an old payload left on the card must not
 	# downgrade the device once it has moved past it.
 	if version_newer "$EV_VERSION" "${BASEOS_VERSION:-0}"; then :
@@ -154,8 +154,7 @@ confirm() {
 }
 
 status() {
-	echo "running: BasedOS $BASEOS_VERSION ($BASEOS_BUILD), slot $(running_slot), vendor ${BASEOS_VENDOR:-none}"
-	for _v in "$B"/vendor-*/vendor.squashfs; do [ -f "$_v" ] && { _d=${_v%/vendor.squashfs}; echo "vendor set: ${_d##*/}"; }; done
+	echo "running: BasedOS $BASEOS_VERSION ($BASEOS_BUILD), slot $(running_slot), on stock ${BASEOS_STOCK:-?} (${BASEOS_STOCK_BUILD_ID:-?})"
 	[ -f "$STATE" ] && echo "pending: $(field "$STATE" version) in slot $(field "$STATE" slot)"
 	_any=""
 	for _p in "$CARD"/*.bosupd; do

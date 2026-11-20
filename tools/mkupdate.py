@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Build a BasedOS update payload (.bosupd) from a finished build.
 
-  mkupdate.py <system rootfs.squashfs> <initrd.uimg> <vendor id> <version> <build> <out dir>
+  mkupdate.py <system rootfs.squashfs> <initrd.uimg> <stock build id> <version> <build> <out dir>
 
 Writes <out dir>/baseos-gkd350hultra-<version>.bosupd: an uncompressed tar of `manifest`,
-`rootfs.squashfs` (the system layer) and `initrd.uimg`. Only BasedOS's own files: the vendor
-layer is built on each device from its own stock firmware and never travels in an update, so the
-manifest names the one this system layer needs (`vendor`), and a device without it refuses the
-payload. The name is spruce's (baseos_local_update_file looks for baseos-<target>-*.bosupd at the
+`rootfs.squashfs` (the system layer) and `initrd.uimg`. Only BasedOS's own files: BasedOS uses
+the device's own stock files in place (links into /stock), so the manifest names the stock build
+this system layer's links are made against (`stock`, its BUILD_ID), and a device with another
+stock refuses the payload. The name is spruce's (baseos_local_update_file looks for baseos-<target>-*.bosupd at the
 card root); the format is BasedOS's own (`basedos-update/1`; overlay/usr/sbin/basedos-update
 applies it). Integrity is a SHA-256 per file, checked again after writing; no signature, as the
 BaseOS projects: a key would be a single point of failure, and these files carry no secrets.
@@ -33,13 +33,13 @@ def sha256(path):
 def main():
     if len(sys.argv) != 7:
         sys.exit(__doc__)
-    rootfs, initrd, vendor, version, build, outdir = sys.argv[1:]
+    rootfs, initrd, stock, version, build, outdir = sys.argv[1:]
     fields = [
         ("format", FORMAT),
         ("target", TARGET),
         ("version", version),
         ("build", build),
-        ("vendor", vendor),
+        ("stock", stock),
         ("rootfs-sha256", sha256(rootfs)),
         ("initrd-sha256", sha256(initrd)),
     ]

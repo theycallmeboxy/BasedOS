@@ -2,22 +2,16 @@
 
 ## Status
 
-**Runs spruce on the device (2026-11-20, build `c9ee8f9`), installed next to stock** with
-`tools/install-dev.sh` (clean install from stock, uninstall and reinstall tested twice,
-2026-11-20). Power to spruce's menu takes about 4 s (boot-time.md); spruce starts at about 1.3 s of
-the kernel's uptime. Working and checked on the unit:
+**Being rebuilt (round 3, 2026-11-20 evening) on the simplified architecture below; not yet on
+the unit.** Until then, what ran on the unit (2026-11-20, build `c9ee8f9`, installed next to stock
+with `tools/install-dev.sh`; power to spruce's menu in about 4 s, boot-time.md) was the earlier
+vendor-set design. Checked on the unit, and carried over:
 
-- The architecture below, built and booting (2026-11-20, vendor set `26e5cd42345a`): BasedOS's own
-  boot script loads the kernel and DTB from the vendor set and sets the panel to 60 Hz itself;
-  the initrd stacks the system layer (about 33 MB with the 32-bit libraries) on the vendor set's
-  `vendor.squashfs`; A/B slots with a boot counter that falls back to the other slot, then to
-  stock. Checked on the unit: a dry run from the SD card first (U-Boot runs a card's script ahead
-  of the eMMC's, and goes on to the eMMC when it ends), then a fresh setup; with the vendor set
-  unreachable, the script hands over to stock's own.
+- A/B slots with a boot counter that falls back to the other slot, then to stock; with
+  BasedOS's files unloadable, the boot script hands over to stock's own.
 - Updates: a `.bosupd` at the card root, from spruce's BaseOS updater or by hand, installed at the
-  next boot into the spare slot and confirmed once it boots (`basedos-update`); one built on
-  another base is refused. The boot script
-  is not in a payload (see below).
+  next boot into the spare slot and confirmed once it boots (`basedos-update`). The boot script
+  is not in a payload.
 - Leaving BasedOS (`basedos-boot`, the maintenance menu, Start held at power-on): stock once,
   switch to stock with "Return to BasedOS" in stock's Ports, uninstall (done by the initrd at the
   restart). Each boot script written is checked and read back.
@@ -28,59 +22,43 @@ the kernel's uptime. Working and checked on the unit:
 - Maintenance mode (Select held at power-on): BasedOS's own Wi-Fi and root SSH, no frontend, and
   the menu above.
 - The boot screen, quiet boot, boot keys, and the Volume Up + Volume Down shutdown watcher.
+- The recovery card (setup, choice 2; recovery.md): made on the device, booted, and a real restore
+  of the eMMC verified byte for byte (2026-11-20).
 
-Not done yet: an installer card for users (the pieces are here: a published system layer and the
-on-device vendor build), BasedOS on the SD card alone with the eMMC never written, a way for an
-update to change the boot script and its kernel options, Bluetooth, USB storage mode, ScummVM on
-spruce, and the old-library compat set some ports want (portmaster-libs.md).
+Not done yet: a way for an update to change the boot script and its kernel options, Bluetooth,
+USB storage mode, ScummVM on spruce, and the old-library compat set some ports want
+(portmaster-libs.md).
 
-## Architecture (decided 2026-11-20; being built, see "Today" below)
+## Architecture (decided 2026-11-20, evening)
 
-Three pieces, the same whether BasedOS runs from the eMMC or from an SD card:
+BasedOS is installed **next to stock on the eMMC**, and uses **stock's own files in place**.
 
-1. **Stock source**: stock's own files, verbatim (`SYSTEM`, `Image`, DTBs, its boot script),
-   checked against the known stock builds (`manifest/stock-builds.txt`). Read **only at setup**,
-   to harvest the vendor set; BasedOS never boots from it. On the eMMC it's stock's p1, left as
-   it is (stock stays bootable). An SD card doesn't need it; it can carry a copy as an option
-   (for booting stock from the card later).
-2. **Vendor set** (`basedos/vendor-<id>/`): everything BasedOS uses that comes from stock, as one
-   unit with one id (a hash of its contents) and one recipe: the kernel `Image` and stock's DTBs
-   as plain files (U-Boot loads them: it reads FAT and ext4, not squashfs), and
-   `vendor.squashfs` with the kernel's modules, the Wi-Fi and Bluetooth firmware and the closed
-   Mali drivers, 64- and 32-bit (Linux needs their links and modes). The kernel and its modules
-   always come from the same stock build. Generous on purpose (all modules, all firmware), so it
-   needn't change between bases. Never published: harvested on each device, or for each card,
-   from its own stock source.
-3. **BasedOS's own** (published): its boot script, written by BasedOS (not derived from stock's),
-   which reads `basedos/boot.env` (the slot and the vendor id), loads the kernel and DTB from the
-   vendor set, applies BasedOS's panel overlay (`fdt apply`: the 60 Hz timing, instead of a
-   patched copy of stock's DTB) and boots BasedOS's initrd; the initrd; and the A/B system
-   slots. Stock fallback is stock booting itself, from its own saved boot script.
+- **Stock is static.** GKD's firmware has no update channel of its own: its updater is ROCKNIX's
+  generic `rocknix-update`, which asks `update.rocknix.org` as an RK3399 "community" build. Stock
+  changes only when it's reflashed (or if that updater pulls something, which is a hazard for
+  stock itself).
+- **What BasedOS uses of stock, in place:** stock's kernel `Image` and DTBs (U-Boot loads them
+  from stock's boot partition, where they are), and stock's `SYSTEM` squashfs, which the initrd
+  mounts read-only at `/stock`. BasedOS's system layer has links into `/stock` for exactly the
+  stock files it uses (`manifest/harvest.list`: the closed Mali GPU and Vulkan drivers, 64- and
+  32-bit, the Wi-Fi and Bluetooth firmware, the kernel's modules), never copies; nothing else of
+  stock's userland is visible. The kernel and its modules are always the same stock build's.
+- **Pinned to the stock build.** A system layer is made against one stock build
+  (`usr/share/basedos/needs-stock`: stock's `BUILD_ID`). The initrd checks it against the stock
+  it mounts on every boot; any other stock and BasedOS steps aside to stock. Setup checks stock's
+  build and the SHA-256 of its kernel, DTBs and `SYSTEM` before it installs. A new stock build
+  takes a BasedOS release made for it.
+- **BasedOS's own** (published): its boot script (written by BasedOS, not derived from stock's;
+  it sets the panel to 60 Hz with `fdt set` on the loaded device tree, never changing stock's
+  file), its initrd, the A/B system slots, its tools. A `.bosupd` carries the system layer and the
+  initrd and names the stock build it's made for.
+- **No SD-card install, and no vendor copies.** Both were tried and dropped (2026-11-20): the
+  boot ROM only ever starts the bootloader from the eMMC (a card's copy is never used: tested,
+  recovery.md), so no install path is independent of the eMMC, and with stock static, copies of
+  its files only duplicated what's already beside them. The frontend's card is a normal, portable
+  spruce card.
 
-**A base is one vendor set.** Every BasedOS release says which base it's built on (today the one
-from ROCKNIX `c8ed06c`); the vendor id is the same on every device with that stock build.
-
-- **Setup** (installing on the eMMC, or making an SD card) is the only time the stock source is
-  read: it harvests the vendor set (`basedos-vendor`, by the base's recipe), then installs the
-  system layer, initrd and boot script.
-- **Updates** (`.bosupd`) change BasedOS's own files only, never the vendor set. A release for
-  another base is refused ("built for a different stock base; needs a fresh setup").
-- **Rebasing** onto a newer stock firmware is a fresh setup from that firmware's image file,
-  rare by design. BasedOS keeps little state of its own (the frontend keeps the user's settings
-  and games), so a fresh setup costs the user little; a rebase helper can come if a release
-  ever needs one.
-
-Why: no drift. A stock update can't change the kernel BasedOS boots or split it from its
-modules; BasedOS's build doesn't depend on one exact stock boot script; and the eMMC and SD card
-installs are the same files on different partitions.
-
-### Today (2026-11-20)
-
-Built as above on the eMMC install. Not yet: the SD card install, and `basedos-vendor` (the
-harvester for setup on the device) is only used by hand so far; `tools/install-dev.sh` installs a
-vendor set the PC build harvested.
-
-## Starting point (verified on the device, 2026-11-16)
+## Starting point## Starting point (verified on the device, 2026-11-16)
 
 - **Device:** RK3576S, 2 GB RAM, 16 GB eMMC (`mmcblk0`), one SD slot (`mmcblk1`),
   a 1440×1600 portrait DSI panel shown landscape. The device tree model is
@@ -90,10 +68,11 @@ vendor set the PC build harvested.
   It has a built-in initramfs (EmuELEC's, 32-bit) and accepts an external
   initrd. overlayfs, squashfs (zstd/lz4/xz), ext4, vfat, exFAT and USB
   configfs gadgets are all built in.
-- **Boot chain:** the boot ROM loads the idbloader at sector 64, then the U-Boot
-  FIT at 8 MiB. U-Boot runs `boot.scr` from p1 (vfat). The SPL and U-Boot both
-  try the SD card first. BasedOS never touches sectors 0 to 32767 except the
-  MBR partition table.
+- **Boot chain:** the boot ROM loads the idbloader at sector 64 of the eMMC, then
+  the U-Boot FIT at 8 MiB. The boot ROM never starts a bootloader from the SD card
+  (tested 2026-11-20 with the eMMC's bootloader zeroed: power LED, black screen;
+  only maskrom brings it back). U-Boot then runs the first `boot.scr` it finds, the
+  SD card's before the eMMC's p1 (vfat). BasedOS never touches sectors 0 to 32767.
 - **Recovery is proven on this unit** (see [recovery.md](recovery.md)): a rescue SD card, U-Boot USB disk mode
   (Menu+Home), and maskrom (Volume Down) with a full 15.6 GB restore.
 
@@ -114,13 +93,13 @@ vendor set the PC build harvested.
 
 ## eMMC layout
 
-Today (the developer install, `tools/install-dev.sh`): stock's layout and files, untouched, with
-BasedOS in one folder on each partition. Stock stays complete and bootable.
+Stock's layout and files, untouched, with BasedOS in one folder on each partition. Stock stays
+complete and bootable.
 
 | Region | Contents |
 |---|---|
 | sectors 0 to 32767 | stock's MBR, idbloader and U-Boot FIT. Never written. |
-| p1 vfat, 3 GB (`/flash` under stock, `/boot` under BasedOS) | stock's own files, untouched and not booted by BasedOS: `SYSTEM` (2.3 GB, the stock source), `Image`, DTBs; `boot.scr` (BasedOS's own while BasedOS is on; stock's kept as `basedos/boot.scr.stock`); `basedos/`: `boot.env`, the vendor set `vendor-<id>/` (`Image`, the DTBs, `vendor.squashfs`), `initrd.uimg`, the two system slots (`rootfs.squashfs`, `rootfs-b.squashfs`) and the slot file |
+| p1 vfat, 3 GB (`/flash` under stock, `/boot` under BasedOS) | stock's own files, used in place and never changed: `SYSTEM` (2.3 GB, mounted read-only at `/stock`), `Image`, DTBs (booted by BasedOS's boot script); `boot.scr` (BasedOS's own while BasedOS is on; stock's kept as `basedos/boot.scr.stock`); `basedos/`: `initrd.uimg`, the two system slots (`rootfs.squashfs`, `rootfs-b.squashfs`) and the slot file |
 | p2 ext4, 11.6 GB (stock's `/storage`) | stock's data; `basedos-data/`, BasedOS's `/data` (logs, update state, accounts, Wi-Fi, SSH keys) |
 | `boot0`, `boot1` | an old Amlogic loader the RK3576 never reads; left alone |
 
@@ -128,54 +107,38 @@ Leaving it: `basedos-boot` (maintenance menu, Start at power-on) boots stock onc
 stock with a "Return to BasedOS" in stock's Ports, or uninstalls (stock's `boot.scr` back and both
 folders removed).
 
-Later, for the installer: a dedicated layout (p1 `BASEDOS`, p2 `BASEDOS-DATA`), or BasedOS on the
-SD card alone with the eMMC never written.
-
 ## Boot flow
 
-1. U-Boot's distro boot runs the first `boot.scr` it finds, the SD card's before the eMMC's.
-   BasedOS's (`initrd/boot.cmd`, its own) reads `basedos/boot.env` (the vendor set), picks the DTB
-   for the output U-Boot's display menu chose (`hdmi_detect`: panel, HDMI, USB-C), loads the
-   kernel and DTB from `basedos/vendor-<id>/` and `basedos/initrd.uimg` from the partition it was
-   found on, sets the panel's 60 Hz timing (`fdt set`), and boots with BasedOS's kernel options
-   (`rdinit=/basedos/init`, `basedos.disk=mmcblkN`, `basedos.vendor=<id>`, quiet). If those files
-   can't be loaded it runs stock's saved boot script, so stock boots itself.
+1. U-Boot's distro boot runs the first `boot.scr` it finds. BasedOS's (`initrd/boot.cmd`, its
+   own) picks the DTB for the output U-Boot's display menu chose (`hdmi_detect`: panel, HDMI,
+   USB-C), loads stock's kernel and that DTB, and `basedos/initrd.uimg`, from stock's boot
+   partition, sets the panel's 60 Hz timing (`fdt set`), and boots with BasedOS's kernel options
+   (`rdinit=/basedos/init`, `basedos.disk=mmcblkN`, quiet). If those files can't be loaded it runs
+   stock's saved boot script, so stock boots itself.
 2. The kernel unpacks its built-in initramfs and then ours over it, so our `/init` runs, not
-   stock's. `/basedos/init` mounts the boot disk's p1 read-only, counts the boot on its p2,
-   loop-mounts the chosen slot's system layer and the vendor set's `vendor.squashfs` (the one the
-   kernel came from), stacks them with overlayfs (falling back to the other slot, then to stock),
-   then `switch_root`s and execs `/sbin/init`.
-3. BusyBox init runs `rcS`: proc/sys/devpts and the `/dev` links, the boot screen, the clock, `/data` (checked, then mounted from the boot disk's p2), the card mount, a pending update (installed, then straight to a reboot), then the Wi-Fi driver and the shutdown-key watcher in the background. Joining Wi-Fi and SSH are the frontend's; BasedOS's own start only in maintenance mode or after a failing frontend.
+   stock's. `/basedos/init` mounts p1 read-only, counts the boot on p2 (and does a pending
+   uninstall or stock-once there), loop-mounts the chosen slot's system layer as the root and
+   stock's `SYSTEM` at its `/stock`, checks that stock is the build the slot was made for (falling
+   back to the other slot, then to stock's own `/init`), then `switch_root`s and execs `/sbin/init`.
+3. BusyBox init runs `rcS`: proc/sys/devpts and the `/dev` links, the boot screen, the clock, `/data` (checked, then mounted from p2), the card mount, a pending update (installed, then straight to a reboot), then the Wi-Fi driver and the shutdown-key watcher in the background. Joining Wi-Fi and SSH are the frontend's; BasedOS's own start only in maintenance mode or after a failing frontend.
 4. `frontend-session` (respawned) runs the frontend probe. With no card or frontend, it shows a splash and retries.
 
 ## Rootfs
 
-The root is two squashfs layers built on the PC (WSL has `mksquashfs`), stacked by the initrd with
-overlayfs, the system layer on top:
+The root is one squashfs, the system layer, built on the PC (`tools/wsl/build-rootfs.sh`; WSL has
+`mksquashfs`), with stock's `SYSTEM` mounted at its `/stock` on the device:
 
-- **vendor** (the vendor set's `vendor.squashfs`, beside its kernel and DTBs in `vendor-<id>/`):
-  the stock harvest (2 below), named by a hash of its contents with the kernel and DTBs. Built
-  from the device's own firmware, never published.
-- **system** (the slot files): everything else (1 and 3, SDL2, librga, `wpa_cli`, BasedOS's
-  tools), plus the id of the vendor layer it was built against (`usr/share/basedos/needs-vendor`).
-  The build fails if a stock file is in it. This is what a `.bosupd` carries.
+1. **A skeleton and BusyBox:** Alpine's `busybox-static` (aarch64), the same as my355.
+2. **BasedOS's userland:** built from source by Buildroot (`manifest/base.list`; vendor-minimal.md), plus SDL2 with librga, bash and the 32-bit libraries for PortMaster's ports.
+3. **The links into `/stock`:** for each file `manifest/harvest.list` takes from stock (and the libraries those need that BasedOS doesn't have: a Python closure check, ELF `DT_NEEDED` against `SONAME`s, as my355 does), a link to its place in stock's `SYSTEM`; stock's own links among them are kept as they are. The build harvests those files only as a build-time view, for its checks; `usr/share/basedos/stock-links` lists them.
+4. **The BasedOS overlay:** `/init`, inittab, `rcS`, `rcK`, `frontend-session`, `mount-frontend`, `baseos-release`, profile, fstab.
 
-The layers come from:
-
-1. **A skeleton and BusyBox:** Alpine's `busybox-static` (aarch64), the same as my355. It needs no compiler.
-2. **The stock harvest:** a closed set listed in `manifest/harvest.list`, taken from your own stock image. It includes glibc 2.40, libmali (with its EGL, GLES and GBM links), libdrm, SDL2, ALSA, the `bcmdhd` module, Wi-Fi/BT firmware, wpa_supplicant, openssh `sshd` (no Python: spruce brings its own). A Python closure check (ELF `DT_NEEDED` against `SONAME`s, as my355 does) fails the build if any library is missing.
-3. **The BasedOS overlay:** `/init`, inittab, `rcS`, `rcK`, `frontend-session`, `mount-frontend`, `baseos-release`, profile, fstab.
-
-The harvest source is either the backup image (`mmcblk0.img`: FAT p1, then its `SYSTEM` squashfs) or a live stock device. `prepare-stock` checks the stock build against known fingerprints (`c8ed06c` for now) and refuses anything unknown.
+The build fails if a stock file is in the system layer. `prepare-stock` checks the stock build the PC build reads against known fingerprints (`c8ed06c` for now). `out/release.info` records the stock build (`STOCK_BUILD_ID`) and the SHA-256 of stock's kernel, DTBs and `SYSTEM`, which setup checks on the device.
 
 ## Install paths
 
-- **Developer:** build on the PC (`tools/wsl/build.sh`), then run `tools/install-dev.sh` on the device under stock, over SSH (user-guide.md). Later builds go in with `tools/dev/update-basedos.sh` from BasedOS, or as a `.bosupd`.
-- **Users:** `tools/basedos-setup.sh`, run on the device under stock over SSH from a release folder (user-guide.md, "Setup on the device"). Three choices: install to the eMMC (a recovery card first is recommended and offered), a BasedOS SD card (the eMMC never written; optionally a copy of stock on the card for dual boot, and a backup of the eMMC), or a recovery card (recovery.md). The vendor set is harvested on the device. Nothing vendor-made is published. Written 2026-11-20, not yet tested on the unit.
-- **An SD install never uses the eMMC** (decided 2026-11-20). BasedOS's boot script, booting from a card, disables the eMMC's node in the device tree and makes the card mmc0 before the kernel starts, so nothing on the card (BasedOS, its frontend, card stock) can see the eMMC; if that doesn't take, the initrd makes a visible eMMC read-only. There is no way into the eMMC's system from a card: take the card out. A card that can't start powers off (the boot script, or the initrd with a message on screen), never on to the eMMC. A BasedOS card stays in its device, so it needn't be portable: GPT (made with stock's `parted`; stock's `sgdisk` 1.0.9 is broken), the eMMC's loader copied to sectors 64 to 32767, then `basedos` (the only partition marked legacy-bootable, which U-Boot boots), `data` and `BASEOS`, the first two no-automount: p1, p2, p3, or p3, p4, p5 after a copy of stock. The boot script passes the boot partition's number (`basedos.part`); data is the next one; `mount-frontend` finds `BASEOS` by its label.
-- **Frontends from upstream** (note 4 of the first test round, 2026-11-20): a BasedOS SD card can get its frontend at setup, straight from the frontend's own latest GitHub release (spruce, NextUI), checked against the SHA-256 GitHub publishes for the asset. BasedOS builds and hosts none. `manifest/frontends.txt` lists each with the first upstream version that supports the 350H Ultra; none does yet, so none is offered.
-- **Card stock** (optional, like an emuNAND): a copy of stock on the card's p1 and p2, where stock's init looks (it mounts `mmcblk0p1` and `p2` by name), started once from the maintenance menu: `basedos/once.env` on the boot partition, which the boot script clears (written, read back) before it starts card stock with card stock's own kernel and device tree and stock's own kernel arguments, the eMMC hidden as above. Card stock's own updates rewrite its p1 only; U-Boot reads boot scripts only from the bootable `basedos` partition (p3 on such a card).
-- **The vendor set on the device, at setup:** every system layer carries the base's recipe (`usr/share/basedos/vendor-recipe`: each file's place, mode, SHA-256 and where it is in stock's files, written by `build-rootfs.sh` from the harvest), and `basedos-vendor build` harvests the vendor set from a stock source with it, checking every hash and the id (`usr/lib/basedos/vendor-id`, the one function both sides use). Setup only (an SD card, a fresh install); updates never change the vendor set. With a published system layer and its recipe, a device needs only its own stock files, not a PC or Buildroot.
+- **Users:** `tools/basedos-setup.sh`, run on the device under stock over SSH (user-guide.md, "Setup on the device"); it downloads its release from GitHub. Two choices: install BasedOS on the eMMC (a recovery card first is recommended and offered), or make a recovery card (recovery.md). Nothing of stock's is published or copied.
+- **Developer:** build on the PC (`tools/wsl/build.sh`), then run `tools/install-dev.sh` on the device under stock, over SSH. Later builds go in with `tools/dev/update-basedos.sh` from BasedOS, or as a `.bosupd`.
 
 ## Versions
 
@@ -196,6 +159,6 @@ Still open:
 - How an update changes the boot script or its kernel options (a small options file on p1 that
   `boot.scr` reads, or a payload member). Today `tools/dev/update-basedos.sh` and `install-dev.sh`
   write it.
-- The installer card for users: building the vendor layer on the device from its own stock.
-- A minimal vendor layer (decided 2026-11-19): only the closed GPU drivers, firmware and kernel
-  modules from stock, the rest built by BasedOS (Buildroot). Inventory and plan: vendor-minimal.md.
+- What BasedOS takes from stock is already minimal (decided 2026-11-19): only the closed GPU
+  drivers, firmware and kernel modules, the rest built by BasedOS (Buildroot); since 2026-11-20
+  linked from stock's own SYSTEM, not copied. Inventory: vendor-minimal.md.

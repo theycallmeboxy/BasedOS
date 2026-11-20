@@ -65,39 +65,43 @@ They are hashes only, so no vendor files are redistributed.
 Whole-image and partition hashes are specific to each unit (`/storage`, the
 resize log, the MBR disk ID), so they aren't listed here.
 
-## Recovery card (basedos-setup; 2026-11-20)
+## Recovery card (basedos-setup)
 
-`basedos-setup.sh`, choice 3 (or offered before an eMMC install), makes a card that restores the
-eMMC with no PC, then or later. Tested 2026-11-20 (pre.2's layout): the card boots, the recovery
-system checks the backup, and B powers off without writing. The restore itself is untested.
+`basedos-setup.sh`, choice 2 (or offered before an install), makes a card that restores the
+built-in storage with no PC, then or later. Tested 2026-11-20 (pre.3): made on the device, booted,
+the backup checked, and a real restore verified byte for byte against the card's backup and the
+PC backup (with the earlier hold-A screen; the tap sequence and the restore that skips the
+bootloader, below, are newer and not yet tested on the unit).
 
-- The card: MBR, the eMMC's loader copied to sectors 64 to 32767 (as on the rescue card, for an
-  eMMC whose own loader is damaged), one bootable FAT32 partition `RECOVERY` from 16 MiB (U-Boot
-  reads FAT, not exFAT) holding `boot.scr` (`tools/recovery/boot.cmd`), `RECOVERY.txt`,
-  `recovery/` (this device's own stock `Image` and DTBs, copied when the card is made, the
-  recovery initrd, and `backup.info`: the backup's name, the images' MD5s, the eMMC's ID and
-  size) and `backup/`.
-- A backup (the same on a recovery card and, optionally, on a BasedOS SD card's `BASEOS` drive)
-  is a `backup/` folder of images only: `GKD350HUltra-eMMC-<date>.img.zst.001`, `.002`, ... (the
-  eMMC's main area, byte for byte, from sector 0: partition table, the Rockchip loader at sector
-  64, stock's p1 and p2; 2000 MiB of it per piece, each piece its own zstd stream with zstd's
-  checksum, so they decompress back to back as one image) and `-boot0.img.zst`, `-boot1.img.zst`
-  (the eMMC's two boot areas; on this unit they hold an unrelated Amlogic loader that the RK3576
-  never runs, kept for completeness). The main area alone is enough to boot: joined and
-  decompressed (`cat *.img.zst.* | zstd -d > emmc.img`), it is what maskrom writes from offset 0.
-  The eMMC's RPMB area can't be read without its key and isn't touched by a restore.
-- Every backup is checked when it's made: read back and compared with MD5s taken while the eMMC
-  was read.
+**It needs the eMMC's own bootloader to start.** The boot ROM only ever starts the bootloader from
+the eMMC (sectors 64 to 32767): tested 2026-11-20 with those sectors zeroed and a card carrying a
+copy of them in the slot, the device showed only its power LED, and only maskrom (below) brought
+it back. So a recovery card fixes everything after the bootloader (the partition table, stock's
+files, BasedOS, the data partition), and a lost bootloader takes maskrom and a PC.
+
+- The card: MBR, one bootable FAT32 partition `RECOVERY` (U-Boot reads FAT, not exFAT) holding
+  `boot.scr` (`tools/recovery/boot.cmd`), `RECOVERY.txt`, `recovery/` (this device's own stock
+  `Image` and DTBs, copied when the card is made, the recovery initrd, and `backup.info`: the
+  backup's name, its MD5s, the eMMC's ID and size) and `backup/`.
+- The backup (`backup/`) is images only: `GKD350HUltra-eMMC-<date>.img.zst.001`, `.002`, ... (the
+  eMMC's main area, byte for byte, from sector 0: partition table, the Rockchip bootloader at
+  sector 64, stock's p1 and p2; 2000 MiB of it per piece, each piece its own zstd stream with
+  zstd's checksum, so they decompress back to back as one image). Joined and decompressed
+  (`cat *.img.zst.* | zstd -d > emmc.img`), it's what maskrom writes from offset 0. boot0 and boot1
+  (an unrelated Amlogic loader) aren't in it; RPMB can't be read without its key.
+- Every backup is checked when it's made: read back and compared with the MD5 taken while the
+  eMMC was read.
 - Booted, the recovery initrd (`tools/recovery/init`: static BusyBox, zstd, BasedOS's boot screen
   and key reader; nothing of stock's) writes nothing until you confirm. It refuses a backup of
-  another unit's eMMC (ID) or a different size, decompresses the backup and checks it against the
-  recorded MD5s, and wants 30 % battery or the charger. Then it shows what it would restore: hold
-  A 5 s to restore, B to power off.
-- The restore writes boot0 and boot1 only where they differ, then the main area, with the MD5 of
-  what it wrote checked, then reads the whole eMMC back and checks it again. On a failure it says
-  so and offers to try again.
-- It needs the eMMC's own U-Boot, or the card's copy of the loader, to start. A device that only
-  reaches maskrom needs the PC route below.
+  another unit's eMMC (ID) or a different size, decompresses the backup and checks its MD5, and
+  wants 30 % battery or the charger. Then it shows what it would restore: tap A, B, X, Y in order
+  to restore (a wrong key or a 5 s pause starts over; the keys are read as events, so taps can't
+  be missed), tap power to power off.
+- The restore writes sector 0 and everything from sector 32768 (p1) on, from the decompressed
+  backup, and leaves the bootloader (sectors 64 to 32767) as it is: it's what started the card,
+  and a restore that never touches it can always be tried again from the card. It checks the MD5
+  of what it decompressed, then reads back what it wrote and checks that against the backup's. On
+  a failure it says so and offers to try again.
 
 ## Rescue SD card (built and boot-tested 2026-11-16)
 

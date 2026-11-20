@@ -23,10 +23,12 @@ the overlay scripts, initrd, build and recovery tools here were written for this
 
 ## What builds contain, and what can be published
 
-A BasedOS build is two read-only layers. The **system layer** (`rootfs.squashfs`, and the
-`.bosupd` update that carries it) holds only the parts marked "this repo" or "built from
-source" below; the build fails if any stock file is in it. The **vendor layer**
-(`vendor-<id>.squashfs`) holds the parts from the user's own stock firmware. Together they contain:
+A BasedOS build is one read-only image, the **system layer** (`rootfs.squashfs`, and the
+`.bosupd` update that carries it). It holds only the parts marked "this repo" or "built from
+source" below; the build fails if any stock file is in it. On the device it runs on the user's own
+stock firmware in place: stock's kernel and DTBs, and the stock files below, which the system
+layer links to in stock's own SYSTEM (mounted read-only at `/stock`), never copies. Together they
+are:
 
 | Part | From | License | In this repo? |
 |---|---|---|---|
@@ -36,11 +38,11 @@ source" below; the build fails if any stock file is in it. The **vendor layer**
 | BasedOS's userland (`manifest/base.list`): glibc 2.41 and GCC 14's runtime, OpenSSH, wpa_supplicant and `wpa_cli`, iw, e2fsprogs, dosfstools, exfatprogs, ALSA, Wayland's and libdrm's libraries, the Vulkan loader, OpenSSL, the D-Bus library, glib, SDL2_image, SDL2_ttf, and the libraries spruce and PortMaster's ports expect | built from source by Buildroot 2025.02.20 (sha256 pinned) with this repo's `buildroot/` tree (`tools/buildroot/build.sh`) | each package's own: GPL-2.0/3.0, LGPL-2.1, BSD, MIT, zlib and others; Buildroot's `make legal-info` lists every package with its licence and source | the build configuration only |
 | bash 5.2.37 (GNU, https://www.gnu.org/software/bash/) | built from GNU's release tarball (sha256 pinned) by `tools/bash/build.sh`, against glibc only, for PortMaster and its ports | GPL-3.0-or-later (in the image at `/usr/share/licenses/bash/COPYING`) | build script only |
 | SDL2 2.32.10 with ArkOS's SDL2 patches (christianhaitian/rk3566_core_builds, MIT; copies in `tools/sdl2/patches/`), and librga 1.10.5 (Rockchip, JeffyCN/mirrors linux-rga-multi) | built from source by `tools/sdl2/build.sh` | zlib (SDL), MIT (patches), Apache-2.0 (librga) | patches and build script only |
-| Kernel, DTBs (boot files on p1); in the vendor layer: the Mali GPU and Vulkan drivers, the Wi-Fi and Bluetooth firmware, the kernel's modules (`manifest/harvest.list`) | the user's own stock firmware (harvested from their backup) | proprietary (Mali, Broadcom firmware), GPL-2.0 (the modules) | no, hashes only (`manifest/`) |
+| Kernel, DTBs (stock's boot files on p1); in stock's SYSTEM: the Mali GPU and Vulkan drivers, the Wi-Fi and Bluetooth firmware, the kernel's modules (`manifest/harvest.list`) | the user's own stock firmware, used in place on the device | proprietary (Mali, Broadcom firmware), GPL-2.0 (the kernel and modules) | no, hashes only (`manifest/`) |
 
-Because of the vendor parts, **the vendor layer, and any whole image, are personal and must not be
-published.** Each device builds its own from its own firmware. The system layer and `.bosupd`
-updates hold BasedOS's own files only and can be released; a release that ships them must also
+**Stock's files, and any whole image of a device, are personal and must not be published.**
+BasedOS never copies them: the system layer links to them on each device. The system layer and
+`.bosupd` updates hold BasedOS's own files only and can be released; a release that ships them must also
 offer BusyBox's source (GPL-2.0: Alpine's `busybox` APKBUILD and source), bash's
 (GPL-3.0: `bash-5.2.37.tar.gz` from ftp.gnu.org, unmodified) and the GPL and LGPL packages of the
 Buildroot userland (the sources `make legal-info` collects), and carries the

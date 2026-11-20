@@ -66,7 +66,7 @@ bash/         bash 5.2.37, GNU's release tarball, unmodified (built by tools/bas
 Also in the release, not copyleft (licences in the image under /usr/share/licenses): SDL2 with
 ArkOS's patches (zlib; patches in tools/sdl2/patches/), librga (Apache-2.0), zstd (BSD; its source
 is in buildroot/sources/), Terminus Font (OFL-1.1). Nothing of the stock firmware is in the
-release: each device builds its own vendor set from its own firmware.
+release: BasedOS uses each device's own stock files in place, linked from /stock.
 EOF
 rm -f "$R/$NAME.tar"
 tar -C "$(dirname "$S")" -cf "$R/$NAME.tar" "$NAME"

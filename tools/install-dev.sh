@@ -1,15 +1,15 @@
 #!/bin/sh
 # Developer install of BasedOS v0 next to stock, run ON the device under stock.
-#   install-dev.sh <dir with rootfs.squashfs, vendor-<id>/, initrd.uimg, boot.scr, boot.env>
+#   install-dev.sh <dir with rootfs.squashfs, initrd.uimg, boot.scr>
 #                              (tools/wsl/build.sh's out/)
 #   install-dev.sh revert      put stock's boot.scr back (stock boots again)
 #
 # A fresh setup (docs/plan.md, Architecture): adds /flash/basedos/ (p1) and
 # /storage/basedos-data/ (p2), puts BasedOS's own boot.scr in place of stock's and keeps stock's
-# copy in /flash/basedos/boot.scr.stock. In basedos/: the vendor set this BasedOS is built on
-# (vendor-<id>/: the kernel and DTBs it boots, vendor.squashfs; built from this device's stock),
-# boot.env naming it, the initrd and the system layer (rootfs.squashfs, slot a). Stock's SYSTEM,
-# Image, DTBs and /storage stay as they are; BasedOS boots none of them.
+# copy in /flash/basedos/boot.scr.stock. In basedos/: the initrd and the system layer
+# (rootfs.squashfs, slot a). Stock's SYSTEM, Image, DTBs and /storage stay as they are; BasedOS
+# boots stock's kernel and DTBs and mounts its SYSTEM read-only, in place (docs/plan.md,
+# Architecture), so the system layer must be made for this stock build (its needs-stock).
 # Copies stock's SSH host keys (same fingerprint) and its saved Wi-Fi network
 # (connman -> wpa_supplicant.conf) into basedos-data. Those stay on the device.
 set -eu
@@ -45,17 +45,15 @@ fi
 
 SRC=${1:?usage: $0 <dir> | revert}
 [ -d /storage/.cache ] || die "install from stock (it reads stock's /storage)"
-for f in rootfs.squashfs initrd.uimg boot.scr boot.env; do [ -s "$SRC/$f" ] || die "missing $SRC/$f"; done
-# The vendor layer the system layer names (usr/share/basedos/needs-vendor).
-mkdir -p /tmp/.needs-vendor
-mount -t squashfs -o ro,loop "$SRC/rootfs.squashfs" /tmp/.needs-vendor || die "$SRC/rootfs.squashfs does not mount"
-VENDOR=$(cat /tmp/.needs-vendor/usr/share/basedos/needs-vendor 2>/dev/null || true)
-umount /tmp/.needs-vendor
-[ -n "$VENDOR" ] || die "$SRC/rootfs.squashfs names no vendor set (built before the layer split?)"
-for f in Image rk3576-gkd-atom.dtb rk3576-gkd-atom-hdmi.dtb rk3576-gkd-atom-usbdp.dtb vendor.squashfs; do
-	[ -s "$SRC/vendor-$VENDOR/$f" ] || die "missing $SRC/vendor-$VENDOR/$f (the vendor set this rootfs is built on)"
-done
-grep -qx "basedos_vendor=$VENDOR" "$SRC/boot.env" || die "$SRC/boot.env doesn't name vendor set $VENDOR"
+for f in rootfs.squashfs initrd.uimg boot.scr; do [ -s "$SRC/$f" ] || die "missing $SRC/$f"; done
+# The stock build the system layer is made for (usr/share/basedos/needs-stock) against this one.
+mkdir -p /tmp/.needs-stock
+mount -t squashfs -o ro,loop "$SRC/rootfs.squashfs" /tmp/.needs-stock || die "$SRC/rootfs.squashfs does not mount"
+NEED=$(cat /tmp/.needs-stock/usr/share/basedos/needs-stock 2>/dev/null || true)
+umount /tmp/.needs-stock
+HAVE=$(sed -n 's/^BUILD_ID="\{0,1\}\([0-9a-f]*\)"\{0,1\}$/\1/p' /etc/os-release)
+[ -n "$NEED" ] || die "$SRC/rootfs.squashfs names no stock build (an older BasedOS, made for its own vendor set)"
+[ "$NEED" = "$HAVE" ] || die "$SRC/rootfs.squashfs is made for stock build $NEED; this stock is ${HAVE:-unknown}"
 [ "$(md5sum < $P1/boot.scr)" = "$(md5sum < $SRC/boot.scr)" ] && echo "(BasedOS boot.scr already installed)"
 
 rw
@@ -67,15 +65,10 @@ if [ ! -f $P1/basedos/boot.scr.stock ]; then
 		die "boot.scr is already BasedOS's and there is no saved stock copy"
 	put $P1/boot.scr $P1/basedos/boot.scr.stock
 fi
-# The vendor set, system layer, initrd and boot.env first; boot.scr, which switches the device
-# over, only once they verify.
-mkdir -p $P1/basedos/vendor-$VENDOR
-for f in Image rk3576-gkd-atom.dtb rk3576-gkd-atom-hdmi.dtb rk3576-gkd-atom-usbdp.dtb vendor.squashfs; do
-	put "$SRC/vendor-$VENDOR/$f" $P1/basedos/vendor-$VENDOR/$f
-done
+# The system layer and initrd first; boot.scr, which switches the device over, only once they
+# verify.
 put "$SRC/rootfs.squashfs" $P1/basedos/rootfs.squashfs
 put "$SRC/initrd.uimg" $P1/basedos/initrd.uimg
-put "$SRC/boot.env" $P1/basedos/boot.env
 put "$SRC/boot.scr" $P1/boot.scr
 echo "p1: $(ls $P1/basedos | tr '\n' ' ')"
 

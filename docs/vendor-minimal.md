@@ -1,5 +1,11 @@
 # A minimal vendor layer
 
+> **Since 2026-11-20 (evening) there is no vendor layer to ship:** BasedOS runs next to stock and
+> uses stock's files in place. The files listed under "Stays stock" are links in the system layer
+> into stock's own SYSTEM, mounted read-only at `/stock` (plan.md, Architecture), and stock's
+> kernel and DTBs are booted from stock's boot partition. The inventory below still says which
+> stock files BasedOS uses; the "vendor set" and its ids are history.
+
 Goal (decided 2026-11-19): the vendor layer holds only what can't be BasedOS's own, the closed
 GPU drivers, the Wi-Fi and Bluetooth firmware and the stock kernel's modules, and so changes only
 when GKD ships a new kernel or GPU driver. Everything else becomes part of the system layer, built

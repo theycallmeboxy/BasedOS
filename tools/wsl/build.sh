@@ -3,17 +3,47 @@
 set -eu
 REPO=/mnt/e/projects/spruceOS-gkd350hultra/basedos
 W=$HOME/basedos-work
-cp "$REPO/prepared/rocknix-20260613-c8ed06c/BUILD" "$W/STOCK_BUILD"
-[ -f "$REPO/prepared/sdl2/libSDL2.build-info" ] ||
-	bash "$REPO/tools/sdl2/build.sh" "$REPO/prepared/rocknix-20260613-c8ed06c/SYSTEM" "$REPO/prepared/sdl2" 270
+STOCK=$REPO/prepared/rocknix-20260613-c8ed06c
+mkdir -p "$W"
+cp "$STOCK/BUILD" "$W/STOCK_BUILD"
+# Stock's root, unpacked once (the vendor harvest and lib32-gaps read it).
+[ -d "$W/stock-root/usr/lib" ] || sh "$REPO/tools/wsl/unpack-stock.sh" "$STOCK/SYSTEM" "$W/stock-root"
+
+# sdl2_current <prepared dir> <arch>: 0 if that SDL2 build is of the SDL and librga commits and
+# the patches tools/sdl2 has now (its build-info records them), so it needn't be built again.
+sdl2_current() {
+	_i=$1/libSDL2.build-info
+	[ -f "$_i" ] || return 1
+	_a=$(sed -n 's/^arch //p' "$_i")
+	[ "${_a:-aarch64}" = "$2" ] || return 1
+	for _c in SDL_COMMIT:SDL RGA_COMMIT:librga; do
+		_v=$(sed -n "s/^${_c%%:*}=\([0-9a-f]*\).*/\1/p" "$REPO/tools/sdl2/build.sh")
+		grep -q "^${_c#*:} $_v " "$_i" || return 1
+	done
+	_n=0
+	for _p in "$REPO"/tools/sdl2/patches/sdl2-patch*; do
+		grep -qx "patch ${_p##*/} $(sha256sum < "$_p" | cut -c1-16)" "$_i" || return 1
+		_n=$((_n + 1))
+	done
+	[ "$(grep -c '^patch ' "$_i")" -eq "$_n" ]
+}
+
+sdl2_current "$REPO/prepared/sdl2" aarch64 || {
+	echo "--- SDL2 (64-bit): building (missing or out of date)"
+	rm -rf "$REPO/prepared/sdl2"
+	bash "$REPO/tools/sdl2/build.sh" "$STOCK/SYSTEM" "$REPO/prepared/sdl2" 270
+}
 # BasedOS's userland (glibc, OpenSSH, wpa_supplicant and wpa_cli, ALSA, ...): about an hour the first
 # time, then only what changed.
 bash "$REPO/tools/buildroot/build.sh" build
 # Its 32-bit libraries for PortMaster's 32-bit ports (docs/lib32.md), and SDL2 for them, built with
 # that root's toolchain.
 bash "$REPO/tools/buildroot/build.sh" --armhf build
-[ -f "$REPO/prepared/sdl2-armhf/libSDL2.build-info" ] ||
-	SDL2_ARCH=armhf bash "$REPO/tools/sdl2/build.sh" "$REPO/prepared/rocknix-20260613-c8ed06c/SYSTEM" "$REPO/prepared/sdl2-armhf" 270
+sdl2_current "$REPO/prepared/sdl2-armhf" armhf || {
+	echo "--- SDL2 (32-bit): building (missing or out of date)"
+	rm -rf "$REPO/prepared/sdl2-armhf"
+	SDL2_ARCH=armhf bash "$REPO/tools/sdl2/build.sh" "$STOCK/SYSTEM" "$REPO/prepared/sdl2-armhf" 270
+}
 [ -f "$REPO/prepared/bash/build-info" ] ||
 	bash "$REPO/tools/bash/build.sh" "$REPO/prepared/bash"
 sh "$REPO/tools/wsl/build-rootfs.sh" "$REPO" "$W" "$REPO/prepared/alpine/busybox.static" "$REPO/prepared/alpine/busybox.list"
@@ -27,8 +57,10 @@ python3 "$REPO/tools/mkboot.py" initrd "$REPO/prepared/alpine/busybox.static" "$
 mv "$W/initrd.uimg.new" "$REPO/out/initrd.uimg"
 # The boot script (not in the payload: install-dev.sh and update-basedos.sh put it on p1).
 rm -f "$W/boot.scr.new"
-python3 "$REPO/tools/mkboot.py" bootscr "$REPO/prepared/rocknix-20260613-c8ed06c/boot.scr" "$W/boot.scr.new" >/dev/null
+python3 "$REPO/tools/mkboot.py" bootscr "$STOCK/boot.scr" "$W/boot.scr.new" >/dev/null
 mv "$W/boot.scr.new" "$REPO/out/boot.scr"
 rm -f "$REPO"/out/baseos-*.bosupd
 python3 "$REPO/tools/mkupdate.py" "$W/rootfs.squashfs" "$REPO/out/initrd.uimg" 	"$(sed -n 's/^BASEOS_VENDOR=//p' "$W/system/etc/baseos-release")" "$(cat "$REPO/VERSION")" 	"$(sed -n 's/^BASEOS_BUILD=//p' "$W/system/etc/baseos-release")" "$REPO/out"
-cp "$W/harvest-report.txt" "$REPO/out/harvest-report.txt" 2>/dev/null || true
+for r in harvest-report.txt base32-report.txt lib32-gaps.txt; do
+	cp "$W/$r" "$REPO/out/$r" 2>/dev/null || true
+done

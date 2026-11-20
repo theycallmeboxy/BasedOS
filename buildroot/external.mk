@@ -8,13 +8,28 @@ include $(sort $(wildcard $(BR2_EXTERNAL_BASEDOS_PATH)/package/*/*.mk))
 NCURSES_CONF_OPTS += --with-termlib=tinfo
 
 # The 32-bit root (basedos_gkd350hultra_armhf_defconfig): its libraries go to /usr/lib32 of the
-# system layer, beside the 64-bit ones in /usr/lib, so its loader must look there. glibc's own
-# way to add a directory to the loader's built-in search path is user-defined-trusted-dirs in
-# configparms; it comes after /lib and /usr/lib, whose 64-bit libraries the loader skips as the
-# wrong class and goes on. Written after configure, before the build reads it.
+# system layer, beside the 64-bit ones in /usr/lib (docs/lib32.md). glibc reads configparms from
+# its build folder (written here after configure, before the build):
+# - default-rpath is the loader's built-in search path (only its trusted-dirs list uses it):
+#   /usr/lib32 alone, so the 32-bit loader never opens the 64-bit libraries of the same names.
+#   `override`, since Makeconfig sets it again after reading configparms.
+# - gconvdir is where iconv() loads its modules: /usr/lib32/gconv, not the 64-bit /usr/lib/gconv.
+#   Buildroot's own copy of them looks only in /usr/lib/gconv, so they are copied below, into
+#   this root's /usr/lib/gconv (the system layer's /usr/lib32/gconv).
 ifeq ($(BR2_arm),y)
 define BASEDOS_GLIBC_LIB32
-	echo "user-defined-trusted-dirs = /usr/lib32" > $(@D)/build/configparms
+	printf 'override default-rpath = /usr/lib32\ngconvdir = /usr/lib32/gconv\n' > $(@D)/build/configparms
 endef
 GLIBC_POST_CONFIGURE_HOOKS += BASEDOS_GLIBC_LIB32
+
+define BASEDOS_LIB32_GCONV
+	rm -rf $(TARGET_DIR)/usr/lib/gconv
+	mkdir -p $(TARGET_DIR)/usr/lib/gconv
+	$(INSTALL) -m 0644 $(STAGING_DIR)/usr/lib32/gconv/gconv-modules $(STAGING_DIR)/usr/lib32/gconv/*.so \
+		$(TARGET_DIR)/usr/lib/gconv/
+	if [ -d $(STAGING_DIR)/usr/lib32/gconv/gconv-modules.d ]; then \
+		cp -a $(STAGING_DIR)/usr/lib32/gconv/gconv-modules.d $(TARGET_DIR)/usr/lib/gconv/; \
+	fi
+endef
+TARGET_FINALIZE_HOOKS += BASEDOS_LIB32_GCONV
 endif

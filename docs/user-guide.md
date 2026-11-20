@@ -22,7 +22,7 @@ between the 350H Ultra and your other spruce devices.
 1. Back up the eMMC: `tools/dev/backup-emmc.sh` (see recovery.md). Keep two copies.
 2. Prepare your stock files from the backup:
    `python tools/prepare_stock.py <backup>/mmcblk0.img prepared`
-3. In WSL: unpack them (`tools/wsl/unpack-stock.sh`) and build (`tools/wsl/build.sh`). It writes
+3. In WSL: build (`tools/wsl/build.sh`; it unpacks your stock image the first time). It writes
    `out/`: the vendor layer (`vendor-<id>.squashfs`, from your stock, never shared), the system
    layer (`rootfs.squashfs`), the initrd, the boot script and an update payload (`.bosupd`).
 4. Make the panel's DTB (60 Hz; see power.md):
@@ -69,9 +69,13 @@ Without a card, BasedOS waits for one and says so once on screen.
 - It goes into the copy of BasedOS that isn't running, and is checked before it's used. If the new
   copy doesn't start, BasedOS goes back to the old one after a few tries, and won't try that
   update again.
-- An update holds only BasedOS's own files. The parts from your device's stock firmware stay as
-  they are; an update built for different ones is refused. To see what it would do, from SSH:
-  `basedos-update status`.
+- An update holds only BasedOS's own files. When it needs different parts of your device's stock
+  firmware (the vendor layer), BasedOS builds them while installing, from the stock image that
+  stays on the device next to it (`basedos-vendor`, about a minute; the screen says so); no PC
+  needed. If your stock image isn't the build the update is for, the update fails and the running
+  version stays. Vendor layers no longer needed are removed once an update has started. To see what
+  an update would do, from SSH: `basedos-update status`; `basedos-vendor status` shows the vendor
+  layers.
 - An update doesn't carry the boot script either, so a change to BasedOS's kernel options needs a
   developer update (`tools/dev/update-basedos.sh`) for now.
 

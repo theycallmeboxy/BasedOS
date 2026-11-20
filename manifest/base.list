@@ -60,6 +60,11 @@
 /usr/sbin/fsck.vfat
 /usr/sbin/fsck.exfat
 
+## the vendor layer, built on the device from its own stock image (basedos-vendor): stock's
+## SYSTEM is lz4, BasedOS's layers zstd
+/usr/bin/mksquashfs
+/usr/bin/unsquashfs
+
 ## audio and input
 /usr/bin/amixer
 /usr/bin/aplay

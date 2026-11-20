@@ -1,0 +1,135 @@
+#!/bin/sh
+# basedos-vendor: build a vendor layer on the device, from its own stock image.
+#
+#   basedos-vendor build [<recipe>]   build the vendor layer the recipe names into /boot/basedos
+#                                     (default: the running system layer's own recipe). Nothing
+#                                     to do if it's there already.
+#   basedos-vendor prune              remove vendor layers neither slot needs
+#   basedos-vendor status             which vendor layers there are and which slot needs which
+#
+# The vendor layer holds what can't be BasedOS's own: the closed GPU drivers, the Wi-Fi and
+# Bluetooth firmware and the stock kernel's modules (docs/vendor-minimal.md). It is cut from
+# stock's SYSTEM image, which stays on p1 (/boot/SYSTEM) next to BasedOS, and is never published.
+# The PC build writes a recipe for it into every system layer (usr/share/basedos/vendor-recipe,
+# tools/wsl/build-rootfs.sh): each file's place in the layer, its mode, its SHA-256 and where it is
+# in stock's SYSTEM, and each link. This follows the recipe, checks every file's hash, checks the
+# id (usr/lib/basedos/vendor-id, the PC build's own function) and packs it as the PC build does,
+# so an update that needs a new vendor layer no longer needs a PC (basedos-update calls this).
+# A different stock build fails the hash checks, and nothing is written.
+export PATH=/usr/bin:/usr/sbin
+. /usr/lib/basedos/functions
+. /usr/lib/basedos/vendor-id
+
+B=/boot/basedos
+STOCK_IMAGE=/boot/SYSTEM
+STAGE=/data/.vendor-build
+MNT=/run/basedos/vendor-stock
+
+die() { log "vendor: $*"; echo "basedos-vendor: $*" >&2; cleanup; exit 1; }
+cleanup() {
+	grep -q " $MNT " /proc/mounts && umount "$MNT"
+	rm -rf "$STAGE"
+	[ -n "${_made_rw:-}" ] && { sync; mount -o remount,ro /boot; }
+	_made_rw=""
+}
+
+# p1 writable for as long as this runs, if it wasn't already (basedos-update's apply has it so).
+boot_rw() {
+	grep -q "^/dev/mmcblk0p1 /boot [^ ]* rw" /proc/mounts && return 0
+	mount -o remount,rw /boot || die "can't write p1"
+	_made_rw=1
+}
+
+build() {
+	_recipe=${1:-/usr/share/basedos/vendor-recipe}
+	[ -s "$_recipe" ] || die "no recipe at $_recipe"
+	_want=$(sed -n 's/^VENDOR_ID=//p' "$_recipe")
+	_stock=$(sed -n 's/^STOCK_BUILD=//p' "$_recipe")
+	[ -n "$_want" ] || die "$_recipe names no VENDOR_ID"
+	if [ -f "$B/vendor-$_want.squashfs" ]; then
+		echo "vendor-$_want.squashfs is there already"
+		return 0
+	fi
+	[ -f "$STOCK_IMAGE" ] || die "no stock image at $STOCK_IMAGE"
+	say "building the vendor layer from stock ($_stock)"
+
+	mkdir -p "$MNT"
+	mount -t squashfs -o ro,loop "$STOCK_IMAGE" "$MNT" || die "$STOCK_IMAGE does not mount"
+	rm -rf "$STAGE"
+	mkdir -p "$STAGE"
+	_n=0
+	# F <mode> <sha256> <path in the layer> <path in stock>; L <path> <target>
+	while read -r _k _a _b _c _d; do
+		case "$_k" in
+		F)
+			mkdir -p "$STAGE/${_c%/*}"
+			cp "$MNT/$_d" "$STAGE/$_c" 2>/dev/null || die "stock has no $_d (another stock build than $_stock?)"
+			[ "$(sha256sum < "$STAGE/$_c" | cut -c1-64)" = "$_b" ] ||
+				die "$_d isn't the file the recipe expects (another stock build than $_stock?)"
+			chmod "$_a" "$STAGE/$_c"
+			_n=$((_n + 1))
+			;;
+		L)
+			mkdir -p "$STAGE/${_a%/*}"
+			ln -s "$_b" "$STAGE/$_a"
+			_n=$((_n + 1))
+			;;
+		esac
+	done < "$_recipe"
+	umount "$MNT"
+
+	_got=$(vendor_id "$STAGE")
+	[ "$_got" = "$_want" ] || die "the files give id $_got, not $_want"
+	mkdir -p "$STAGE/usr/share/basedos"
+	printf 'VENDOR_ID=%s\nSTOCK_BUILD=%s\n' "$_want" "$_stock" > "$STAGE/usr/share/basedos/vendor-release"
+	chmod 755 "$STAGE"
+
+	boot_rw
+	_out=$B/vendor-$_want.squashfs
+	# As the PC build packs it (tools/wsl/build-rootfs.sh); written as .new and renamed once whole.
+	mksquashfs "$STAGE" "$_out.new" -noappend -all-root -comp zstd -Xcompression-level 15 -b 256K -quiet ||
+		{ rm -f "$_out.new"; die "mksquashfs failed"; }
+	sync
+	mv "$_out.new" "$_out" && sync
+	log "vendor: built vendor-$_want.squashfs from $_n entries"
+	cleanup
+	echo "built vendor-$_want.squashfs"
+}
+
+# The vendor layer a slot's system layer needs ('' if the slot is empty).
+slot_needs() {
+	[ -f "$B/$1" ] || return 0
+	_m=/run/basedos/vendor-slot
+	mkdir -p "$_m"
+	mount -t squashfs -o ro,loop "$B/$1" "$_m" 2>/dev/null || return 0
+	cat "$_m/usr/share/basedos/needs-vendor" 2>/dev/null
+	umount "$_m"
+}
+
+prune() {
+	_a=$(slot_needs rootfs.squashfs) _b=$(slot_needs rootfs-b.squashfs)
+	# Never with an empty answer for a slot that has an image: then keep everything.
+	{ [ -f "$B/rootfs.squashfs" ] && [ -z "$_a" ]; } && return 0
+	{ [ -f "$B/rootfs-b.squashfs" ] && [ -z "$_b" ]; } && return 0
+	for _v in "$B"/vendor-*.squashfs; do
+		[ -f "$_v" ] || continue
+		_id=${_v##*/vendor-}; _id=${_id%.squashfs}
+		[ "$_id" = "$_a" ] || [ "$_id" = "$_b" ] || [ "$_id" = "${BASEOS_VENDOR:-}" ] && continue
+		boot_rw
+		rm -f "$_v" && log "vendor: removed vendor-$_id.squashfs (no slot needs it)"
+	done
+	cleanup
+}
+
+status() {
+	echo "slot a needs: $(slot_needs rootfs.squashfs)"
+	echo "slot b needs: $(slot_needs rootfs-b.squashfs)"
+	for _v in "$B"/vendor-*.squashfs; do [ -f "$_v" ] && echo "on p1: ${_v##*/}"; done
+}
+
+case "${1:-}" in
+build) build "${2:-}" ;;
+prune) prune ;;
+status) status ;;
+*) echo "usage: basedos-vendor build [<recipe>]|prune|status" >&2; exit 2 ;;
+esac

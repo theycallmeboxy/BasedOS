@@ -81,3 +81,14 @@ BR2_PACKAGE_TIFF=y
 BR2_PACKAGE_OPENAL=y
 BR2_PACKAGE_MPG123=y
 BR2_PACKAGE_LIBMODPLUG=y
+
+# What else stock's /usr/lib32 has that ports may load (tools/lib32-gaps.py, 2026-11-19), where
+# Buildroot has it. Not here: libxml2.so.2 (Buildroot's is 2.15, libxml2.so.16), libxmp and
+# SDL2_sound (no Buildroot package), libepoxy and glfw (need desktop GL or a windowing system).
+BR2_PACKAGE_SDL2_GFX=y
+BR2_PACKAGE_LIBTOOL=y
+BR2_PACKAGE_OPUSFILE=y
+BR2_PACKAGE_PIXMAN=y
+BR2_PACKAGE_SPEEX=y
+BR2_PACKAGE_TREMOR=y
+BR2_PACKAGE_ZSTD=y

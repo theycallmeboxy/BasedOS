@@ -11,22 +11,28 @@
 #   start  start udevd, fill the database for the input devices there now, and return once it's
 #          done; devices that come later (a port's virtual keyboard) are added as they appear.
 #          Nothing if it's already running.
-#   stop   stop udevd and remove its database, so programs see no udev again.
+#   stop   stop the udevd that start started and remove its database, so programs see no udev
+#          again. A udevd that was already running when start ran (maintenance, debugging) is
+#          left alone: start notes in /run/basedos/udev-ours only one it started itself.
 #
 # Only the rule libinput needs is installed (60-input-id.rules: ID_INPUT and its kind); udevd
 # loads no modules and changes no permissions here.
 . /usr/lib/basedos/functions
+OURS=/run/basedos/udev-ours
 
 case "$1" in
 start)
 	pidof udevd >/dev/null && exit 0
-	mkdir -p /run/udev
+	mkdir -p /run/udev /run/basedos
 	udevd --daemon --resolve-names=never || { log "udevd didn't start"; exit 1; }
+	: > "$OURS"
 	udevadm trigger --subsystem-match=input --action=add
 	udevadm settle --timeout=5
 	log "udevd started ($(ls /run/udev/data 2>/dev/null | wc -l) devices)"
 	;;
 stop)
+	[ -e "$OURS" ] || exit 0
+	rm -f "$OURS"
 	pidof udevd >/dev/null || { rm -rf /run/udev; exit 0; }
 	udevadm control --exit 2>/dev/null || killall udevd 2>/dev/null
 	_i=0

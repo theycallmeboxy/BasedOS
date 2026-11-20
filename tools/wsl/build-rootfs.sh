@@ -45,19 +45,66 @@ stray=$(cd "$W/base32" && find . -mindepth 1 ! -path ./usr ! -path ./usr/lib ! -
 [ -z "$stray" ] || { echo "base32 outside /usr/lib: $stray" >&2; exit 1; }
 mkdir -p "$BASE/usr/lib32"
 cp -a "$W/base32/usr/lib/." "$BASE/usr/lib32/"
+# What stock's /usr/lib32 has and this doesn't (ports may load it): a note, not a failure.
+python3 "$REPO/tools/lib32-gaps.py" "$W/stock-root" "$BASE" > "$W/lib32-gaps.txt" || true
 
 echo "--- vendor: harvest"
 # The blobs' own libraries (libstdc++, libwayland, glibc) are BasedOS's: --provided.
-python3 "$REPO/tools/harvest.py" "$W/stock-root" "$REPO/manifest/harvest.list" "$VEN" --provided "$BASE" 	--report "$W/harvest-report.txt"
+python3 "$REPO/tools/harvest.py" "$W/stock-root" "$REPO/manifest/harvest.list" "$VEN" --provided "$BASE" 	--report "$W/harvest-report.txt" --sources "$W/vendor-sources.txt"
 mkdir -p "$VEN/usr/share/basedos"
-VENDOR_ID=$(cd "$VEN" && find . \( -type f -o -type l \) | LC_ALL=C sort | while read -r f; do
-	if [ -L "$f" ]; then echo "L $f $(readlink "$f")"; else echo "F $f $(sha256sum < "$f" | cut -c1-64) $(stat -c %a "$f")"; fi
-done | sha256sum | cut -c1-12)
+# The same function basedos-vendor uses on the device, so both name the same files alike.
+. "$REPO/overlay/usr/lib/basedos/vendor-id"
+VENDOR_ID=$(vendor_id "$VEN")
 cat > "$VEN/usr/share/basedos/vendor-release" <<EOF
 VENDOR_ID=$VENDOR_ID
 STOCK_BUILD=$(cat "$W/STOCK_BUILD" 2>/dev/null || echo unknown)
 EOF
 echo "vendor $VENDOR_ID"
+
+echo "--- vendor: recipe"
+# How to cut this same vendor layer out of a device's own stock image, so the device can build it
+# itself (overlay/usr/sbin/basedos-vendor): each file's place, mode and SHA-256 and where it is in
+# stock's SYSTEM, and each link. Only paths and hashes, nothing of stock's; it goes in the system
+# layer (usr/share/basedos/vendor-recipe). Checked here: the id the recipe gives must be this one.
+python3 - "$VEN" "$W/vendor-sources.txt" "$VENDOR_ID" "$(cat "$W/STOCK_BUILD" 2>/dev/null || echo unknown)" "$W/vendor-recipe" <<'EOF'
+import hashlib, os, sys
+ven, sources, vid, stock, out = sys.argv[1:]
+src = {}
+for line in open(sources, encoding="utf-8"):
+    dst, s = line.rstrip("\n").split("\t")
+    src[dst.lstrip("/")] = s.lstrip("/")
+entries, idlines = [], []
+for root, dirs, files in os.walk(ven):
+    for n in dirs + files:
+        p = os.path.join(root, n)
+        rel = os.path.relpath(p, ven)
+        if rel == "usr/share/basedos/vendor-release" or (os.path.isdir(p) and not os.path.islink(p)):
+            continue
+        if any(c.isspace() for c in rel):
+            sys.exit(f"vendor recipe: a space in {rel}")
+        if os.path.islink(p):
+            t = os.readlink(p)
+            entries.append(f"L {rel} {t}")
+            idlines.append((rel, f"L ./{rel} {t}"))
+        else:
+            if rel not in src:
+                sys.exit(f"vendor recipe: no stock source for {rel}")
+            h = hashlib.sha256(open(p, "rb").read()).hexdigest()
+            mode = format(os.stat(p).st_mode & 0o7777, "o")
+            entries.append(f"F {mode} {h} {rel} {src[rel]}")
+            idlines.append((rel, f"F ./{rel} {h} {mode}"))
+# The id as vendor_id computes it: lines sorted by "./path" bytes (LC_ALL=C sort of find's output).
+idlines.sort(key=lambda x: ("./" + x[0]).encode())
+got = hashlib.sha256("".join(l + "\n" for _, l in idlines).encode()).hexdigest()[:12]
+if got != vid:
+    sys.exit(f"vendor recipe gives id {got}, not {vid}")
+with open(out, "w", encoding="utf-8") as f:
+    f.write("# BasedOS vendor recipe (tools/wsl/build-rootfs.sh; basedos-vendor reads it)\n")
+    f.write(f"VENDOR_ID={vid}\nSTOCK_BUILD={stock}\n")
+    for e in sorted(entries, key=lambda e: e.split()[1] if e[0] == "L" else e.split()[3]):
+        f.write(e + "\n")
+print(f"recipe: {len(entries)} entries")
+EOF
 
 echo "--- system: skeleton"
 cd "$SYS"
@@ -172,7 +219,7 @@ find "$SYS" -name __pycache__ -prune -exec rm -rf {} +
 # poweroff's wrapper (it notes which of the three was asked for) answers to all three names.
 for a in reboot halt; do rm -f usr/sbin/$a; ln -s poweroff usr/sbin/$a; done
 find "$SYS/etc" "$SYS/usr/lib/basedos" "$SYS/usr/share/udhcpc" "$SYS/usr/share/basedos" -type f -exec chmod 644 {} +
-chmod 755 etc/init.d/* usr/sbin/poweroff usr/sbin/mount-frontend usr/sbin/frontend-session usr/sbin/basedos-suspend usr/sbin/basedos-update usr/sbin/basedos-udev usr/share/udhcpc/default.script
+chmod 755 etc/init.d/* usr/sbin/poweroff usr/sbin/mount-frontend usr/sbin/frontend-session usr/sbin/basedos-suspend usr/sbin/basedos-update usr/sbin/basedos-udev usr/sbin/basedos-vendor usr/share/udhcpc/default.script
 # Accounts are on /data (rcS seeds them from these defaults), so a frontend can add users.
 chmod 644 usr/share/basedos/accounts/passwd usr/share/basedos/accounts/group
 chmod 600 usr/share/basedos/accounts/shadow
@@ -196,6 +243,7 @@ ln -sf /run/machine-id etc/machine-id
 
 echo "--- system: identity"
 echo "$VENDOR_ID" > usr/share/basedos/needs-vendor
+install -m 644 "$W/vendor-recipe" usr/share/basedos/vendor-recipe
 cat > etc/baseos-release <<EOF
 BASEOS=1
 BASEOS_NAME=BasedOS

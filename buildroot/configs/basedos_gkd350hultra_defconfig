@@ -52,6 +52,10 @@ BR2_PACKAGE_ALSA_UTILS=y
 BR2_PACKAGE_ALSA_UTILS_AMIXER=y
 BR2_PACKAGE_ALSA_UTILS_APLAY=y
 BR2_PACKAGE_EVTEST=y
+# mksquashfs for basedos-vendor: a device builds its own vendor layer from its stock image.
+BR2_PACKAGE_SQUASHFS=y
+BR2_PACKAGE_SQUASHFS_ZSTD=y
+BR2_PACKAGE_SQUASHFS_LZ4=y
 
 # SDL2 add-ons for spruce's display_text.elf. Buildroot's SDL2 is only linked against: BasedOS's
 # own (tools/sdl2) is the one installed.

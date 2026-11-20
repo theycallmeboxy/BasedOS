@@ -96,6 +96,7 @@ The harvest source is either the backup image (`mmcblk0.img`: FAT p1, then its `
 
 - **Developer:** build on the PC (`tools/wsl/build.sh`), then run `tools/install-dev.sh` on the device under stock, over SSH (user-guide.md). Later builds go in with `tools/dev/update-basedos.sh` from BasedOS, or as a `.bosupd`.
 - **Users, later:** an installer SD card built on the device from its own files (the rescue card mechanism): back up, harvest, install. Nothing vendor-made is published.
+- **The vendor layer on the device (2026-11-19):** every system layer carries a recipe for the vendor layer it needs (`usr/share/basedos/vendor-recipe`: each file's place, mode, SHA-256 and where it is in stock's SYSTEM, written by `build-rootfs.sh` from the harvest), and `basedos-vendor` builds that layer from the stock image on p1 (`/boot/SYSTEM`), checking every hash and the id (`usr/lib/basedos/vendor-id`, the one function both sides use). `basedos-update` uses it when a payload needs a vendor layer the device lacks, so a vendor change no longer strands `.bosupd` updates. This is also the core of the user installer: with a published system layer and its recipe, a device needs only its own stock image, not a PC or Buildroot.
 
 ## Versions
 

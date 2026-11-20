@@ -16,14 +16,21 @@ The same as stock's, so ports built for ROCKNIX find what they expect:
 | What | Where | From |
 |---|---|---|
 | glibc's 32-bit loader | `/usr/lib32/ld-linux-armhf.so.3`, linked from `/usr/lib/ld-linux-armhf.so.3` (armhf programs' PT_INTERP is `/lib/ld-linux-armhf.so.3`) | system layer |
-| glibc, GCC's runtime, SDL2's add-ons, the libraries of `manifest/base.list` that ports use, OpenAL, mpg123, libmodplug | `/usr/lib32` | system layer: BasedOS's 32-bit Buildroot root (`buildroot/configs/basedos_gkd350hultra_armhf_defconfig`), the paths `manifest/base32.list` names plus what they need |
+| glibc and its iconv modules (`/usr/lib32/gconv`), GCC's runtime, SDL2's add-ons, the libraries of `manifest/base.list` that ports use, OpenAL, mpg123, libmodplug, and what else of stock's `/usr/lib32` Buildroot has (SDL2_gfx, libltdl, opusfile, pixman, speex, Tremor, zstd) | `/usr/lib32` | system layer: BasedOS's 32-bit Buildroot root (`buildroot/configs/basedos_gkd350hultra_armhf_defconfig`), the paths `manifest/base32.list` names plus what they need |
 | SDL2 and librga | `/usr/lib32` | system layer: BasedOS's own (`SDL2_ARCH=armhf tools/sdl2/build.sh`), the same patches as the 64-bit one, so 32-bit ports get the turned picture too |
 | Mali G52 GLES/EGL driver (32-bit) and its GL API wrappers | `/usr/lib32` | vendor layer: stock's `/usr/lib32` (`manifest/harvest.list`) |
 
-The 32-bit loader looks in `/lib`, `/usr/lib` and then `/usr/lib32` (`buildroot/external.mk`:
-glibc's `user-defined-trusted-dirs`). It passes over the 64-bit libraries in the first two as the
-wrong class, as glibc does for any library that isn't its own kind, and finds its own in
-`/usr/lib32`. BasedOS has no `ld.so.cache` (stock's way, with `/etc/ld.so.conf.d/arm-lib32.conf`).
+The 32-bit loader looks only in `/usr/lib32`, and its iconv() loads modules from
+`/usr/lib32/gconv` (`buildroot/external.mk` sets glibc's `default-rpath` and `gconvdir` in
+`configparms`), so it never opens the 64-bit files of the same names. BasedOS has no
+`ld.so.cache` (stock's way, with `/etc/ld.so.conf.d/arm-lib32.conf`). Programs' own
+`LD_LIBRARY_PATH` still works as usual; 64-bit folders in it are passed over as the wrong class.
+
+What stock's `/usr/lib32` has and BasedOS's doesn't is listed at every build
+(`tools/lib32-gaps.py`, `out/lib32-gaps.txt`), leaving out stock's desktop, service and Mesa
+libraries. Left today: libxml2.so.2 (Buildroot's libxml2 is 2.15, `.so.16`), libxmp and SDL2_sound
+(no Buildroot package), libepoxy and glfw (they need desktop GL or a windowing system), librga.so.2
+(stock's older librga; BasedOS's is 1.10.5), 32-bit Vulkan.
 
 ## Tested (2026-11-19)
 
@@ -47,8 +54,6 @@ SteamWorld Dig and Heist on the Weston pack, ...) need the buyer's own game file
 
 - **No 32-bit LuaJIT.** Buildroot builds it only with a 32-bit host compiler (`gcc-multilib` in
   WSL). LÖVE ports bring their own.
-- **No gconv modules for the 32-bit iconv().** glibc looks for them in `/usr/lib/gconv`, the
-  64-bit ones; only its built-in conversions (UTF-8, ASCII, Latin-1, UCS-2/4) work.
 - **No 32-bit Vulkan.** Stock's armhf Vulkan is Mesa's PanVK, not Mali's.
 - **No 32-bit RetroArch** (spruce's `DEVICE_HAS_32_BIT_RA`): not needed for ports.
 

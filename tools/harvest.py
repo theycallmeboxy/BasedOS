@@ -3,7 +3,7 @@
 every library those files need (a closed set), into a staging tree.
 
   harvest.py <source root> <list> <staging root> [--provided <root>] [--report <file>]
-             [--lib32 <dir>]
+             [--lib32 <dir>] [--sources <file>]
 
 --provided: a root whose libraries count as there already (the system layer's, when harvesting
 the vendor layer's blobs), so they aren't copied from the source again.
@@ -11,6 +11,9 @@ the vendor layer's blobs), so they aren't copied from the source again.
 the system layer and stock lay them out; /usr/lib for BasedOS's 32-bit Buildroot root, whose
 libraries build-rootfs.sh then moves to /usr/lib32). 64-bit ones are looked for in /usr/lib.
 --report: where the report goes (default <staging root>/../harvest-report.txt).
+--sources: also write, for each regular file copied, "<staging path> TAB <source path>" (the
+source path with its links followed): what build-rootfs.sh's vendor recipe needs, so a device
+can cut the same files out of its own stock image (basedos-vendor).
 
 Run it on a filesystem with real symlinks (WSL's ext4, not /mnt/c).
 Fails if any DT_NEEDED can't be found, like baseos-my355's prepare_stock.py.
@@ -37,6 +40,13 @@ def elf_class(path):
 
 
 def elf_needed(path):
+    """An ELF file's DT_NEEDED names, None if it isn't ELF."""
+    info = elf_info(path)
+    return info[1] if info else None
+
+
+def elf_info(path):
+    """(64 or 32, DT_NEEDED names) for an ELF file, read once; None if it isn't ELF."""
     try:
         with open(path, "rb") as f:
             b = f.read()
@@ -44,6 +54,10 @@ def elf_needed(path):
         return None
     if b[:4] != b"\x7fELF" or b[4] not in (1, 2):
         return None
+    return (64 if b[4] == 2 else 32), _needed(b)
+
+
+def _needed(b):
     if b[4] == 2:
         phoff, = struct.unpack_from("<Q", b, 0x20)
         phentsize, phnum = struct.unpack_from("<HH", b, 0x36)
@@ -88,11 +102,12 @@ def elf_needed(path):
 class Harvest:
     def __init__(self, stock, dest, provided=None, lib32="/usr/lib32"):
         self.stock, self.dest, self.provided, self.why = stock, dest, provided, {}
+        self.src = {}
         self.lib32 = (lib32,)
 
-    def libdirs(self, path):
-        """Where the libraries an ELF file needs are: its own class's directory."""
-        return self.lib32 if elf_class(path) == 32 else LIBDIRS
+    def libdirs(self, cls):
+        """Where the libraries an ELF file of this class needs are: its own class's directory."""
+        return self.lib32 if cls == 32 else LIBDIRS
 
     def s(self, p):
         return os.path.join(self.stock, p.lstrip("/"))
@@ -136,6 +151,7 @@ class Harvest:
                 sys.exit(f"missing in stock: {src} ({why})")
             shutil.copy2(self.s(real), out, follow_symlinks=True)
             self.why[dst] = why
+            self.src[dst] = real
 
     def find_lib(self, name, dirs):
         for d in dirs:
@@ -155,8 +171,11 @@ class Harvest:
                 full = self.d(p)
                 if os.path.islink(full) or not os.path.isfile(full):
                     continue
-                dirs = self.libdirs(full)
-                for lib in elf_needed(full) or []:
+                info = elf_info(full)
+                if not info:
+                    continue
+                dirs = self.libdirs(info[0])
+                for lib in info[1]:
                     if any(os.path.lexists(self.d(f"{d}/{lib}")) for d in dirs):
                         continue
                     # Beside the file that needs it ($ORIGIN): glibc's gconv modules and their
@@ -178,7 +197,7 @@ def main():
     args, opts = [], {}
     it = iter(sys.argv[1:])
     for a in it:
-        if a in ("--provided", "--report", "--lib32"):
+        if a in ("--provided", "--report", "--lib32", "--sources"):
             opts[a] = next(it, None)
         else:
             args.append(a)
@@ -197,6 +216,10 @@ def main():
     with open(report, "w", encoding="utf-8") as r:
         for p in sorted(h.why):
             r.write(f"{p}\t{h.why[p]}\n")
+    if opts.get("--sources"):
+        with open(opts["--sources"], "w", encoding="utf-8") as r:
+            for p in sorted(h.src):
+                r.write(f"{p}\t{h.src[p]}\n")
     size = sum(os.path.getsize(h.d(p)) for p in h.why if not os.path.islink(h.d(p)))
     print(f"harvested {len(h.why)} paths, {size / 2**20:.1f} MiB; report: {report}")
     if missing:

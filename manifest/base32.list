@@ -5,9 +5,8 @@
 # only /usr/lib paths may be listed. The libraries these need are added automatically, and the
 # build fails if one is missing. The 32-bit Mali driver is the vendor layer's (harvest.list).
 
-## glibc (2.41), whose loader looks in /usr/lib32 (buildroot/external.mk). No gconv modules:
-## the 32-bit iconv() looks for them in /usr/lib/gconv, which holds the 64-bit ones, so only
-## its built-in conversions (UTF-8, ASCII, Latin-1, UCS) work.
+## glibc (2.41), whose loader looks only in /usr/lib32 and whose iconv() loads its modules from
+## /usr/lib32/gconv (buildroot/external.mk)
 /usr/lib/ld-linux-armhf.so.3
 /usr/lib/libc.so.6
 /usr/lib/libm.so.6
@@ -19,6 +18,7 @@
 /usr/lib/libanl.so.1
 /usr/lib/libnss_files.so.2
 /usr/lib/libnss_dns.so.2
+/usr/lib/gconv
 
 ## GCC 14's runtime
 /usr/lib/libstdc++.so.6
@@ -29,6 +29,7 @@
 ## what the closed 32-bit Mali driver needs (vendor layer)
 /usr/lib/libwayland-client.so.0
 /usr/lib/libwayland-server.so.0
+/usr/lib/libwayland-cursor.so.0
 /usr/lib/libdrm.so.2
 /usr/lib/libdrm.so
 
@@ -76,3 +77,14 @@
 /usr/lib/libopenal.so.1
 /usr/lib/libmpg123.so.0
 /usr/lib/libmodplug.so.1
+
+## more of stock's /usr/lib32 that ports may load (tools/lib32-gaps.py; the defconfig says what
+## is left out and why)
+/usr/lib/libSDL2_gfx-1.0.so.0
+/usr/lib/libFLAC.so.12
+/usr/lib/libltdl.so.7
+/usr/lib/libopusfile.so.0
+/usr/lib/libpixman-1.so.0
+/usr/lib/libspeex.so.1
+/usr/lib/libvorbisidec.so.1
+/usr/lib/libzstd.so.1

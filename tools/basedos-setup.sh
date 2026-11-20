@@ -9,13 +9,19 @@
 #   1. Install BasedOS to the eMMC, next to stock (stock's files stay; BasedOS's maintenance menu
 #      can switch back or uninstall). It recommends making a recovery card (3) first, and offers
 #      to, in the same run.
-#   2. Create a BasedOS SD card: BasedOS on the card alone; the eMMC is NOT modified. Partitions:
-#      basedos (boot files, hidden), data (BasedOS's /data, hidden), BASEOS (the rest: the drive
-#      the frontend, spruce, is copied to later from a PC). Optionally a copy of stock on the card
-#      too (dual boot: the maintenance menu starts it once), and a backup of the eMMC on BASEOS.
+#   2. Create a BasedOS SD card: BasedOS on the card alone; the eMMC is NOT modified, and from the
+#      card it's never used: the card's boot script hides it from the kernel. GPT: p3 basedos (boot
+#      files, hidden, the only bootable one), p4 data (BasedOS's /data, hidden), p5 BASEOS (the
+#      rest: the drive the frontend, spruce, is copied to later from a PC); optionally card stock,
+#      a copy of stock on p1 and p2 (where stock's init looks), a sandbox the maintenance menu
+#      starts once; and optionally a backup of the eMMC on BASEOS. The card stays in the device.
 #   3. Create a recovery SD card: a backup of the whole eMMC as it is now, and a small recovery
 #      system that boots from the card and, when A is held, writes the eMMC back byte for byte
 #      (tools/recovery). No PC needed, then or later.
+#
+# Every card it makes also gets a copy of the eMMC's loader (sectors 64 to 32767, before any
+# partition), as the rescue card had: the boot ROM uses it only if the eMMC's own loader is ever
+# damaged. Nothing else on a card comes from the eMMC at boot.
 #
 # It asks everything first, shows what it will do and asks for the typed confirmations; only then
 # does it write anything, and it runs to the end without asking more.
@@ -139,14 +145,15 @@ fi
 
 if [ "$TARGET" = sd ]; then
 	say ""
-	say "BasedOS goes on the SD card alone. THE eMMC WILL NOT BE MODIFIED: without the card the"
-	say "device starts stock, as now. Your frontend (spruce) is copied later, from your PC, to the"
-	say "card's BASEOS drive."
+	say "BasedOS goes on the SD card alone. THE eMMC WILL NOT BE MODIFIED, and while the card runs"
+	say "it's hidden and never used: take the card out to start the device's own system, as now."
+	say "Your frontend (spruce) is copied later, from your PC, to the card's BASEOS drive. The card"
+	say "stays in this device."
 	if [ -z "$DUAL" ]; then
 		say ""
-		say "Dual boot: a copy of stock goes on the card too, and BasedOS's maintenance menu (hold"
-		say "Select at power-on) can start it once, from the card, whatever is on the eMMC."
-		if yes_no "Dual boot stock from the card?" n; then DUAL=yes; else DUAL=no; fi
+		say "Card stock: a copy of stock on the card as well, yours to update or change; BasedOS's"
+		say "maintenance menu (hold Select at power-on) starts it once. The eMMC stays hidden from it."
+		if yes_no "Put a copy of stock on the card (dual boot)?" n; then DUAL=yes; else DUAL=no; fi
 	fi
 	if [ -z "$BACKUP" ]; then
 		say ""
@@ -195,12 +202,13 @@ if [ "$DUAL" = yes ]; then
 	STOCK_KIB=$(kib_except $STOCK_P1 basedos)
 	STORE_KIB=$(kib_except /storage games-external roms basedos-data)
 fi
-P1_MIB=1024 P2_MIB=512
-[ "$DUAL" = yes ] && P1_MIB=$(( 1024 + $(gib_up $STOCK_KIB) * 1024 )) && P2_MIB=$(( 512 + 2048 + $(gib_up $STORE_KIB) * 1024 ))
+# BasedOS's boot and data partitions; card stock's two (its boot files, its /storage) only with it.
+BOOT_MIB=1024 DATA_MIB=512 CS1_MIB=0 CS2_MIB=0
+[ "$DUAL" = yes ] && CS1_MIB=$(( 512 + $(gib_up $STOCK_KIB) * 1024 )) && CS2_MIB=$(( 2048 + $(gib_up $STORE_KIB) * 1024 ))
 case "$TARGET" in
-recovery|emmc) NEED_GB=$BK_GB ;;
+recovery|emmc) NEED_GB=$((BK_GB + 1)) ;;
 sd)
-	NEED_GB=$(( (P1_MIB + P2_MIB) / 1024 + 2 ))
+	NEED_GB=$(( (BOOT_MIB + DATA_MIB + CS1_MIB + CS2_MIB) / 1024 + 2 ))
 	[ "$BACKUP" = yes ] && NEED_GB=$((NEED_GB + BK_GB)) ;;
 esac
 
@@ -258,8 +266,8 @@ if [ "$REC" = yes ]; then
 fi
 if [ "$TARGET" = sd ]; then
 	say "BasedOS card: ERASE the SD card ($NAME, $SIZE_GB GB, ID $CID) and put BasedOS $VERSION on it:"
-	say "  basedos $((P1_MIB / 1024)) GB and data $((P2_MIB / 1024)).$((P2_MIB % 1024 * 10 / 1024)) GB (both hidden), BASEOS the rest."
-	[ "$DUAL" = yes ] && say "  With a copy of stock (dual boot): its boot files and its /storage, without ROMs."
+	say "  basedos 1 GB and data 0.5 GB (both hidden), BASEOS the rest."
+	[ "$DUAL" = yes ] && say "  With card stock: stock's boot files ($CS1_MIB MiB) and its /storage without ROMs ($CS2_MIB MiB, with 2 GB to spare)."
 	[ "$BACKUP" = yes ] && say "  With a backup image of the eMMC on BASEOS (about $BK_GB GB at most)."
 	say "  THE eMMC IS NOT MODIFIED."
 fi
@@ -305,6 +313,15 @@ new_parts() {
 	partprobe "$D" 2>/dev/null
 	_i=0; while [ ! -b ${D}p$1 ] && [ $_i -lt 20 ]; do sleep 0.5; _i=$((_i + 1)); done
 	[ -b ${D}p$1 ] || die "the new partitions didn't appear"
+}
+
+# loader: the eMMC's loader (sectors 64 to 32767; the eMMC's p1 starts at 32768) onto the card,
+# read back. The card's partitions start at 16 MiB, after it.
+loader() {
+	dd if=/dev/$EMMC of="$D" bs=512 skip=64 seek=64 count=32704 conv=fsync 2>/dev/null || die "couldn't write the loader"
+	echo 3 > /proc/sys/vm/drop_caches
+	[ "$(dd if=/dev/$EMMC bs=512 skip=64 count=32704 2>/dev/null | md5sum)" = \
+		"$(dd if="$D" bs=512 skip=64 count=32704 2>/dev/null | md5sum)" ] || die "the loader copy doesn't read back"
 }
 
 # backup_emmc <dir on the card>: the whole eMMC, zstd in 2 GB parts, checked against an MD5 taken
@@ -369,8 +386,9 @@ EOF
 if [ "$REC" = yes ]; then
 	step "Making the recovery card"
 	dd if=/dev/zero of="$D" bs=1M count=8 conv=fsync 2>/dev/null
-	parted -s "$D" mklabel msdos mkpart primary fat32 1MiB 100% set 1 boot on || die "parted failed"
+	parted -s "$D" mklabel msdos mkpart primary fat32 32768s 100% set 1 boot on || die "parted failed"
 	new_parts 1
+	loader
 	mkfs.vfat -F 32 -n RECOVERY ${D}p1 >/dev/null || die "mkfs.vfat failed"
 	mkdir -p "$T/mnt/card"
 	mount -t vfat ${D}p1 "$T/mnt/card" || die "the new partition doesn't mount"
@@ -470,36 +488,49 @@ seed_data() {
 if [ "$TARGET" = sd ]; then
 	step "Partitioning the card"
 	sgdisk --zap-all "$D" >/dev/null 2>&1
-	# basedos: FAT, U-Boot's (legacy BIOS bootable, bit 2) and hidden (62, 63); data: ext4, hidden;
-	# BASEOS: the rest. With dual boot, p1 and p2 also hold stock's files, as on the eMMC (stock's
-	# init mounts the boot disk's p1 and p2).
-	sgdisk -n 1:1MiB:+${P1_MIB}MiB -t 1:0700 -c 1:basedos -A 1:set:2 -A 1:set:62 -A 1:set:63 \
-		-n 2:0:+${P2_MIB}MiB -t 2:8300 -c 2:data -A 2:set:62 -A 2:set:63 \
-		-n 3:0:0 -t 3:0700 -c 3:BASEOS "$D" >/dev/null || die "sgdisk failed"
-	new_parts 3
-	mkfs.vfat -F 32 -n BASEDOS ${D}p1 >/dev/null || die "mkfs.vfat p1 failed"
-	mkfs.ext4 -q -F -L basedos-data ${D}p2 || die "mkfs.ext4 p2 failed"
-	mkfs.vfat -F 32 -n BASEOS ${D}p3 >/dev/null || die "mkfs.vfat p3 failed"
-	mkdir -p "$T/mnt/p1" "$T/mnt/p2" "$T/mnt/card"
-	mount -t vfat ${D}p1 "$T/mnt/p1" && mount -t ext4 ${D}p2 "$T/mnt/p2" && mount -t vfat ${D}p3 "$T/mnt/card" ||
+	# From 16 MiB (the loader is before it): card stock's p1 (FAT) and p2 (ext4), where stock's
+	# init mounts them, only with card stock; then basedos (FAT; U-Boot's: legacy BIOS bootable,
+	# bit 2, the only one, so U-Boot never runs a boot script card stock's updates write to its
+	# p1), data (ext4) and BASEOS. Everything but BASEOS hidden (62, 63).
+	set --
+	[ "$DUAL" = yes ] && set -- -n 1:32768:+${CS1_MIB}MiB -t 1:0700 -c 1:stock -A 1:set:62 -A 1:set:63 \
+		-n 2:0:+${CS2_MIB}MiB -t 2:8300 -c 2:stock-storage -A 2:set:62 -A 2:set:63
+	first=0; [ "$DUAL" = yes ] || first=32768
+	sgdisk "$@" -n 3:$first:+${BOOT_MIB}MiB -t 3:0700 -c 3:basedos -A 3:set:2 -A 3:set:62 -A 3:set:63 \
+		-n 4:0:+${DATA_MIB}MiB -t 4:8300 -c 4:data -A 4:set:62 -A 4:set:63 \
+		-n 5:0:0 -t 5:0700 -c 5:BASEOS "$D" >/dev/null || die "sgdisk failed"
+	new_parts 5
+	loader
+	mkfs.vfat -F 32 -n BASEDOS ${D}p3 >/dev/null || die "mkfs.vfat p3 failed"
+	mkfs.ext4 -q -F -L basedos-data ${D}p4 || die "mkfs.ext4 p4 failed"
+	mkfs.vfat -F 32 -n BASEOS ${D}p5 >/dev/null || die "mkfs.vfat p5 failed"
+	mkdir -p "$T/mnt/boot" "$T/mnt/data" "$T/mnt/card"
+	mount -t vfat ${D}p3 "$T/mnt/boot" && mount -t ext4 ${D}p4 "$T/mnt/data" && mount -t vfat ${D}p5 "$T/mnt/card" ||
 		die "the new partitions don't mount"
-	say "basedos ($P1_MIB MiB), data ($P2_MIB MiB), BASEOS ($(df -h "$T/mnt/card" | awk 'NR == 2 { print $2 }'))"
+	if [ "$DUAL" = yes ]; then
+		mkfs.vfat -F 32 -n STOCK ${D}p1 >/dev/null || die "mkfs.vfat p1 failed"
+		mkfs.ext4 -q -F -L stock-storage ${D}p2 || die "mkfs.ext4 p2 failed"
+		mkdir -p "$T/mnt/cs1" "$T/mnt/cs2"
+		mount -t vfat ${D}p1 "$T/mnt/cs1" && mount -t ext4 ${D}p2 "$T/mnt/cs2" || die "card stock's partitions don't mount"
+	fi
+	say "basedos, data, BASEOS ($(df -h "$T/mnt/card" | awk 'NR == 2 { print $2 }'))$([ "$DUAL" = yes ] && echo ", card stock")"
 	[ "$BACKUP" = yes ] && backup_emmc "$T/mnt/card"
 	vendor_set
 	step "Writing BasedOS to the card"
-	P=$T/mnt/p1
+	P=$T/mnt/boot
 	if [ "$DUAL" = yes ]; then
-		say "copying stock's boot files and its /storage (dual boot)..."
+		say "copying stock to the card (card stock)..."
 		for f in "$STOCK_P1"/*; do
 			n=${f##*/}
 			case "$n" in basedos|boot.scr|boot.scr.*) continue ;; esac
-			if [ -d "$f" ]; then cp -a "$f" "$P/" || die "couldn't copy $f"
-			else put "$f" "$P/$n"; fi
+			if [ -d "$f" ]; then cp -a "$f" "$T/mnt/cs1/" || die "couldn't copy $f"
+			else put "$f" "$T/mnt/cs1/$n"; fi
 		done
 		tar -C /storage --exclude=./games-external --exclude=./roms --exclude=./basedos-data -cf - . |
-			tar -C "$T/mnt/p2" -xf - || die "couldn't copy stock's /storage"
-		mkdir -p "$T/mnt/p2/games-external/roms" "$T/mnt/p2/roms"
-		rm -f "$T/mnt/p2/.please_resize_me" "$T/mnt/p2/.please_resize_roms_partition"
+			tar -C "$T/mnt/cs2" -xf - || die "couldn't copy stock's /storage"
+		rm -f "$T/mnt/cs2/roms/ports/Return to BasedOS.sh"
+		mkdir -p "$T/mnt/cs2/games-external/roms" "$T/mnt/cs2/roms"
+		rm -f "$T/mnt/cs2/.please_resize_me" "$T/mnt/cs2/.please_resize_roms_partition"
 	fi
 	mkdir -p "$P/basedos/vendor-$VENDOR"
 	for f in "$VS"/*; do put "$f" "$P/basedos/vendor-$VENDOR/${f##*/}"; done
@@ -507,11 +538,12 @@ if [ "$TARGET" = sd ]; then
 	put "$HERE/initrd.uimg" "$P/basedos/initrd.uimg"
 	{ echo "basedos_vendor=$VENDOR"; [ "$DUAL" = yes ] && echo "basedos_card_stock=1"; } > "$T/boot.env"
 	put "$T/boot.env" "$P/basedos/boot.env"
-	mkdir -p "$T/mnt/p2/basedos-data"
-	seed_data "$T/mnt/p2/basedos-data"
+	mkdir -p "$T/mnt/data/basedos-data"
+	seed_data "$T/mnt/data/basedos-data"
 	cat > "$T/mnt/card/BasedOS.txt" <<EOF
 This card runs BasedOS $VERSION ($BUILD) on the GKD 350H Ultra: with it in, the device starts
-BasedOS and the frontend on this drive; without it, the device's own system on the eMMC.
+BasedOS and the frontend on this drive; without it, the device's own system on the eMMC, which
+BasedOS on this card never uses. The card stays in this device.
 
 Put your frontend here, on this BASEOS drive (for spruce: copy spruce's files to it from your
 PC). BasedOS's own files are on the card's hidden partitions: don't reformat the card, or it
@@ -520,7 +552,10 @@ EOF
 	# BasedOS's boot script last: until it's there, the card doesn't boot.
 	put "$HERE/boot.scr" "$P/boot.scr"
 	sync
-	for m in card p2 p1; do umount "$T/mnt/$m" || die "can't unmount the card's $m"; done
+	for m in card data boot cs2 cs1; do
+		grep -q " $T/mnt/$m " /proc/mounts || continue
+		umount "$T/mnt/$m" || die "can't unmount the card's $m"
+	done
 	RESULT="BasedOS $VERSION is on the card. Power off now, copy your frontend (spruce) onto the card's BASEOS drive from your PC, put the card back in and power on."
 	[ "$BACKUP" = yes ] && RESULT="$RESULT The eMMC backup is in $(basename "$BK")/ on BASEOS: copy it to your PC and keep it."
 elif [ "$TARGET" = emmc ]; then

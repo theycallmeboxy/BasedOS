@@ -22,21 +22,26 @@ splash() { [ -x /usr/bin/basedos-splash ] && /usr/bin/basedos-splash "$@" >/dev/
 # say "message": log it, and show it as the boot screen's status line.
 say() { log "$*"; splash "$*"; }
 
-# The disk BasedOS booted from (boot.scr passes basedos.disk=mmcblkN: the eMMC is mmcblk0, the SD
-# card mmcblk1, except on a card carrying stock, where boot.scr swaps them): BasedOS's boot
-# partition is its p1, the one with /data on it its p2.
-BOOT_DISK=""
+# The disk BasedOS booted from and its boot partition (boot.scr passes basedos.disk=mmcblkN and
+# basedos.part=N): the eMMC (mmcblk0) with BasedOS on p1 beside stock's files, or an SD card, which
+# is mmcblk0 too once boot.scr has hidden the eMMC, with BasedOS on p3. BOOT_P1 is that boot
+# partition (/boot), BOOT_P2 the next one, with /data on it.
+BOOT_DISK="" BOOT_PART=""
 for _a in $(cat /proc/cmdline 2>/dev/null); do
-	case "$_a" in basedos.disk=mmcblk[0-9]) BOOT_DISK=${_a#basedos.disk=} ;; esac
+	case "$_a" in
+	basedos.disk=mmcblk[0-9]) BOOT_DISK=${_a#basedos.disk=} ;;
+	basedos.part=[1-9]) BOOT_PART=${_a#basedos.part=} ;;
+	esac
 done
 BOOT_DISK=${BOOT_DISK:-mmcblk0}
-BOOT_P1=/dev/${BOOT_DISK}p1
-BOOT_P2=/dev/${BOOT_DISK}p2
+BOOT_PART=${BOOT_PART:-1}
+BOOT_P1=/dev/${BOOT_DISK}p$BOOT_PART
+BOOT_P2=/dev/${BOOT_DISK}p$((BOOT_PART + 1))
 # 0 when BasedOS runs from an SD card (basedos-setup's SD install), not the eMMC: by the
-# controller, since the disk numbers can be swapped.
+# controller, since the disk numbers differ.
 on_sd_card() { case "$(readlink -f /sys/block/$BOOT_DISK)" in */2a310000.mmc/*) return 0 ;; esac; return 1; }
-# 0 when the card BasedOS runs from also carries a copy of stock (its dual boot) to start once.
-card_has_stock() { on_sd_card && [ -f /boot/SYSTEM ]; }
+# 0 when the card BasedOS runs from also carries a copy of stock (card stock, on its p1 and p2).
+card_has_stock() { on_sd_card && grep -qx 'basedos_card_stock=1' /boot/basedos/boot.env 2>/dev/null; }
 
 # Which rootfs slot this boot runs: the initrd loop-mounts rootfs.squashfs (a) or
 # rootfs-b.squashfs (b), and the vendor set's vendor.squashfs beside it.

@@ -29,10 +29,12 @@ type the confirmations, and only then writes. Three choices:
    and offers to in the same run (the install happens only once the card is made and checked).
    You type `INSTALL` to confirm you understand the eMMC is modified, know the risks and have a
    backup.
-2. **Create a BasedOS SD card.** The eMMC is not modified. The card gets BasedOS's hidden
-   partitions and a `BASEOS` drive you copy spruce to from your PC. It asks whether to dual boot
-   stock (a copy of stock on the card, started once from the maintenance menu) and whether to put
-   a backup image of the eMMC on the card. You type `ERASE` to confirm the card.
+2. **Create a BasedOS SD card.** The eMMC is not modified, and while the card runs it's hidden
+   from the system altogether: take the card out to use the device's own system. The card gets
+   BasedOS's hidden partitions and a `BASEOS` drive you copy spruce to from your PC, and it stays
+   in this device. It asks whether to put a copy of stock on the card too (card stock, yours to
+   change; the maintenance menu starts it once) and whether to put a backup image of the eMMC on
+   the card. You type `ERASE` to confirm the card.
 3. **Create a recovery SD card**: see "Recovery" below.
 
 Every card it makes is erased (`ERASE`), and it states the card size it needs first. With

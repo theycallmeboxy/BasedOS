@@ -70,7 +70,9 @@ resize log, the MBR disk ID), so they aren't listed here.
 `basedos-setup.sh`, choice 3 (or offered before an eMMC install), makes a card that restores the
 eMMC with no PC, then or later:
 
-- The card: MBR, one bootable FAT32 partition `RECOVERY` (U-Boot reads FAT, not exFAT) holding
+- The card: MBR, the eMMC's loader copied to sectors 64 to 32767 (as on the rescue card, for an
+  eMMC whose own loader is damaged), one bootable FAT32 partition `RECOVERY` from 16 MiB (U-Boot
+  reads FAT, not exFAT) holding
   `boot.scr` (`tools/recovery/boot.cmd`), `recovery/` (this device's own stock `Image` and DTBs,
   copied when the card is made, and the recovery initrd) and the backup folder
   `basedos-emmc-backup-<date>/` (the whole eMMC as zstd in 2 GB parts, boot0 and boot1, the

@@ -8,6 +8,10 @@
 # rcS keep counting: from the 4th the other rootfs slot is used, from the 6th
 # stock boots. The count stays until rcS (or you) deletes it. basedos-data/boot-stock-once,
 # if there, is removed and stock boots once.
+#
+# From an SD card (an SD install) none of that goes to stock: nothing on the card may reach the
+# eMMC (boot.scr hides it from the kernel), so a BasedOS that can't start says so on the screen
+# and powers off, and the eMMC, should it be visible after all, is made read-only first.
 bb=/basedos/busybox
 log() { echo "basedos-init: $*" > /dev/kmsg; }
 
@@ -17,37 +21,69 @@ $bb mount -t sysfs sys /sys
 $bb mount -t devtmpfs dev /dev 2>/dev/null
 
 fallback() {
+	[ -n "$sd" ] && sd_stop "$1"
 	log "$1; booting stock instead"
 	$bb umount /newroot /p1 /p2 2>/dev/null
 	$bb umount /dev /sys /proc 2>/dev/null
 	exec /init
 }
+# sd_stop <why>: an SD install that can't start: the reason on the screen (the console), then off.
+sd_stop() {
+	log "$1; powering off (SD card install: never stock from the eMMC)"
+	$bb umount /newroot /layers/system /layers/vendor /p1 /p2 2>/dev/null
+	{
+		echo; echo; echo
+		echo "  BasedOS can't start from this card:"
+		echo "  $1"
+		echo
+		echo "  Take the card out to start the device's own system."
+		echo "  Powering off in 60 seconds."
+	} > /dev/tty0 2>/dev/null
+	$bb sync
+	$bb sleep 60
+	$bb poweroff -f
+}
 
-# The disk boot.scr was loaded from (basedos.disk=mmcblkN: the eMMC is mmcblk0, the SD card
-# mmcblk1, by the DT aliases; an old stock-derived boot.scr passes none, and that's the eMMC), and
-# the vendor set its kernel came from (basedos.vendor=<id>). BasedOS's boot partition is the
-# disk's p1, the partition holding basedos-data its p2. Give p1 up to 5 s.
-disk="" kvendor=""
+# The disk boot.scr was loaded from (basedos.disk=mmcblkN: the eMMC's mmcblk0 and the SD card's
+# mmcblk1 by stock's DT aliases, but an SD card is mmcblk0 once boot.scr has hidden the eMMC; an
+# old stock-derived boot.scr passes none, and that's the eMMC), BasedOS's boot partition on it
+# (basedos.part=N: p1 on the eMMC, p3 on an SD card; its data partition is the next one) and the
+# vendor set its kernel came from (basedos.vendor=<id>). Give the boot partition up to 5 s.
+disk="" part="" kvendor=""
 for a in $($bb cat /proc/cmdline); do
 	case "$a" in
 	basedos.disk=mmcblk[0-9]) disk=${a#basedos.disk=} ;;
+	basedos.part=[1-9]) part=${a#basedos.part=} ;;
 	basedos.vendor=*) kvendor=${a#basedos.vendor=} ;;
 	esac
 done
 disk=${disk:-mmcblk0}
+part=${part:-1}
+P1=/dev/${disk}p$part
+P2=/dev/${disk}p$((part + 1))
 i=0
-while [ ! -b /dev/${disk}p1 ] && [ $i -lt 50 ]; do $bb usleep 100000; i=$((i + 1)); done
-$bb mount -t vfat -o ro,noatime /dev/${disk}p1 /p1 || fallback "can't mount ${disk}p1"
+while [ ! -b $P1 ] && [ $i -lt 50 ]; do $bb usleep 100000; i=$((i + 1)); done
+# An SD install, by the disk's controller (2a310000.mmc), whatever its number.
+sd=""
+case "$($bb readlink -f /sys/block/$disk)" in */2a310000.mmc/*) sd=1 ;; esac
+if [ -n "$sd" ]; then
+	for b in /sys/block/mmcblk*; do
+		case "$($bb readlink -f $b)" in */2a330000.mmc/*) ;; *) continue ;; esac
+		log "the eMMC (${b##*/}) is visible on an SD card boot; making it read-only"
+		for d in /dev/${b##*/} /dev/${b##*/}p*; do [ -b "$d" ] && $bb blockdev --setro "$d"; done
+	done
+fi
+$bb mount -t vfat -o ro,noatime $P1 /p1 || fallback "can't mount $P1"
 
 attempts=0
-if $bb mount -t ext4 -o noatime /dev/${disk}p2 /p2 2>/dev/null; then
+if $bb mount -t ext4 -o noatime $P2 /p2 2>/dev/null; then
 	$bb mkdir -p /p2/basedos-data
 	# Uninstall (basedos-boot uninstall checked everything while BasedOS ran, and left the
 	# SHA-256 of the stock boot script it checked): done here, where none of BasedOS's files are
 	# in use. Stock's boot script first, only if it's still that file, read back after; then
 	# BasedOS's data and folder; then stock boots. Any check failing drops the flag and BasedOS
 	# boots as usual. A power cut after the boot script is back leaves leftovers, but stock boots.
-	if [ -f /p2/basedos-data/uninstall ]; then
+	if [ -z "$sd" ] && [ -f /p2/basedos-data/uninstall ]; then
 		want=$($bb head -c 64 /p2/basedos-data/uninstall)
 		have=$($bb sha256sum < /p1/basedos/boot.scr.stock 2>/dev/null | $bb cut -c1-64)
 		if [ ${#want} -eq 64 ] && [ "$want" = "$have" ] && $bb mount -o remount,rw /p1; then
@@ -80,7 +116,8 @@ if $bb mount -t ext4 -o noatime /dev/${disk}p2 /p2 2>/dev/null; then
 	# The flag goes first, so the boot after this one is BasedOS's again whatever stock does.
 	# Honoured only once the flag is really gone: one that can't be removed (p2 read-only after an
 	# error) would otherwise send every boot to stock.
-	if [ -f /p2/basedos-data/boot-stock-once ]; then
+	# (An SD card's stock once, of its own copy of stock, is boot.scr's: basedos/once.env.)
+	if [ -z "$sd" ] && [ -f /p2/basedos-data/boot-stock-once ]; then
 		$bb rm -f /p2/basedos-data/boot-stock-once
 		$bb sync
 		if [ -f /p2/basedos-data/boot-stock-once ]; then
@@ -96,7 +133,7 @@ if $bb mount -t ext4 -o noatime /dev/${disk}p2 /p2 2>/dev/null; then
 	$bb sync
 	$bb umount /p2
 else
-	log "can't mount ${disk}p2; boot attempts not counted"
+	log "can't mount $P2; boot attempts not counted"
 fi
 [ "$attempts" -ge 6 ] && fallback "BasedOS did not reach rcS in the last $((attempts - 1)) boots"
 

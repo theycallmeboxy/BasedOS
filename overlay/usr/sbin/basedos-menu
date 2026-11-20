@@ -11,10 +11,16 @@ switch|Switch to stock (back from stock's Ports)
 uninstall|Uninstall BasedOS
 reboot|Restart
 poweroff|Power off"
-# On an SD card install, stock is the device without the card: no switching or uninstalling,
-# and stock once only from a card carrying its own copy of stock (dual boot).
-on_sd_card && ITEMS=$(echo "$ITEMS" | grep -v -e '^switch|' -e '^uninstall|')
-on_sd_card && ! card_has_stock && ITEMS=$(echo "$ITEMS" | grep -v '^stock-once|')
+# On an SD card install the eMMC is never used (the device without the card is its own system):
+# no switching or uninstalling, and stock once only of the card's own copy of stock.
+if on_sd_card; then
+	ITEMS=$(echo "$ITEMS" | grep -v -e '^switch|' -e '^uninstall|')
+	if card_has_stock; then
+		ITEMS=$(echo "$ITEMS" | sed 's/^stock-once|.*/stock-once|Start card stock once (BasedOS again after)/')
+	else
+		ITEMS=$(echo "$ITEMS" | grep -v '^stock-once|')
+	fi
+fi
 N=$(echo "$ITEMS" | wc -l)
 sel=1
 

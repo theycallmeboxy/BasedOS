@@ -129,9 +129,20 @@ EOF
 }
 
 stock_once() {
-	# From an SD card, only stock on the card itself (its dual boot): the eMMC's stock is the device
-	# without the card, and may not be the build this card's kernel came from.
-	on_sd_card && ! card_has_stock && die "this card carries no copy of stock: take the card out to start the eMMC's stock"
+	# From an SD card: only the card's own copy of stock, never the eMMC's (take the card out for
+	# that). boot.scr reads basedos/once.env, clears it, then starts card stock with its own
+	# kernel, the eMMC hidden.
+	if on_sd_card; then
+		card_has_stock || die "this card carries no copy of stock: take the card out to start the device's own system"
+		rw
+		{ printf 'basedos_once=card-stock\n' > /boot/basedos/once.env.new && sync &&
+			mv /boot/basedos/once.env.new /boot/basedos/once.env && sync &&
+			grep -qx 'basedos_once=card-stock' /boot/basedos/once.env; } ||
+			{ rm -f /boot/basedos/once.env.new; ro; die "couldn't write /boot/basedos/once.env"; }
+		ro
+		log "boot: card stock for the next boot"
+		return 0
+	fi
 	# The flag must be on p2: /data in RAM (p2 unusable this boot) would lose it.
 	grep -q "^$BOOT_P2 /data " /proc/mounts || die "/data isn't on the boot disk this boot; can't leave the flag"
 	: > /data/boot-stock-once && sync && [ -f /data/boot-stock-once ] || die "couldn't write /data/boot-stock-once"
@@ -192,6 +203,16 @@ uninstall() {
 }
 
 status() {
+	if on_sd_card; then
+		echo "SD card install (the eMMC is hidden and never used)"
+		if card_has_stock; then
+			echo "card stock: on this card"
+			echo "next boot: $(grep -qx 'basedos_once=card-stock' /boot/basedos/once.env 2>/dev/null && echo "card stock once, then BasedOS" || echo BasedOS)"
+		else
+			echo "card stock: none; next boot: BasedOS"
+		fi
+		return 0
+	fi
 	case "$(scr_kind /boot/boot.scr)" in
 	basedos)
 		if [ -f /data/uninstall ]; then echo "next boot: BasedOS UNINSTALLS itself, then stock"

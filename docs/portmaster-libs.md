@@ -6,10 +6,9 @@ So this is measured from the ports themselves.
 
 ## Method (2026-11-19)
 
-PortMaster's catalogue of that day: 1,511 ports. Downloaded to the PC (never to the device), each
-checked against the catalogue's MD5: every port that needs the buyer's files, every ready-to-run
-port up to 100 MB (1,469 ports, 21 GB; the 42 larger ready-to-run games, 9.5 GB, are left out)
-and all 67 runtimes (Godot, Mono, .NET, Java, Python, Weston, ...), 2.3 GB.
+PortMaster's catalogue of that day: all 1,511 ports (31 GB) and all 67 runtimes (Godot, Mono,
+.NET, Java, Python, Weston, ...; 2.3 GB), downloaded to the PC (never to the device), each checked
+against the catalogue's MD5.
 `tools/pm-libscan.py` reads every ELF file in each port (and each runtime, unpacked): what it
 needs (DT_NEEDED), less what the port ships (any `.so` in it) and what the runtimes it names
 ship, is what it needs from the system. That is checked against BasedOS (64-bit `/usr/lib`,
@@ -17,8 +16,7 @@ ship, is what it needs from the system. That is checked against BasedOS (64-bit 
 `/usr/lib32`). The full table is [portmaster-libscan.md](portmaster-libscan.md).
 
 Not seen by this: libraries loaded with `dlopen()` (SDL's ALSA and udev, GL through GL4ES),
-the libraries of x86 games run by box64/box86 (the game's binaries come from the buyer), and
-the 42 large ports. A port whose zip has several binaries counts if any of them needs a missing
+and the libraries of x86 games run by box64/box86 (the game's binaries come from the buyer). A port whose zip has several binaries counts if any of them needs a missing
 library, even one the port might not run on this device. GameMaker's Android libraries (which ask
 for bionic's `libc.so`, `liblog.so`; gmloader supplies those) are not counted.
 
@@ -26,22 +24,22 @@ for bionic's `libc.so`, `liblog.so`; gmloader supplies those) are not counted.
 
 | | 64-bit ports | 32-bit ports |
 |---|---|---|
-| With binaries that load system libraries | 1,041 | 251 |
-| Needing a library BasedOS lacks | **371** | 18 |
-| ... of which stock ROCKNIX has every one | 356 | 3 |
+| With binaries that load system libraries | 1,075 | 252 |
+| Needing a library BasedOS lacks | **392** | 18 |
+| ... of which stock ROCKNIX has every one | 377 | 3 |
 
 64-bit, ports still needing a missing library if BasedOS adds:
 
 | Added | Ports left |
 |---|---|
-| nothing (today) | 371 |
-| **tier 1**: libvorbisfile, SDL2_mixer, OpenAL, mpg123, libmodplug, SDL2_gfx, SDL2_net, opusfile, speex, libtheora, pixman, GMP, and glib's gobject/gmodule/gio (built already, not installed) | 129 |
-| **+ PulseAudio's client libraries** (`libpulse-simple`, `libpulse`; no daemon). Linked by the `libmikmod.so.3` (59 ports) and `libfluidsynth.so.1`/`.2` (59) that ports bundle, built with a PulseAudio output; through SDL_mixer they decode into SDL's buffers and don't use it, but the library must be there for them to load | 68 |
-| + cairo, GnuTLS, readline 8, nghttp2, libidn2, libgcrypt, libgpg-error, fribidi, WildMidi | 46 |
-| + the X11 client libraries (linked, not used, by Aleph One, Doom Engines and the Java runtimes) | 44 |
+| nothing (today) | 392 |
+| **tier 1**: libvorbisfile, SDL2_mixer, OpenAL, mpg123, libmodplug, SDL2_gfx, SDL2_net, opusfile, speex, libtheora, pixman, GMP, and glib's gobject/gmodule/gio (built already, not installed) | 136 |
+| **+ PulseAudio's client libraries** (`libpulse-simple`, `libpulse`; no daemon). Linked by the `libmikmod.so.3` (59 ports) and `libfluidsynth.so.1`/`.2` (59) that ports bundle, built with a PulseAudio output; through SDL_mixer they decode into SDL's buffers and don't use it, but the library must be there for them to load | 73 |
+| + cairo, GnuTLS, readline 8, nghttp2, libidn2, libgcrypt, libgpg-error, fribidi, WildMidi | 47 |
+| + the X11 client libraries (linked, not used, by Aleph One, Doom Engines and the Java runtimes) | 45 |
 
-The top missing ones: libvorbisfile 173 ports, SDL2_mixer 124, OpenAL 121, libpulse-simple 80,
-gobject 44, mpg123 44. All in Buildroot.
+The top missing ones: libvorbisfile 180 ports, SDL2_mixer 135, OpenAL 127, libpulse-simple 82,
+gobject 48, mpg123 44. All in Buildroot.
 
 What's left after all of that is old ABI versions Buildroot can't build (stock has most of them in
 its compat folder): FFmpeg 4 (`libavcodec.so.58` and family, 10 ports), FLAC 1.3
@@ -62,6 +60,6 @@ folder reaches ports only through ROCKNIX's own `get_controls`.
 ## Recommendation
 
 Tier 1 and PulseAudio's client libraries for 64-bit, and the four for 32-bit: all Buildroot
-packages, a few MB, and they take the 64-bit ports with a missing library from 371 to 68. The
+packages, a few MB, and they take the 64-bit ports with a missing library from 392 to 73. The
 rest (old ABIs) only if particular ports are wanted, as a separate compat folder rather than on
 the normal library path.

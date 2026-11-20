@@ -1,32 +1,32 @@
 # PortMaster ports: libraries loaded from the system (scan of 2026-11-19, generated)
 
-1469 ports and 67 runtimes scanned (tools/pm-libscan.py).
+1511 ports and 67 runtimes scanned (tools/pm-libscan.py).
 
 ## aarch64
 
-1041 ports have aarch64 binaries that load system libraries; 371 of them need at least one BasedOS lacks, and for 356 of those stock (ROCKNIX) has every one.
+1075 ports have aarch64 binaries that load system libraries; 392 of them need at least one BasedOS lacks, and for 377 of those stock (ROCKNIX) has every one.
 
 Libraries BasedOS lacks, by how many ports (and runtimes) need them:
 
 | Library | Ports | Stock | Examples |
 |---|---|---|---|
-| `libvorbisfile.so.3` | 173 | lib | A7Xpg, L'Abbaye des Morts, Abe's Amazing Adventure, Abombniball |
-| `libSDL2_mixer-2.0.so.0` | 124 | lib | Abuse, Adonthell - Waste's Edge, Afternoon Stalker, Alchemy Quest |
-| `libopenal.so.1` | 121 | lib | A7Xpg, Abe's Amazing Adventure, Abombniball, Absolute Reflex |
-| `libpulse-simple.so.0` | 80 | lib | A7Xpg, L'Abbaye des Morts, Abe's Amazing Adventure, Abombniball |
-| `libgobject-2.0.so.0` | 44 | lib | A7Xpg, Abe's Amazing Adventure, Abombniball, Aleph-One Marathon 1 |
+| `libvorbisfile.so.3` | 180 | lib | A7Xpg, L'Abbaye des Morts, Abe's Amazing Adventure, Abombniball |
+| `libSDL2_mixer-2.0.so.0` | 135 | lib | Abuse, Adonthell - Waste's Edge, Afternoon Stalker, Alchemy Quest |
+| `libopenal.so.1` | 127 | lib | A7Xpg, Abe's Amazing Adventure, Abombniball, Absolute Reflex |
+| `libpulse-simple.so.0` | 82 | lib | A7Xpg, L'Abbaye des Morts, Abe's Amazing Adventure, Abombniball |
+| `libgobject-2.0.so.0` | 48 | lib | A7Xpg, Abe's Amazing Adventure, Abombniball, Aleph-One Marathon 1 |
 | `libmpg123.so.0` | 44 | lib | Absolute Reflex, AREA2048, Arkovs Tower, BLUE REVOLVER |
-| `libgmodule-2.0.so.0` | 37 | lib | A7Xpg, Abe's Amazing Adventure, Abombniball, Alien Blaster |
-| `libtheoradec.so.1` | 32 | compat | Absolute Reflex, Arkovs Tower, BLUE REVOLVER, Brad Has A Pain |
+| `libgmodule-2.0.so.0` | 40 | lib | A7Xpg, Abe's Amazing Adventure, Abombniball, Alien Blaster |
+| `libtheoradec.so.1` | 34 | compat | Absolute Reflex, Arkovs Tower, BLUE REVOLVER, Brad Has A Pain |
 | `libmodplug.so.1` | 31 | lib | Amoebax, AREA2048, Braid, Don Ceferino Hazaña |
-| `libpixman-1.so.0` | 24 | lib | Brad Has A Pain, Crysalis, Disc Creatures, Doom Engines |
-| `libcairo.so.2` | 22 | lib | Aleph-One Marathon 1, Aleph-One Marathon 2, Aleph-One Marathon Infinity, Bos Wars |
-| `libgmp.so.10` | 22 | lib | Crysalis, Enigma, F1 Spirit, Finding Paradise |
+| `libpixman-1.so.0` | 25 | lib | Brad Has A Pain, Crysalis, Disc Creatures, Doom Engines |
+| `libcairo.so.2` | 24 | lib | Aleph-One Marathon 1, Aleph-One Marathon 2, Aleph-One Marathon Infinity, Bos Wars |
+| `libgmp.so.10` | 23 | lib | Crysalis, Enigma, F1 Spirit, Finding Paradise |
 | `libpulse.so.0` | 15 | lib | Anarch, Beat2x, ColorLines, Descent |
 | `libSDL2_gfx-1.0.so.0` | 14 | lib | Afternoon Stalker, Blockdude Playdate, Burger Space, Cosmosmash |
 | `libSDL2_net-2.0.so.0` | 14 | lib | Aleph-One Marathon 1, Aleph-One Marathon 2, Aleph-One Marathon Infinity, Blob Wars: Metal Blob Solid |
 | `libFLAC.so.8` | 13 | compat | A7Xpg, Alien Blaster, Call to Power 2, Doom Engines |
-| `libX11.so.6` | 11 | lib | Aleph-One Marathon 1, Aleph-One Marathon 2, Aleph-One Marathon Infinity, Doom Engines |
+| `libX11.so.6` | 12 | lib | Aleph-One Marathon 1, Aleph-One Marathon 2, Aleph-One Marathon Infinity, Doom Engines |
 | `libavcodec.so.58` | 10 | compat | Aleph-One Marathon 1, Aleph-One Marathon 2, Aleph-One Marathon Infinity, Chicory: A Colorful Tale |
 | `libavutil.so.56` | 10 | compat | Aleph-One Marathon 1, Aleph-One Marathon 2, Aleph-One Marathon Infinity, Chicory: A Colorful Tale |
 | `libopusfile.so.0` | 9 | lib | AREA2048, Counter-Strike 1.6, Call to Power 2, DungeonRush |
@@ -34,22 +34,22 @@ Libraries BasedOS lacks, by how many ports (and runtimes) need them:
 | `libavformat.so.58` | 8 | compat | Aleph-One Marathon 1, Aleph-One Marathon 2, Aleph-One Marathon Infinity, Chicory: A Colorful Tale |
 | `libswscale.so.5` | 8 | compat | Aleph-One Marathon 1, Aleph-One Marathon 2, Aleph-One Marathon Infinity, Chicory: A Colorful Tale |
 | `libcrypto.so.1.1` | 7 | compat | Hurrican, Moonlight Old, runtime python_3.11.squashfs, runtime pyxel_2.2.8_python_3.11.squashfs |
+| `libgnutls.so.30` | 7 | lib | Enigma, F1 Spirit, Me and My Shadow, NetSurf Web Browser |
 | `libssl.so.1.1` | 7 | no | Hurrican, Moonlight Old, runtime python_3.11.squashfs, runtime pyxel_2.2.8_python_3.11.squashfs |
+| `libxml2.so.2` | 7 | lib | Armagetron Advanced, Me and My Shadow, mReader, Morrowind |
 | `libXrender.so.1` | 6 | lib | Doom Engines, runtime zulu11.48.21-ca-jdk11.0.11-linux.squashfs, runtime zulu17.48.15-ca-jdk17.0.10-linux.squashfs, runtime zulu17.54.21-ca-jre17.0.13-linux.squashfs |
-| `libgnutls.so.30` | 6 | lib | Enigma, F1 Spirit, Me and My Shadow, NetSurf Web Browser |
+| `libnghttp2.so.14` | 6 | lib | Enigma, F1 Spirit, Me and My Shadow, Moonlight New |
 | `libreadline.so.8` | 6 | lib | Doom Engines, The Swapper, runtime pyxel_2.2.8_python_3.11.squashfs, runtime pyxel_2.3.18_python_3.11.squashfs |
-| `libxml2.so.2` | 6 | lib | Armagetron Advanced, Me and My Shadow, mReader, Morrowind |
 | `libXi.so.6` | 5 | lib | runtime zulu11.48.21-ca-jdk11.0.11-linux.squashfs, runtime zulu17.48.15-ca-jdk17.0.10-linux.squashfs, runtime zulu17.54.21-ca-jre17.0.13-linux.squashfs, runtime zulu23.32.11-ca-jre23.0.2-linux.squashfs |
 | `libXtst.so.6` | 5 | lib | runtime zulu11.48.21-ca-jdk11.0.11-linux.squashfs, runtime zulu17.48.15-ca-jdk17.0.10-linux.squashfs, runtime zulu17.54.21-ca-jre17.0.13-linux.squashfs, runtime zulu23.32.11-ca-jre23.0.2-linux.squashfs |
 | `libcrypt.so.1` | 5 | no | runtime python_3.11.squashfs, runtime pyxel_2.2.8_python_3.11.squashfs, runtime pyxel_2.3.18_python_3.11.squashfs, runtime pyxel_2.4.6_python_3.11.squashfs |
 | `libffi.so.7` | 5 | no | NetSurf Web Browser, runtime mesa_pkg_0.1.squashfs, runtime pyxel_2.2.8_python_3.11.squashfs, runtime pyxel_2.3.18_python_3.11.squashfs |
-| `libnghttp2.so.14` | 5 | lib | Enigma, F1 Spirit, Me and My Shadow, Moonlight New |
 | `libnsl.so.1` | 5 | lib | Enigma, runtime pyxel_2.2.8_python_3.11.squashfs, runtime pyxel_2.3.18_python_3.11.squashfs, runtime pyxel_2.4.6_python_3.11.squashfs |
 | `libpanelw.so.6` | 5 | lib | runtime python_3.11.squashfs, runtime pyxel_2.2.8_python_3.11.squashfs, runtime pyxel_2.3.18_python_3.11.squashfs, runtime pyxel_2.4.6_python_3.11.squashfs |
 | `libswresample.so.3` | 5 | compat | Chicory: A Colorful Tale, Call to Power 2, Fares, Jimmy's Lost Fruits Journey |
+| `libGL.so.1` | 4 | lib | Half-Life, Quake 2, SuperTux, runtime renpy_8.1.3.squashfs |
 | `libdb-5.3.so` | 4 | no | runtime pyxel_2.2.8_python_3.11.squashfs, runtime pyxel_2.3.18_python_3.11.squashfs, runtime pyxel_2.4.6_python_3.11.squashfs, runtime pyxel_2.9.5_python_3.11.squashfs |
 | `libidn2.so.0` | 4 | lib | Enigma, Hurrican, Me and My Shadow, NetSurf Web Browser |
-| `libGL.so.1` | 3 | lib | Half-Life, Quake 2, runtime renpy_8.1.3.squashfs |
 | `libavahi-client.so.3` | 3 | lib | Moonlight Old, Moonlight New, runtime weston_pkg_0.2.squashfs |
 | `libavahi-common.so.3` | 3 | lib | Moonlight Old, Moonlight New, runtime weston_pkg_0.2.squashfs |
 | `libfribidi.so.0` | 3 | lib | Aleph-One Marathon 1, Aleph-One Marathon 2, Aleph-One Marathon Infinity |
@@ -124,7 +124,7 @@ Libraries BasedOS lacks, by how many ports (and runtimes) need them:
 
 ## armhf
 
-251 ports have armhf binaries that load system libraries; 18 of them need at least one BasedOS lacks, and for 3 of those stock (ROCKNIX) has every one.
+252 ports have armhf binaries that load system libraries; 18 of them need at least one BasedOS lacks, and for 3 of those stock (ROCKNIX) has every one.
 
 Libraries BasedOS lacks, by how many ports (and runtimes) need them:
 
@@ -167,10 +167,10 @@ Libraries BasedOS lacks, by how many ports (and runtimes) need them:
 | Tool | Ports | Examples |
 |---|---|---|
 | `zip` | 246 | Adventure Rush, Aestheta, AlllCALL, Alruna and the Necro-Industrialists, Always Surrender |
-| `unzip` | 44 | Ambidextro, Arengius, Augustus, Bushido Panda, Canabalt-hf |
+| `unzip` | 45 | Ambidextro, Arengius, Augustus, Bushido Panda, Canabalt-hf |
 | `mono` | 30 | Anodyne, Axiom Verge, Bleed, Bleed 2, Blossom Tales II |
 | `python3` | 19 | Antecrypt, Damocles Gaze, Disc Creatures, EAT GIRL, Fire & Brimstone |
-| `java` | 9 | Gunslugs 2, Gunslugs 3 Rogue Tactics, Lost Flame, Mindustry, Pixel Wheels |
+| `java` | 10 | FreeCol, Gunslugs 2, Gunslugs 3 Rogue Tactics, Lost Flame, Mindustry |
 | `wget` | 2 | Canabalt-hf, Crysalis |
 | `dotnet` | 2 | Jetboard Joust, Mute Crimson DX |
 | `gl4es` | 1 | Jetboard Joust |

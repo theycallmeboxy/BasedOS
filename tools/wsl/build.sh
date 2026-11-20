@@ -5,7 +5,8 @@ REPO=/mnt/e/projects/spruceOS-gkd350hultra/basedos
 W=$HOME/basedos-work
 STOCK=$REPO/prepared/rocknix-20260613-c8ed06c
 mkdir -p "$W"
-cp "$STOCK/BUILD" "$W/STOCK_BUILD"
+# The stock build's name, without the carriage return a Windows-written BUILD file carries.
+tr -d '\r' < "$STOCK/BUILD" > "$W/STOCK_BUILD"
 # Stock's root, unpacked once (the vendor harvest and lib32-gaps read it).
 [ -d "$W/stock-root/usr/lib" ] || sh "$REPO/tools/wsl/unpack-stock.sh" "$STOCK/SYSTEM" "$W/stock-root"
 
@@ -64,6 +65,16 @@ mv "$W/boot.scr.new" "$REPO/out/boot.scr"
 echo "basedos_vendor=$VENDOR_ID" > "$REPO/out/boot.env"
 # The recovery card's initrd and boot script (tools/recovery), and the setup script itself: with
 # rootfs.squashfs, initrd.uimg and boot.scr, that's the release folder basedos-setup runs from.
+# release.info: what basedos-setup checks before it asks anything or downloads the rest: this
+# build, the vendor set it's built on, and the stock build's kernel and DTB hashes (the recipe's
+# p1 lines), so the device's own stock can be matched first.
+REC=$W/system/usr/share/basedos/vendor-recipe
+{
+	sed -n 's/^BASEOS_\(VERSION\|BUILD\|VENDOR\)=/\1=/p' "$W/system/etc/baseos-release"
+	grep '^STOCK_BUILD=' "$REC"
+	awk '$1 == "F" && $5 ~ /^p1:/ { sub(/^p1:/, "", $5); print "P1", $3, $5 }' "$REC"
+} > "$REPO/out/release.info"
+[ "$(grep -c '^P1 ' "$REPO/out/release.info")" -ge 1 ] || { echo "release.info: no p1 hashes" >&2; exit 1; }
 sh "$REPO/tools/recovery/build.sh" "$REPO" "$W" "$REPO/prepared/alpine/busybox.static" "$REPO/out"
 cp "$REPO/tools/basedos-setup.sh" "$REPO/out/basedos-setup.sh"
 rm -f "$REPO"/out/baseos-*.bosupd

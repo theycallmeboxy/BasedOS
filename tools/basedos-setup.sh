@@ -1,8 +1,8 @@
 #!/bin/sh
 # basedos-setup: set up BasedOS on a GKD 350H Ultra. Run it ON the device, under stock ROCKNIX,
-# over SSH (ssh root@<device>; stock's root has no password). The script on its own is enough: it
-# downloads the rest of its release (from the GitHub release it belongs to, checked against that
-# release's SHA256SUMS) into RAM. Nothing is needed on a PC:
+# over SSH (ssh root@<device>; stock's root has no password). The script on its own is enough:
+# it reads its release's release.info first, and downloads the rest of the release (checked
+# against the release's SHA256SUMS) only after you've confirmed. Nothing is needed on a PC:
 #
 #   wget -O /tmp/basedos-setup.sh <the release's basedos-setup.sh URL> && sh /tmp/basedos-setup.sh
 #
@@ -14,11 +14,13 @@
 #      can switch back or uninstall). It recommends making a recovery card (3) first, and offers
 #      to, in the same run.
 #   2. Create a BasedOS SD card: BasedOS on the card alone; the eMMC is NOT modified, and from the
-#      card it's never used: the card's boot script hides it from the kernel. GPT: p3 basedos (boot
-#      files, hidden, the only bootable one), p4 data (BasedOS's /data, hidden), p5 BASEOS (the
-#      rest: the drive the frontend, spruce, is copied to later from a PC); optionally card stock,
-#      a copy of stock on p1 and p2 (where stock's init looks), a sandbox the maintenance menu
-#      starts once; and optionally a backup of the eMMC on BASEOS. The card stays in the device.
+#      card it's never used: the card's boot script hides it from the kernel. GPT, made by stock's
+#      parted (which numbers partitions in order): basedos (boot files; the only partition marked
+#      legacy-bootable, which is what U-Boot boots), data (BasedOS's /data), BASEOS (the rest: the
+#      frontend's drive), the first two marked no-automount. Optionally a copy of stock first, on
+#      p1 and p2 (where stock's init looks; basedos is then p3), which the maintenance menu
+#      starts once; a backup of the eMMC on BASEOS; and the frontend, downloaded onto BASEOS when
+#      the release names one. The card stays in the device.
 #   3. Create a recovery SD card: a backup of the whole eMMC as it is now, and a small recovery
 #      system that boots from the card and, when A is held, writes the eMMC back byte for byte
 #      (tools/recovery). No PC needed, then or later.
@@ -27,8 +29,10 @@
 # partition), as the rescue card had: the boot ROM uses it only if the eMMC's own loader is ever
 # damaged. Nothing else on a card comes from the eMMC at boot.
 #
-# It asks everything first, shows what it will do and asks for the typed confirmations; only then
-# does it write anything, and it runs to the end without asking more.
+# It states its requirements first (stock build, power, Wi-Fi, one card size that covers every
+# choice), checks every tool it uses, asks everything, shows a numbered summary and asks for the
+# typed confirmations (capitals don't matter); only then does it download or write anything,
+# and it runs to the end without asking more.
 #
 # For an install, the vendor set (the stock kernel, DTBs, modules, firmware and GPU drivers BasedOS
 # runs on; docs/plan.md, Architecture) is harvested here from stock's own files, by the recipe in
@@ -36,8 +40,8 @@
 #
 # Not interactive: --target emmc|sd|recovery, and
 #   emmc: --recovery-card or --no-recovery-card
-#   sd:   --dual-boot or --no-dual-boot, --backup or --no-backup
-#   any card: --card <CID> (the card's ID, as shown)
+#   sd:   --dual-boot or --no-dual-boot, --backup or --no-backup, --frontend or --no-frontend
+#   any card: --card <ID> (--card-id prints the inserted card's)
 # and --yes. Every check still runs, and the card must have that ID.
 set -u
 
@@ -49,9 +53,8 @@ STOCK_P1=/flash
 T=/tmp/basedos-setup            # RAM: nothing of setup's own goes on the eMMC
 SDC=2a310000.mmc                # the SD slot's controller
 EMMCC=2a330000.mmc              # the eMMC's
-GiB=1073741824
 
-TARGET="" REC="" DUAL="" BACKUP="" CARD_WANT="" YES=""
+TARGET="" REC="" DUAL="" BACKUP="" FE="" CARD_WANT="" YES="" CARD_ID=""
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--target) TARGET=$2; shift ;;
@@ -61,7 +64,10 @@ while [ $# -gt 0 ]; do
 	--no-dual-boot) DUAL=no ;;
 	--backup) BACKUP=yes ;;
 	--no-backup) BACKUP=no ;;
+	--frontend) FE=yes ;;
+	--no-frontend) FE=no ;;
 	--card) CARD_WANT=$2; shift ;;
+	--card-id) CARD_ID=1 ;;
 	--yes) YES=1 ;;
 	*) echo "unknown option $1" >&2; exit 2 ;;
 	esac
@@ -84,13 +90,13 @@ ask() {  # ask <prompt> <var>
 	read -r "$2" || die "no answer (run it from an SSH terminal, or use the options)"
 }
 yes_no() {  # yes_no <question> <default y|n>: 0 for yes
-	if [ "$2" = y ]; then ask "$1 [Y/n]:" _yn; case "$_yn" in n|N|no|No) return 1 ;; esac; return 0; fi
-	ask "$1 [y/N]:" _yn; case "$_yn" in y|Y|yes|Yes) return 0 ;; esac; return 1
+	if [ "$2" = y ]; then ask "$1 [Y/n]:" _yn; case "$_yn" in n|N|no|No|NO) return 1 ;; esac; return 0; fi
+	ask "$1 [y/N]:" _yn; case "$_yn" in y|Y|yes|Yes|YES) return 0 ;; esac; return 1
 }
-confirm() {  # confirm <word> <what>: the typed confirmation
-	if [ -n "$YES" ]; then return 0; fi
-	ask "Type $1 to $2 (anything else stops):" _a
-	[ "$_a" = "$1" ] || die "not confirmed; nothing was written"
+confirm() {  # confirm <word> <what>: the typed confirmation, in any capitals
+	[ -n "$YES" ] && return 0
+	ask "Type $1 to $2 (capitals don't matter; anything else stops):" _a
+	[ "$(printf '%s' "$_a" | tr a-z A-Z)" = "$1" ] || die "not confirmed; nothing was written"
 }
 
 # disk_of <controller>: the mmcblk disk on it.
@@ -113,25 +119,138 @@ kib_except() {
 	done
 	echo $_t
 }
-gib_up() { echo $(( ($1 + 1048575) / 1048576 )); }   # KiB -> whole GiB, rounded up
+mib_up() { echo $(( ($1 + 1023) / 1024 )); }                         # KiB -> MiB, rounded up
+gb() { echo $(( ($1 * 1048576 + 999999999) / 1000000000 )); }        # MiB -> GB (as cards are sold)
+# card_for <MiB>: the smallest common card size that holds it (a card holds about 93 % of its
+# label in MiB-sized bytes, so 32 GB cards are about 29.8 GiB).
+card_for() {
+	for _c in 8 16 32 64 128 256 512; do
+		[ $(( _c * 1000000000 * 93 / 100 / 1048576 )) -ge "$1" ] && { echo $_c; return; }
+	done
+	echo 1024
+}
+# a_card <MiB>: "a 16 GB card", "an 8 GB card".
+a_card() { _c=$(card_for "$1"); case $_c in 8|8?|8??) echo "an $_c GB card" ;; *) echo "a $_c GB card" ;; esac; }
+fetch() {  # fetch <url> <file>
+	if command -v curl >/dev/null 2>&1; then curl -fsSL --retry 3 -o "$2" "$1"
+	elif command -v wget >/dev/null 2>&1; then wget -q -O "$2" "$1"
+	else return 1; fi
+}
+# release_file <name>: the release's file in $HERE, downloaded from the release into RAM when it
+# isn't beside the script, checked against the release's SHA256SUMS either way.
+release_file() {
+	if [ ! -s "$HERE/$1" ]; then
+		case "$RELEASE_TAG" in @*) die "this copy of the script belongs to no release: run it from a release folder" ;; esac
+		[ "$HERE" = "$DL" ] || { HERE=$DL; rm -rf "$DL"; mkdir -p "$DL"; }
+		[ -s "$DL/SHA256SUMS" ] || fetch "$RELEASE_URL/SHA256SUMS" "$DL/SHA256SUMS" ||
+			die "can't download $RELEASE_URL/SHA256SUMS (is Wi-Fi up?)"
+		fetch "$RELEASE_URL/$1" "$DL/$1" || die "can't download $RELEASE_URL/$1 (is Wi-Fi up?)"
+	fi
+	[ -s "$HERE/SHA256SUMS" ] || return 0
+	_w=$(awk -v f="$1" '$2 == f || $2 == "*" f { print $1 }' "$HERE/SHA256SUMS")
+	[ ${#_w} -eq 64 ] || die "the release's SHA256SUMS doesn't list $1"
+	[ "$(sha256sum < "$HERE/$1" | cut -c1-64)" = "$_w" ] || die "$1 doesn't match the release's SHA256SUMS"
+}
+DL=$T/release
 
 # ---------------------------------------------------------------------------------------------
-# Phase 1: checks and questions. Nothing is written.
+# Phase 1: requirements, questions, the card, confirmations. Nothing is written or downloaded
+# but release.info (a few KB).
+
+if [ -n "$CARD_ID" ]; then
+	_c=$(disk_of $SDC)
+	[ -n "$_c" ] || { echo "no card in the slot" >&2; exit 1; }
+	cat /sys/block/$_c/device/cid; exit 0
+fi
 
 step "Checking"
 [ "$(id -u)" = 0 ] || die "run it as root (ssh root@<device>)"
 EMMC=$(disk_of $EMMCC)
 [ "$EMMC" = mmcblk0 ] || die "this doesn't look like a GKD 350H Ultra (no eMMC at mmcblk0)"
 grep -q "^/dev/${EMMC}p1 $STOCK_P1 " /proc/mounts || die "run it on stock ROCKNIX ($STOCK_P1 isn't the eMMC's p1)"
+rm -rf "$T"; mkdir -p "$T" || die "can't make $T"
 STOCK_DESC=$(. /etc/os-release 2>/dev/null; _b=${BUILD_ID:-unknown}; echo "stock ${OS_NAME:-?} ${OS_VERSION:-?} ($(echo "$_b" | cut -c1-7))")
-say "$STOCK_DESC, eMMC $(( $(cat /sys/block/$EMMC/size) / 2097152 )) GB"
+
+# Every tool setup uses, before anything else (stock's own: a missing one stops it here, not
+# halfway through).
+miss=""
+for c in awk sed tr cut sort grep dd tee mkfifo md5sum sha256sum zstd parted partprobe blkid \
+	mkfs.vfat mkfs.ext4 tar udevadm systemctl wpa_passphrase mount umount df du sync; do
+	command -v $c >/dev/null 2>&1 || miss="$miss $c"
+done
+command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1 || miss="$miss curl-or-wget"
+[ -z "$miss" ] || die "stock is missing tools setup needs:$miss"
+
+# This release (release.info: its build, and stock's kernel and DTB hashes it was made for).
+release_file release.info
+INFO=$HERE/release.info
+VERSION=$(sed -n 's/^VERSION=//p' "$INFO") BUILD=$(sed -n 's/^BUILD=//p' "$INFO")
+VENDOR=$(sed -n 's/^VENDOR=//p' "$INFO") STOCK_BUILD=$(sed -n 's/^STOCK_BUILD=//p' "$INFO" | tr -d '\r')
+[ -n "$VENDOR" ] && grep -q '^P1 ' "$INFO" || die "release.info is incomplete"
+grep '^P1 ' "$INFO" | while read -r _k _sha _f; do
+	[ "$(sha256sum < "$STOCK_P1/$_f" 2>/dev/null | cut -c1-64)" = "$_sha" ] || { echo "$_f"; break; }
+done > "$T/mismatch"
+[ -s "$T/mismatch" ] && die "this device's stock isn't the build this BasedOS release is for ($STOCK_BUILD; its $(cat "$T/mismatch") differs)"
+# The frontend this release offers to download (FRONTEND <name> <version> <url> <sha256> <archive
+# MiB> <unpacked MiB>, and FRONTEND_OVERLAY <url> <sha256> for this device's parts), if any.
+FE_LINE=$(grep '^FRONTEND ' "$INFO" | head -1)
+FE_NAME="" FE_MIB=0 FE_DL_MIB=0
+if [ -n "$FE_LINE" ]; then
+	set -- $FE_LINE
+	FE_NAME="$2 $3" FE_URL=$4 FE_SHA=$5 FE_DL_MIB=$6 FE_MIB=$(( $6 + $7 ))
+	FE_OVL_URL=$(awk '$1 == "FRONTEND_OVERLAY" { print $2 }' "$INFO") FE_OVL_SHA=$(awk '$1 == "FRONTEND_OVERLAY" { print $3 }' "$INFO")
+	set --
+fi
+
+# Power: 30 %, or the charger in.
+PCT="" CHG=""
+for _p in /sys/class/power_supply/*; do
+	case "$(cat $_p/type 2>/dev/null)" in
+	Battery)
+		PCT=$(cat $_p/capacity 2>/dev/null)
+		case "$(cat $_p/status 2>/dev/null)" in Charging|Full) CHG=1 ;; esac ;;
+	*) [ "$(cat $_p/online 2>/dev/null)" = 1 ] && CHG=1 ;;
+	esac
+done
+
+# Sizes, in MiB. The backup: about what's in use on the eMMC's filesystems, compressed, with room
+# to spare (the real size is known only once it's made; a card that fills up stops it cleanly).
+# A copy of stock: its boot files (all of p1 but BasedOS's) and its /storage without ROMs, each
+# with room to grow.
+BK_MIB=$(( $(mib_up $(( $(kib_used $STOCK_P1) + $(kib_used /storage) ))) + 1024 ))
+CS1_MIB=$(( 512 + $(mib_up $(kib_except $STOCK_P1 basedos)) ))
+CS2_MIB=$(( 2048 + $(mib_up $(kib_except /storage games-external roms basedos-data)) ))
+CS1_MIB=$(( (CS1_MIB + 255) / 256 * 256 )) CS2_MIB=$(( (CS2_MIB + 255) / 256 * 256 ))
+BOOT_MIB=1024 DATA_MIB=512
+sd_mib() {  # sd_mib <dual> <backup> <frontend>: what a BasedOS card needs
+	_m=$(( 16 + BOOT_MIB + DATA_MIB + 1024 ))
+	[ "$1" = yes ] && _m=$((_m + CS1_MIB + CS2_MIB))
+	[ "$2" = yes ] && _m=$((_m + BK_MIB))
+	[ "$3" = yes ] && _m=$((_m + FE_MIB))
+	echo $_m
+}
+REC_MIB=$(( 16 + BK_MIB + 512 ))
+WORST_MIB=$(sd_mib yes yes $([ -n "$FE_LINE" ] && echo yes || echo no))
+
+say ""
+say "BasedOS $VERSION setup for the GKD 350H Ultra$(case "$RELEASE_TAG" in @*) ;; *) echo " (release $RELEASE_TAG)" ;; esac)"
+say ""
+say "Before you start:"
+say "  - Stock ROCKNIX $(echo "$STOCK_BUILD" | sed 's/^rocknix-//'): this device has it."
+if [ -n "$CHG" ]; then say "  - Power: the charger is in."
+else say "  - Power: at least 30 % battery, or the charger plugged in (now ${PCT:-?} %)."; fi
+say "  - Wi-Fi: setup downloads BasedOS (about 35 MB)$([ -n "$FE_LINE" ] && echo ", and $FE_NAME if you choose it (about $(gb $FE_DL_MIB) GB)")."
+say "  - An SD card you can erase: everything on it is lost. $(a_card $WORST_MIB | sed 's/^a/A/') covers every choice"
+say "    (the largest, on this device, needs $(gb $WORST_MIB) GB); setup says what yours needs once you've chosen."
+say "  - About 10 to 30 minutes. Don't power off or take the card out while it runs."
+[ -n "$CHG" ] || [ -z "$PCT" ] || [ "$PCT" -ge 30 ] || die "the battery is at $PCT %: charge it, or plug the charger in, then run setup again"
 
 if [ -z "$TARGET" ]; then
 	say ""
 	say "What do you want to do?"
-	say "  1) Install BasedOS to the eMMC, next to stock"
-	say "  2) Create a BasedOS SD card (the eMMC is not modified)"
-	say "  3) Create a recovery SD card (it can restore the eMMC to how it is now, byte for byte)"
+	say "  1) Install BasedOS on the built-in storage (eMMC), next to stock"
+	say "  2) Make a BasedOS SD card (the built-in storage isn't touched)"
+	say "  3) Make a recovery SD card (it can put the built-in storage back as it is now)"
 	ask "Choose 1, 2 or 3:" _a
 	case "$_a" in 1) TARGET=emmc ;; 2) TARGET=sd ;; 3) TARGET=recovery ;; *) die "no choice made" ;; esac
 fi
@@ -142,8 +261,8 @@ if [ "$TARGET" = emmc ]; then
 		die "BasedOS is already on the eMMC; uninstall it first (BasedOS's maintenance menu: hold Select at power-on)"
 	if [ -z "$REC" ]; then
 		say ""
-		say "This changes the built-in eMMC. Making a recovery card first is recommended: it boots"
-		say "on its own and can put the eMMC back exactly as it is now, without a PC."
+		say "This changes the built-in storage. A recovery card first is recommended: it starts on its"
+		say "own and can put the built-in storage back exactly as it is now, without a PC."
 		if yes_no "Make a recovery card first?" y; then REC=yes; else REC=no; fi
 	fi
 fi
@@ -152,103 +271,39 @@ fi
 
 if [ "$TARGET" = sd ]; then
 	say ""
-	say "BasedOS goes on the SD card alone. THE eMMC WILL NOT BE MODIFIED, and while the card runs"
-	say "it's hidden and never used: take the card out to start the device's own system, as now."
-	say "Your frontend (spruce) is copied later, from your PC, to the card's BASEOS drive. The card"
-	say "stays in this device."
+	say "BasedOS goes on the SD card. The built-in storage isn't touched or used while the card runs;"
+	say "take the card out to use the device's own system, as now. The card stays in this device."
 	if [ -z "$DUAL" ]; then
 		say ""
-		say "Card stock: a copy of stock on the card as well, yours to update or change; BasedOS's"
-		say "maintenance menu (hold Select at power-on) starts it once. The eMMC stays hidden from it."
-		if yes_no "Put a copy of stock on the card (dual boot)?" n; then DUAL=yes; else DUAL=no; fi
+		say "Also put a copy of the stock system on the card? You can start it from BasedOS's maintenance"
+		say "menu (hold Select at power-on). It's yours to change; the built-in system isn't touched."
+		if yes_no "Copy the stock system to the card?" n; then DUAL=yes; else DUAL=no; fi
 	fi
 	if [ -z "$BACKUP" ]; then
 		say ""
-		say "A backup image of the eMMC (stock, as it is now) can go on the card's BASEOS drive,"
-		say "for you to copy to your PC."
-		if yes_no "Save a backup image of stock?" n; then BACKUP=yes; else BACKUP=no; fi
+		say "Also save a backup image of the built-in storage on the card, to copy to your PC?"
+		if yes_no "Save a backup image?" n; then BACKUP=yes; else BACKUP=no; fi
 	fi
+	if [ -n "$FE_LINE" ] && [ -z "$FE" ]; then
+		say ""
+		say "Download $FE_NAME onto the card, so it's ready to use? (about $(gb $FE_DL_MIB) GB to download)"
+		say "Otherwise you copy your frontend to the card's BASEOS drive from a PC later."
+		if yes_no "Download $FE_NAME?" y; then FE=yes; else FE=no; fi
+	fi
+	[ -n "$FE_LINE" ] || FE=no
+	NEED_MIB=$(sd_mib $DUAL $BACKUP $FE)
 else
-	DUAL=no
+	DUAL=no FE=no
 	BACKUP=$REC
+	NEED_MIB=$REC_MIB
 fi
-
-# The release: BasedOS for an install, the recovery files for a recovery card.
-need=""
-[ "$TARGET" != recovery ] && need="rootfs.squashfs initrd.uimg boot.scr"
-[ "$REC" = yes ] && need="$need recovery-initrd.uimg recovery.scr"
-# Not beside the script: downloaded from its release into RAM, each checked against the release's
-# SHA256SUMS.
-fetch() {  # fetch <url> <file>
-	if command -v curl >/dev/null 2>&1; then curl -fsSL --retry 3 -o "$2" "$1"
-	elif command -v wget >/dev/null 2>&1; then wget -q -O "$2" "$1"
-	else return 1; fi
-}
-missing=""
-for f in $need; do [ -s "$HERE/$f" ] || missing=1; done
-if [ -n "$missing" ]; then
-	case "$RELEASE_TAG" in @*) die "this copy of the script belongs to no release: run it from a release folder" ;; esac
-	step "Downloading BasedOS $RELEASE_TAG"
-	DL=$T/release
-	rm -rf "$DL"; mkdir -p "$DL"
-	fetch "$RELEASE_URL/SHA256SUMS" "$DL/SHA256SUMS" || die "can't download $RELEASE_URL/SHA256SUMS (is Wi-Fi up?)"
-	for f in $need; do
-		want=$(awk -v f="$f" '$2 == f || $2 == "*" f { print $1 }' "$DL/SHA256SUMS")
-		[ ${#want} -eq 64 ] || die "the release's SHA256SUMS doesn't list $f"
-		say "$f"
-		fetch "$RELEASE_URL/$f" "$DL/$f" || die "can't download $RELEASE_URL/$f"
-		[ "$(sha256sum < "$DL/$f" | cut -c1-64)" = "$want" ] || die "$f doesn't match the release's SHA256SUMS"
-	done
-	HERE=$DL
-fi
-for f in $need; do
-	[ -s "$HERE/$f" ] || die "the release folder ($HERE) has no $f"
-done
-if [ "$TARGET" != recovery ]; then
-	mkdir -p "$T/mnt/rootfs" "$T/mnt/stock"
-	mount -t squashfs -o ro,loop "$HERE/rootfs.squashfs" "$T/mnt/rootfs" || die "$HERE/rootfs.squashfs does not mount"
-	R=$T/mnt/rootfs
-	VENDOR=$(cat "$R/usr/share/basedos/needs-vendor" 2>/dev/null)
-	RECIPE=$R/usr/share/basedos/vendor-recipe
-	VERSION=$(sed -n 's/^BASEOS_VERSION=//p' "$R/etc/baseos-release")
-	BUILD=$(sed -n 's/^BASEOS_BUILD=//p' "$R/etc/baseos-release")
-	[ -n "$VENDOR" ] && [ -s "$RECIPE" ] || die "this release has no vendor recipe (too old for basedos-setup)"
-	STOCK_BUILD=$(sed -n 's/^STOCK_BUILD=//p' "$RECIPE")
-	# The stock build: the recipe's own hashes of stock's kernel and DTBs (fast; the harvest checks
-	# every other file too).
-	grep '^F .* p1:' "$RECIPE" | while read -r _k _m _sha _dst _src; do
-		[ "$(sha256sum < "$STOCK_P1/${_src#p1:}" | cut -c1-64)" = "$_sha" ] || { echo "${_src#p1:}"; break; }
-	done > "$T/mismatch"
-	[ -s "$T/mismatch" ] && die "this device's stock firmware isn't the build this BasedOS release is for ($STOCK_BUILD: $(cat "$T/mismatch") differs)"
-	say "BasedOS $VERSION ($BUILD), for stock $STOCK_BUILD: this device matches."
-fi
-
-# Sizes, in GiB. The backup: about what's in use on the eMMC's filesystems, compressed, with room
-# to spare (the real size is known only once it's made; a card that fills up stops it cleanly).
-BK_GB=$(( $(gib_up $(( $(kib_used $STOCK_P1) + $(kib_used /storage) ))) + 1 ))
-# Dual boot: stock's boot files (all of p1 but BasedOS's) and a copy of its /storage (not its
-# ROMs), each with room to grow.
-STOCK_KIB=0 STORE_KIB=0
-if [ "$DUAL" = yes ]; then
-	STOCK_KIB=$(kib_except $STOCK_P1 basedos)
-	STORE_KIB=$(kib_except /storage games-external roms basedos-data)
-fi
-# BasedOS's boot and data partitions; card stock's two (its boot files, its /storage) only with it.
-BOOT_MIB=1024 DATA_MIB=512 CS1_MIB=0 CS2_MIB=0
-[ "$DUAL" = yes ] && CS1_MIB=$(( 512 + $(gib_up $STOCK_KIB) * 1024 )) && CS2_MIB=$(( 2048 + $(gib_up $STORE_KIB) * 1024 ))
-case "$TARGET" in
-recovery|emmc) NEED_GB=$((BK_GB + 1)) ;;
-sd)
-	NEED_GB=$(( (BOOT_MIB + DATA_MIB + CS1_MIB + CS2_MIB) / 1024 + 2 ))
-	[ "$BACKUP" = yes ] && NEED_GB=$((NEED_GB + BK_GB)) ;;
-esac
+NEED_GB=$(gb $NEED_MIB)
 
 # The card, if there's to be one. Every card this makes is erased first.
 CARD=""
 if [ "$TARGET" = sd ] || [ "$REC" = yes ]; then
-	if [ "$TARGET" = sd ]; then WHAT="The BasedOS card"; else WHAT="The recovery card"; fi
 	say ""
-	say "$WHAT needs an SD card of at least $NEED_GB GB. ALL DATA ON IT WILL BE LOST."
+	say "This needs an SD card of at least $NEED_GB GB ($(a_card $NEED_MIB) will do). Everything on it is lost."
 	while :; do
 		CARD=$(disk_of $SDC)
 		if [ -z "$CARD" ]; then
@@ -258,15 +313,17 @@ if [ "$TARGET" = sd ] || [ "$REC" = yes ]; then
 			CARD=$(disk_of $SDC)
 		fi
 		CID=$(cat /sys/block/$CARD/device/cid)
-		SIZE_GB=$(( $(cat /sys/block/$CARD/size) / 2097152 ))
-		NAME="$(cat /sys/block/$CARD/device/name 2>/dev/null) ($(cat /sys/block/$CARD/device/manfid 2>/dev/null))"
+		SIZE_MIB=$(( $(cat /sys/block/$CARD/size) / 2048 ))
+		SIZE_GB=$(( $(cat /sys/block/$CARD/size) * 512 / 1000000000 ))
+		_n=$(ls -d /sys/block/$CARD/${CARD}p* 2>/dev/null | wc -l)
+		_l=$(blkid -s LABEL -o value /dev/${CARD}p* 2>/dev/null | tr '\n' ',' | sed 's/,$//; s/,/, /g')
 		say ""
-		say "Card: $NAME, $SIZE_GB GB, ID $CID. On it now:"
-		blkid /dev/${CARD}p* 2>/dev/null | sed 's/^/  /'
+		if [ "$_n" -eq 0 ]; then say "Card: $SIZE_GB GB SD card, empty."
+		else say "Card: $SIZE_GB GB SD card, with $_n partition$([ "$_n" -gt 1 ] && echo s)${_l:+ ($_l)}: it will be erased."; fi
 		problem=""
-		[ -n "$CARD_WANT" ] && [ "$CID" != "$CARD_WANT" ] && problem="it isn't the card --card names ($CARD_WANT)"
+		[ -n "$CARD_WANT" ] && [ "$CID" != "$CARD_WANT" ] && problem="it isn't the card --card names"
 		[ -z "$problem" ] && [ "$(cat /sys/block/$CARD/device/type 2>/dev/null)" != SD ] && problem="it isn't an SD card"
-		[ -z "$problem" ] && [ "$SIZE_GB" -lt "$NEED_GB" ] && problem="it's $SIZE_GB GB; at least $NEED_GB GB is needed"
+		[ -z "$problem" ] && [ "$SIZE_MIB" -lt "$NEED_MIB" ] && problem="it's $SIZE_GB GB; at least $NEED_GB GB is needed"
 		[ -z "$problem" ] && break
 		[ -n "$CARD_WANT" ] && die "card not usable: $problem"
 		say "This card won't do: $problem."
@@ -275,50 +332,54 @@ if [ "$TARGET" = sd ] || [ "$REC" = yes ]; then
 	done
 fi
 
-# Enough charge to finish: 30 %, or the charger in.
-_cap="" _chg=""
-for _p in /sys/class/power_supply/*; do
-	case "$(cat $_p/type 2>/dev/null)" in
-	Battery)
-		_cap=$(cat $_p/capacity 2>/dev/null)
-		case "$(cat $_p/status 2>/dev/null)" in Charging|Full) _chg=1 ;; esac ;;
-	*) [ "$(cat $_p/online 2>/dev/null)" = 1 ] && _chg=1 ;;
-	esac
-done
-[ -n "$_chg" ] || [ -z "$_cap" ] || [ "$_cap" -ge 30 ] || die "the battery is at $_cap %: charge it, or plug the charger in"
-
 # The summary and the confirmations.
 step "About to"
+n=0
+item() { n=$((n + 1)); say "  $n. $*"; }
 if [ "$REC" = yes ]; then
-	say "Recovery card: ERASE the SD card ($NAME, $SIZE_GB GB, ID $CID), back up the whole eMMC"
-	say "  onto it (about $BK_GB GB at most; stock's frontend stops while it copies), and make it"
-	say "  boot into the restore screen. Keep it safe; it needs no PC."
-	[ -d "$STOCK_P1/basedos" ] && say "  NOTE: BasedOS is on the eMMC now: the card restores the eMMC with it, as it is."
+	item "Erase the $SIZE_GB GB card."
+	item "Back up the built-in storage onto it (up to $(gb $BK_MIB) GB)."
+	item "Make it a recovery card."
+	[ -d "$STOCK_P1/basedos" ] && say "     (BasedOS is on the built-in storage now: the card would restore it as it is, with BasedOS.)"
 fi
 if [ "$TARGET" = sd ]; then
-	say "BasedOS card: ERASE the SD card ($NAME, $SIZE_GB GB, ID $CID) and put BasedOS $VERSION on it:"
-	say "  basedos 1 GB and data 0.5 GB (both hidden), BASEOS the rest."
-	[ "$DUAL" = yes ] && say "  With card stock: stock's boot files ($CS1_MIB MiB) and its /storage without ROMs ($CS2_MIB MiB, with 2 GB to spare)."
-	[ "$BACKUP" = yes ] && say "  With a backup image of the eMMC on BASEOS (about $BK_GB GB at most)."
-	say "  THE eMMC IS NOT MODIFIED."
+	item "Erase the $SIZE_GB GB card."
+	[ "$DUAL" = yes ] && item "Copy the stock system to it."
+	[ "$BACKUP" = yes ] && item "Back up the built-in storage onto it (up to $(gb $BK_MIB) GB)."
+	item "Put BasedOS $VERSION on it."
+	[ "$FE" = yes ] && item "Download $FE_NAME onto it."
+	say "  The built-in storage isn't touched."
 fi
 if [ "$TARGET" = emmc ]; then
-	say "eMMC: install BasedOS $VERSION on the built-in eMMC, next to stock. Stock's files stay; its"
-	say "  boot script is replaced by BasedOS's, and kept. THE eMMC WILL BE MODIFIED."
-	[ "$REC" = yes ] && say "  This happens only after the recovery card is made and checked."
+	item "Install BasedOS $VERSION on the built-in storage, next to stock."
+	[ "$REC" = yes ] && say "     (Only after the recovery card is made and checked.)"
 fi
 say ""
-[ -n "$YES" ] && [ -n "$CARD" ] && [ -z "$CARD_WANT" ] && die "--yes needs --card <ID> when a card is written"
-[ -n "$CARD" ] && confirm ERASE "erase the card ($SIZE_GB GB, ID $CID)"
+[ -n "$YES" ] && [ -n "$CARD" ] && [ -z "$CARD_WANT" ] && die "--yes needs --card <ID> when a card is written (--card-id shows it)"
+[ -n "$CARD" ] && confirm ERASE "erase this $SIZE_GB GB card"
 if [ "$TARGET" = emmc ]; then
 	say ""
-	say "Installing to the eMMC changes the device's built-in storage. If something goes wrong, the"
-	say "device may not start until it's restored$([ "$REC" = yes ] && echo " (with the recovery card)" || echo " (from a backup: docs/recovery.md)")."
-	confirm INSTALL "confirm that you understand the eMMC will be modified, you know the risks, and you have a backup"
+	say "This modifies the device's built-in storage. If something goes wrong, the device may not start"
+	say "until it's restored$([ "$REC" = yes ] && echo " with the recovery card" || echo " from a backup (docs/recovery.md)")."
+	confirm INSTALL "confirm that you understand this, know the risks, and have a backup"
 fi
 
 # ---------------------------------------------------------------------------------------------
 # Phase 2: no more questions.
+
+# The rest of the release, now: the recovery card's files, BasedOS's.
+step "Getting BasedOS $VERSION"
+[ "$REC" = yes ] && { release_file recovery-initrd.uimg; release_file recovery.scr; }
+if [ "$TARGET" != recovery ]; then
+	for f in rootfs.squashfs initrd.uimg boot.scr; do release_file $f; done
+	mkdir -p "$T/mnt/rootfs" "$T/mnt/stock"
+	mount -t squashfs -o ro,loop "$HERE/rootfs.squashfs" "$T/mnt/rootfs" || die "$HERE/rootfs.squashfs does not mount"
+	R=$T/mnt/rootfs
+	RECIPE=$R/usr/share/basedos/vendor-recipe
+	[ "$(cat "$R/usr/share/basedos/needs-vendor" 2>/dev/null)" = "$VENDOR" ] && [ -s "$RECIPE" ] ||
+		die "rootfs.squashfs isn't the build release.info describes"
+fi
+say "ok"
 
 # put <src> <dst>: written as <dst>.new, synced, re-read (not from the page cache) and compared,
 # then renamed.
@@ -355,25 +416,35 @@ loader() {
 		"$(dd if="$D" bs=512 skip=64 count=32704 2>/dev/null | md5sum)" ] || die "the loader copy doesn't read back"
 }
 
-# backup_emmc <dir on the card>: the whole eMMC, zstd in 2 GB parts, checked against an MD5 taken
-# while reading, with its boot areas, its partition table, backup.info (what the recovery card
-# checks) and SHA256SUMS. BK is the folder made.
+# backup_emmc <dir on the card>: the whole eMMC in 2000 MiB pieces, each read straight from the
+# eMMC (dd skip/count) and zstd-compressed to its own file (.aa, .ab, ...; zstd decompresses
+# them back to back as one stream). The MD5 of everything read is taken on the way, through one
+# md5sum on a FIFO, and the backup is checked against it. With the boot areas, the partition
+# table, backup.info (what the recovery card checks) and SHA256SUMS. BK is the folder made.
 backup_emmc() {
-	step "Backing up the eMMC"
+	step "Backing up the built-in storage"
 	BK=$1/basedos-emmc-backup-$(date +%Y%m%d-%H%M)
 	mkdir -p "$BK" || die "can't write $BK"
 	sync
 	w0=$(awk '{ print $5 }' /sys/block/$EMMC/${EMMC}p2/stat)
 	for b in boot0 boot1; do dd if=/dev/${EMMC}$b of="$BK/${EMMC}$b.img" bs=1M 2>/dev/null || die "couldn't read ${EMMC}$b"; done
 	parted -s /dev/$EMMC unit s print > "$BK/partitions.txt" 2>/dev/null
-	say "reading the eMMC ($(( $(cat /sys/block/$EMMC/size) / 2097152 )) GB) and compressing it..."
-	# The MD5 of exactly what was read, taken on the way (a FIFO): the backup is checked against
-	# that, not a second read, which stock's own writes in between could make differ.
+	_bytes=$(( $(cat /sys/block/$EMMC/size) * 512 ))
+	_piece=500                              # 4 MiB blocks: 2000 MiB a piece
+	_np=$(( (_bytes + _piece * 4194304 - 1) / (_piece * 4194304) ))
 	rm -f "$T/fifo"; mkfifo "$T/fifo"
-	md5sum < "$T/fifo" | cut -c1-32 > "$T/read.md5" &
-	dd if=/dev/$EMMC bs=4M 2>/dev/null | tee "$T/fifo" | zstd -3 -T0 -q -c | busybox split -b 2000m -a 2 - "$BK/$EMMC.img.zst." ||
-		die "the backup didn't complete (is the card full?)"
-	wait
+	md5sum < "$T/fifo" | cut -c1-32 > "$T/read.md5" & _m=$!
+	exec 3> "$T/fifo"
+	_i=0
+	while [ $_i -lt $_np ]; do
+		_s=$(awk -v i=$_i 'BEGIN { printf "%c%c", 97 + int(i / 26), 97 + i % 26 }')
+		say "reading and compressing part $((_i + 1)) of $_np..."
+		dd if=/dev/$EMMC bs=4M skip=$((_i * _piece)) count=$_piece 2>/dev/null | tee /dev/fd/3 |
+			zstd -3 -T0 -q -c > "$BK/$EMMC.img.zst.$_s" || { exec 3>&-; die "the backup didn't complete (is the card full?)"; }
+		_i=$((_i + 1))
+	done
+	exec 3>&-
+	wait $_m
 	w1=$(awk '{ print $5 }' /sys/block/$EMMC/${EMMC}p2/stat)
 	sync
 	echo 3 > /proc/sys/vm/drop_caches
@@ -394,8 +465,8 @@ EOF
 	cat > "$BK/README.txt" <<EOF
 GKD 350H Ultra eMMC backup, $(date), $STOCK_DESC, made by basedos-setup.
 
-$EMMC.img.zst.aa, .ab, ...   the whole eMMC ($EMMC.img), zstd-compressed, in 2 GB parts. Join
-                   them in order (aa, ab, ac, ...) before decompressing:
+$EMMC.img.zst.aa, .ab, ...   the whole eMMC ($EMMC.img), zstd-compressed, in parts of 2000 MiB of
+                   the eMMC each. Join them in order (aa, ab, ac, ...) before decompressing:
                      Windows:  copy /b $EMMC.img.zst.aa + $EMMC.img.zst.ab + ... $EMMC.img.zst
                      Linux:    cat $EMMC.img.zst.* > $EMMC.img.zst
                    then  zstd -d $EMMC.img.zst  gives $EMMC.img (md5 in $EMMC.img.md5).
@@ -408,9 +479,9 @@ On a BasedOS recovery card, the card restores it by itself. Otherwise, write $EM
 whole eMMC: see BasedOS's docs/recovery.md (maskrom mode, or from a rescue card).
 EOF
 	(cd "$BK" && sha256sum $(ls | grep -v '^SHA256SUMS$') > SHA256SUMS)
-	[ "$w0" = "$w1" ] || say "NOTE: stock's data partition was written to during the copy ($w0 -> $w1 sectors written): the image is the eMMC as it was read, and may differ there from the eMMC now."
+	[ "$w0" = "$w1" ] || say "Note: stock wrote to its data while this copied; the backup is the built-in storage as it was read."
 	sync
-	say "saved in $(basename "$BK") on the card"
+	say "saved in $(basename "$BK")"
 }
 
 # The recovery card: MBR, one FAT32 partition (U-Boot reads FAT, not exFAT), bootable.
@@ -438,8 +509,9 @@ BasedOS recovery card for one GKD 350H Ultra (eMMC ID $(cat /sys/block/$EMMC/dev
 $(date) by basedos-setup, from $STOCK_DESC.
 
 With this card in, the device starts the restore screen instead of its own system. It checks the
-backup, then puts the eMMC back exactly as it was when this card was made, but only once you hold
-A for 5 seconds. B powers off without writing anything. Take the card out to start normally.
+backup, then puts the built-in storage back exactly as it was when this card was made, but only
+once you hold A for 5 seconds. B powers off without writing anything. Take the card out to start
+normally.
 
 Keep this card as it is. $(basename "$BK")/ is the backup (its README.txt says how to restore it
 from a PC as well).
@@ -516,41 +588,75 @@ seed_data() {
 	} > $DATA/wpa_supplicant.conf)
 }
 
+# frontend <BASEOS mount>: the release's frontend, downloaded onto the card's BASEOS drive (not
+# RAM: it's large), checked, unpacked; then this device's parts over it (the overlay zip, and
+# the files its REMOVED.txt lists removed).
+frontend() {
+	step "Downloading $FE_NAME"
+	_a=$1/.basedos-frontend.7z
+	fetch "$FE_URL" "$_a" || die "can't download $FE_URL"
+	[ "$(sha256sum < "$_a" | cut -c1-64)" = "$FE_SHA" ] || die "the $FE_NAME download doesn't match its checksum"
+	say "unpacking..."
+	7z x -y -bd -o"$1" "$_a" >/dev/null || die "couldn't unpack $FE_NAME"
+	rm -f "$_a"
+	if [ -n "$FE_OVL_URL" ]; then
+		_o=$1/.basedos-overlay.zip
+		fetch "$FE_OVL_URL" "$_o" || die "can't download $FE_OVL_URL"
+		[ "$(sha256sum < "$_o" | cut -c1-64)" = "$FE_OVL_SHA" ] || die "the 350H Ultra overlay doesn't match its checksum"
+		unzip -o -q "$_o" -d "$1" || die "couldn't unpack the 350H Ultra overlay"
+		rm -f "$_o"
+		if [ -f "$1/REMOVED.txt" ]; then
+			while read -r _r; do [ -n "$_r" ] && rm -f "$1/$_r"; done < "$1/REMOVED.txt"
+			rm -f "$1/REMOVED.txt"
+		fi
+	fi
+	sync
+	say "$FE_NAME is on the card"
+}
+
 if [ "$TARGET" = sd ]; then
 	step "Partitioning the card"
-	sgdisk --zap-all "$D" >/dev/null 2>&1
-	# From 16 MiB (the loader is before it): card stock's p1 (FAT) and p2 (ext4), where stock's
-	# init mounts them, only with card stock; then basedos (FAT; U-Boot's: legacy BIOS bootable,
-	# bit 2, the only one, so U-Boot never runs a boot script card stock's updates write to its
-	# p1), data (ext4) and BASEOS. Everything but BASEOS hidden (62, 63).
+	dd if=/dev/zero of="$D" bs=1M count=8 conv=fsync 2>/dev/null
+	# From 16 MiB (the loader is before it). With a copy of stock: its p1 (FAT) and p2 (ext4), where
+	# stock's init mounts them. Then basedos (FAT; the only legacy-bootable partition, so U-Boot never
+	# runs a boot script the stock copy's updates write to its p1), data (ext4) and BASEOS (the rest).
+	# No-automount on all but BASEOS (bit 63: no drive letter on Windows).
+	_at=16
 	set --
-	[ "$DUAL" = yes ] && set -- -n 1:32768:+${CS1_MIB}MiB -t 1:0700 -c 1:stock -A 1:set:62 -A 1:set:63 \
-		-n 2:0:+${CS2_MIB}MiB -t 2:8300 -c 2:stock-storage -A 2:set:62 -A 2:set:63
-	first=0; [ "$DUAL" = yes ] || first=32768
-	sgdisk "$@" -n 3:$first:+${BOOT_MIB}MiB -t 3:0700 -c 3:basedos -A 3:set:2 -A 3:set:62 -A 3:set:63 \
-		-n 4:0:+${DATA_MIB}MiB -t 4:8300 -c 4:data -A 4:set:62 -A 4:set:63 \
-		-n 5:0:0 -t 5:0700 -c 5:BASEOS "$D" >/dev/null || die "sgdisk failed"
-	new_parts 5
+	if [ "$DUAL" = yes ]; then
+		set -- mkpart stock fat32 ${_at}MiB $((_at + CS1_MIB))MiB; _at=$((_at + CS1_MIB))
+		set -- "$@" mkpart stock-storage ext4 ${_at}MiB $((_at + CS2_MIB))MiB; _at=$((_at + CS2_MIB))
+		BP=3
+	else
+		BP=1
+	fi
+	DP=$((BP + 1)) FP=$((BP + 2))
+	set -- "$@" mkpart basedos fat32 ${_at}MiB $((_at + BOOT_MIB))MiB; _at=$((_at + BOOT_MIB))
+	set -- "$@" mkpart data ext4 ${_at}MiB $((_at + DATA_MIB))MiB; _at=$((_at + DATA_MIB))
+	set -- "$@" mkpart BASEOS fat32 ${_at}MiB 100% set $BP legacy_boot on
+	_p=1; while [ $_p -lt $FP ]; do set -- "$@" set $_p no_automount on; _p=$((_p + 1)); done
+	parted -s "$D" mklabel gpt "$@" || die "parted failed"
+	new_parts $FP
 	loader
-	mkfs.vfat -F 32 -n BASEDOS ${D}p3 >/dev/null || die "mkfs.vfat p3 failed"
-	mkfs.ext4 -q -F -L basedos-data ${D}p4 || die "mkfs.ext4 p4 failed"
-	mkfs.vfat -F 32 -n BASEOS ${D}p5 >/dev/null || die "mkfs.vfat p5 failed"
+	mkfs.vfat -F 32 -n BASEDOS ${D}p$BP >/dev/null || die "mkfs.vfat p$BP failed"
+	mkfs.ext4 -q -F -L basedos-data ${D}p$DP || die "mkfs.ext4 p$DP failed"
+	mkfs.vfat -F 32 -n BASEOS ${D}p$FP >/dev/null || die "mkfs.vfat p$FP failed"
 	mkdir -p "$T/mnt/boot" "$T/mnt/data" "$T/mnt/card"
-	mount -t vfat ${D}p3 "$T/mnt/boot" && mount -t ext4 ${D}p4 "$T/mnt/data" && mount -t vfat ${D}p5 "$T/mnt/card" ||
+	mount -t vfat ${D}p$BP "$T/mnt/boot" && mount -t ext4 ${D}p$DP "$T/mnt/data" && mount -t vfat ${D}p$FP "$T/mnt/card" ||
 		die "the new partitions don't mount"
 	if [ "$DUAL" = yes ]; then
 		mkfs.vfat -F 32 -n STOCK ${D}p1 >/dev/null || die "mkfs.vfat p1 failed"
 		mkfs.ext4 -q -F -L stock-storage ${D}p2 || die "mkfs.ext4 p2 failed"
 		mkdir -p "$T/mnt/cs1" "$T/mnt/cs2"
-		mount -t vfat ${D}p1 "$T/mnt/cs1" && mount -t ext4 ${D}p2 "$T/mnt/cs2" || die "card stock's partitions don't mount"
+		mount -t vfat ${D}p1 "$T/mnt/cs1" && mount -t ext4 ${D}p2 "$T/mnt/cs2" || die "the stock copy's partitions don't mount"
 	fi
-	say "basedos, data, BASEOS ($(df -h "$T/mnt/card" | awk 'NR == 2 { print $2 }'))$([ "$DUAL" = yes ] && echo ", card stock")"
+	say "ok"
 	[ "$BACKUP" = yes ] && backup_emmc "$T/mnt/card"
 	vendor_set
 	step "Writing BasedOS to the card"
 	P=$T/mnt/boot
 	if [ "$DUAL" = yes ]; then
-		say "copying stock to the card (card stock)..."
+		say "copying the stock system..."
 		for f in "$STOCK_P1"/*; do
 			n=${f##*/}
 			case "$n" in basedos|boot.scr|boot.scr.*) continue ;; esac
@@ -573,25 +679,27 @@ if [ "$TARGET" = sd ]; then
 	seed_data "$T/mnt/data/basedos-data"
 	cat > "$T/mnt/card/BasedOS.txt" <<EOF
 This card runs BasedOS $VERSION ($BUILD) on the GKD 350H Ultra: with it in, the device starts
-BasedOS and the frontend on this drive; without it, the device's own system on the eMMC, which
-BasedOS on this card never uses. The card stays in this device.
+BasedOS and the frontend on this drive; without it, the device's own system on its built-in
+storage, which BasedOS on this card never uses. The card stays in this device.
 
-Put your frontend here, on this BASEOS drive (for spruce: copy spruce's files to it from your
-PC). BasedOS's own files are on the card's hidden partitions: don't reformat the card, or it
-stops being a BasedOS card.
+$([ "$FE" = yes ] && echo "$FE_NAME is on this BASEOS drive." || echo "Put your frontend here, on this BASEOS drive (for spruce: copy spruce's files to it from your PC).")
+BasedOS's own files are on the card's other partitions: don't reformat the card, or it stops
+being a BasedOS card.
 EOF
 	# BasedOS's boot script last: until it's there, the card doesn't boot.
 	put "$HERE/boot.scr" "$P/boot.scr"
 	sync
+	[ "$FE" = yes ] && frontend "$T/mnt/card"
 	for m in card data boot cs2 cs1; do
 		grep -q " $T/mnt/$m " /proc/mounts || continue
 		umount "$T/mnt/$m" || die "can't unmount the card's $m"
 	done
-	RESULT="BasedOS $VERSION is on the card. Power off now, copy your frontend (spruce) onto the card's BASEOS drive from your PC, put the card back in and power on."
-	[ "$BACKUP" = yes ] && RESULT="$RESULT The eMMC backup is in $(basename "$BK")/ on BASEOS: copy it to your PC and keep it."
+	if [ "$FE" = yes ]; then RESULT="BasedOS $VERSION and $FE_NAME are on the card. Restart the device with the card in to start them."
+	else RESULT="BasedOS $VERSION is on the card. Power off, copy your frontend (spruce) onto the card's BASEOS drive from a PC, put the card back in and power on."; fi
+	[ "$BACKUP" = yes ] && RESULT="$RESULT The backup image is in $(basename "$BK")/ on the BASEOS drive: copy it to your PC and keep it."
 elif [ "$TARGET" = emmc ]; then
 	vendor_set
-	step "Installing BasedOS on the eMMC"
+	step "Installing BasedOS on the built-in storage"
 	mount -o remount,rw $STOCK_P1 || die "can't write $STOCK_P1"
 	B=$STOCK_P1/basedos
 	mkdir -p "$B/vendor-$VENDOR"
@@ -613,13 +721,13 @@ elif [ "$TARGET" = emmc ]; then
 		RESULT="BasedOS $VERSION is installed next to stock. Restart to start it."
 	fi
 else
-	RESULT="The recovery card is ready. Power off and take it out; keep it safe. To restore the eMMC: power off, put the card in, power on, and follow the screen."
+	RESULT="The recovery card is ready. Power off and take it out; keep it safe. To restore the built-in storage: power off, put the card in, power on, and follow the screen."
 fi
 
-rm -rf "${VS:-$T/none}" "$T/boot.env" "$T/backup" "$T/mismatch"
+rm -rf "${VS:-$T/none}" "$T/boot.env" "$T/backup" "$T/mismatch" "$DL"
 # The card stays out of stock's automounter until the next power-on: released now, it would mount
 # the new card's partitions and write to them.
-[ -n "${UDEV_HELD:-}" ] && UDEV_HELD="" && say "(stock's automounter stays paused until the device restarts)"
+[ -n "${UDEV_HELD:-}" ] && UDEV_HELD=""
 cleanup
 step "Done"
 say "$RESULT"

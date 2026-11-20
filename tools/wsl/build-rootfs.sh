@@ -278,6 +278,12 @@ BASEOS_BUILD=$BUILD
 BASEOS_STOCK=$(cat "$W/STOCK_BUILD" 2>/dev/null || echo unknown)
 BASEOS_VENDOR=$VENDOR_ID
 EOF
+# What the device and setup read as text: no carriage returns (a Windows-written name once put
+# one in BASEOS_STOCK and the recipe).
+for f in etc/baseos-release usr/share/basedos/vendor-recipe "$VEN/usr/share/basedos/vendor-release"; do
+	[ -f "$f" ] || continue
+	! grep -q "$(printf '\r')" "$f" || { echo "$f has a carriage return" >&2; exit 1; }
+done
 cat > etc/os-release <<EOF
 ID=basedos
 NAME="BasedOS"

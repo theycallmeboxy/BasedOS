@@ -16,7 +16,7 @@ poweroff|Power off"
 if on_sd_card; then
 	ITEMS=$(echo "$ITEMS" | grep -v -e '^switch|' -e '^uninstall|')
 	if card_has_stock; then
-		ITEMS=$(echo "$ITEMS" | sed 's/^stock-once|.*/stock-once|Start card stock once (BasedOS again after)/')
+		ITEMS=$(echo "$ITEMS" | sed 's/^stock-once|.*/stock-once|Start the stock copy on this card once (BasedOS again after)/')
 	else
 		ITEMS=$(echo "$ITEMS" | grep -v '^stock-once|')
 	fi

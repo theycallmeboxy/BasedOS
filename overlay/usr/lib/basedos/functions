@@ -40,7 +40,7 @@ BOOT_P2=/dev/${BOOT_DISK}p$((BOOT_PART + 1))
 # 0 when BasedOS runs from an SD card (basedos-setup's SD install), not the eMMC: by the
 # controller, since the disk numbers differ.
 on_sd_card() { case "$(readlink -f /sys/block/$BOOT_DISK)" in */2a310000.mmc/*) return 0 ;; esac; return 1; }
-# 0 when the card BasedOS runs from also carries a copy of stock (card stock, on its p1 and p2).
+# 0 when the card BasedOS runs from also carries a copy of the stock system (on its p1 and p2).
 card_has_stock() { on_sd_card && grep -qx 'basedos_card_stock=1' /boot/basedos/boot.env 2>/dev/null; }
 
 # Which rootfs slot this boot runs: the initrd loop-mounts rootfs.squashfs (a) or

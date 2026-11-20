@@ -133,14 +133,14 @@ stock_once() {
 	# that). boot.scr reads basedos/once.env, clears it, then starts card stock with its own
 	# kernel, the eMMC hidden.
 	if on_sd_card; then
-		card_has_stock || die "this card carries no copy of stock: take the card out to start the device's own system"
+		card_has_stock || die "this card has no copy of the stock system: take the card out to start the device's own system"
 		rw
 		{ printf 'basedos_once=card-stock\n' > /boot/basedos/once.env.new && sync &&
 			mv /boot/basedos/once.env.new /boot/basedos/once.env && sync &&
 			grep -qx 'basedos_once=card-stock' /boot/basedos/once.env; } ||
 			{ rm -f /boot/basedos/once.env.new; ro; die "couldn't write /boot/basedos/once.env"; }
 		ro
-		log "boot: card stock for the next boot"
+		log "boot: the stock copy on this card for the next boot"
 		return 0
 	fi
 	# The flag must be on p2: /data in RAM (p2 unusable this boot) would lose it.
@@ -206,10 +206,10 @@ status() {
 	if on_sd_card; then
 		echo "SD card install (the eMMC is hidden and never used)"
 		if card_has_stock; then
-			echo "card stock: on this card"
-			echo "next boot: $(grep -qx 'basedos_once=card-stock' /boot/basedos/once.env 2>/dev/null && echo "card stock once, then BasedOS" || echo BasedOS)"
+			echo "a copy of the stock system: on this card"
+			echo "next boot: $(grep -qx 'basedos_once=card-stock' /boot/basedos/once.env 2>/dev/null && echo "the stock copy once, then BasedOS" || echo BasedOS)"
 		else
-			echo "card stock: none; next boot: BasedOS"
+			echo "a copy of the stock system: none; next boot: BasedOS"
 		fi
 		return 0
 	fi

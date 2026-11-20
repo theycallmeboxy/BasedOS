@@ -19,11 +19,12 @@ for b in /sys/block/mmcblk*; do
 	case "$(readlink -f "$b")" in */2a310000.mmc/*) disk=${b##*/}; break ;; esac
 done
 [ -n "$disk" ] || { [ -n "${QUIET:-}" ] || log "no card in the slot"; exit 1; }
-# BasedOS running from this card (an SD install, basedos-setup): p1 and p2 are BasedOS's own
-# (boot, data); the frontend's partition is the one labelled BASEOS.
+# BasedOS running from this card (an SD install, basedos-setup): its boot and data partitions
+# (p1 and p2, or p3 and p4 after a copy of stock) are BasedOS's own; the frontend's partition is
+# the one labelled BASEOS.
 if [ "$disk" = "$BOOT_DISK" ]; then
 	dev=""
-	for p in /dev/${disk}p[3-9]; do
+	for p in /dev/${disk}p[2-9]; do
 		[ -b "$p" ] || continue
 		[ "$(blkid "$p" 2>/dev/null | sed -n 's/.* LABEL="\([^"]*\)".*/\1/p')" = BASEOS ] && { dev=$p; break; }
 	done

@@ -38,6 +38,12 @@ To go back to stock: the maintenance menu (above), or from SSH `basedos-boot sto
 `install-dev.sh revert` (from stock or BasedOS) still puts stock's boot script back and leaves
 BasedOS's files.
 
+These are careful with the boot script, the one file that decides whether the device boots: each
+script is checked before it's written (a well-formed boot script, BasedOS's or stock's as
+expected; stock's against the known stock build) and read back after; everything a switch needs
+is in place first, so a failure leaves the device as it was; nothing is removed until stock's
+script is back.
+
 ## Everyday use
 
 | You do | BasedOS does |

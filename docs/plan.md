@@ -56,15 +56,22 @@ PortMaster and ScummVM on spruce, and a clean-install test of `install-dev.sh` s
 
 ## eMMC layout
 
-v0 keeps stock's MBR layout, so installing doesn't touch the loader:
+Today (the developer install, `tools/install-dev.sh`): stock's layout and files, untouched, with
+BasedOS in one folder on each partition. Stock stays complete and bootable.
 
 | Region | Contents |
 |---|---|
-| sectors 0 to 32767 | stock MBR, idbloader, U-Boot FIT. Never written. |
-| p1 vfat `BASEDOS`, 3 GB at 16 MiB | `boot.scr`, `Image` and DTBs (harvested), `basedos-initrd.img`, `rootfs.squashfs` |
-| p2 ext4 `BASEDOS-DATA`, the rest | `/data` |
+| sectors 0 to 32767 | stock's MBR, idbloader and U-Boot FIT. Never written. |
+| p1 vfat, 3 GB (`/flash` under stock, `/boot` under BasedOS) | stock's `SYSTEM` (2.3 GB, its root and the vendor layer's source), `Image`, DTBs; `boot.scr` (BasedOS's while BasedOS is on; stock's kept as `basedos/boot.scr.stock`); `basedos/`: the two system slots (`rootfs.squashfs`, `rootfs-b.squashfs`) and the slot file, `vendor-<id>.squashfs`, `initrd.uimg`, BasedOS's panel DTB |
+| p2 ext4, 11.6 GB (stock's `/storage`) | stock's data; `basedos-data/`, BasedOS's `/data` (logs, update state, accounts, Wi-Fi, SSH keys) |
+| `boot0`, `boot1` | an old Amlogic loader the RK3576 never reads; left alone |
 
-A/B is two system-layer files on p1 (`rootfs.squashfs`, `rootfs-b.squashfs`) and a slot file the initrd reads, beside the vendor layer (`vendor-<id>.squashfs`, several may sit side by side). That's simpler than my355's GPT flip, and a vfat p1 allows it.
+Leaving it: `basedos-boot` (maintenance menu, Start at power-on) boots stock once, switches to
+stock with a "Return to BasedOS" in stock's Ports, or uninstalls (stock's `boot.scr` back and both
+folders removed).
+
+Later, for the installer: a dedicated layout (p1 `BASEDOS`, p2 `BASEDOS-DATA`), or BasedOS on the
+SD card alone with the eMMC never written.
 
 ## Boot flow
 

@@ -46,7 +46,8 @@ and starts it, again if it exits.
 Updates: a `baseos-gkd350hultra-<version>.bosupd` at the card root (spruce's firmware updater
 fetches or finds one and reboots) is installed at the next boot by `basedos-update`: the system
 layer to the spare slot, verified, then the slot flips. It carries nothing of stock's; it names the
-vendor layer it needs and is refused without it.
+vendor layer it needs, and if the device doesn't have that one, `basedos-vendor` builds it there
+from the stock image on p1, by the recipe in the new system layer (about 30 s), so no PC is needed.
 
 Sleep: frontends call `basedos-suspend`, which suspends and then runs BasedOS's wake fixes (what a
 systemd base's system-sleep hooks do): today, putting the DAC's volume back, which the stock kernel loses.

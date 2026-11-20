@@ -2,25 +2,35 @@
 
 ## Status
 
-**Runs spruce on the device (2026-11-19, build `39ab987`), installed next to stock** with
-`tools/install-dev.sh`. Power to spruce's menu takes about 4 s (boot-time.md); spruce starts at
-about 1.3 s of the kernel's uptime. Working and checked on the unit:
+**Runs spruce on the device (2026-11-20, build `c9ee8f9`), installed next to stock** with
+`tools/install-dev.sh` (clean install from stock, uninstall and reinstall tested twice,
+2026-11-20). Power to spruce's menu takes about 4 s (boot-time.md); spruce starts at about 1.3 s of
+the kernel's uptime. Working and checked on the unit:
 
-- The layered root: the vendor layer (stock's files, built on the device's own stock, never
-  published) and the system layer (BasedOS's, about 2.4 MB), stacked by the initrd; A/B slots with
-  a boot counter that falls back to the other slot, then to stock.
+- The layered root: the vendor layer (stock's files, cut from the device's own stock image, never
+  published) and the system layer (BasedOS's, about 33 MB with the 32-bit libraries), stacked by
+  the initrd; A/B slots with a boot counter that falls back to the other slot, then to stock.
+- The vendor layer built on the device (`basedos-vendor`, about 30 s) from stock's `SYSTEM` on p1,
+  by the recipe every system layer carries; same files as the PC build's.
 - Updates: a `.bosupd` at the card root, from spruce's BaseOS updater or by hand, installed at the
-  next boot into the spare slot and confirmed once it boots (`basedos-update`). The boot script is
-  not in a payload (see below).
+  next boot into the spare slot and confirmed once it boots (`basedos-update`); one that needs a
+  vendor layer the device lacks builds it first, before either slot is written. The boot script
+  is not in a payload (see below).
+- Leaving BasedOS (`basedos-boot`, the maintenance menu, Start held at power-on): stock once,
+  switch to stock with "Return to BasedOS" in stock's Ports, uninstall (done by the initrd at the
+  restart). Each boot script written is checked and read back.
 - spruce: menu, emulators (RetroArch, DSperate, DraStic, PPSSPP, Mupen64Plus, Flycast,
   YabaSanshiro), E-Reader, Gallery, sleep and wake, clean shutdown, Wi-Fi and SSH (spruce's own,
-  as on its other devices), screenshots. Details in spruce-on-gkd.md.
-- Maintenance mode (Select held at power-on): BasedOS's own Wi-Fi and root SSH, no frontend.
+  as on its other devices), screenshots, PortMaster with Weston and 32-bit ports (lib32.md,
+  portmaster-libs.md). Details in spruce-on-gkd.md.
+- Maintenance mode (Select held at power-on): BasedOS's own Wi-Fi and root SSH, no frontend, and
+  the menu above.
 - The boot screen, quiet boot, boot keys, and the Volume Up + Volume Down shutdown watcher.
 
-Not done yet: an installer card for users (the vendor layer is built on a PC from a backup today),
-a way for an update to change the boot script and its kernel options, Bluetooth, USB storage mode,
-PortMaster and ScummVM on spruce, and a clean-install test of `install-dev.sh` since the layer split.
+Not done yet: an installer card for users (the pieces are here: a published system layer and the
+on-device vendor build), BasedOS on the SD card alone with the eMMC never written, a way for an
+update to change the boot script and its kernel options, Bluetooth, USB storage mode, ScummVM on
+spruce, and the old-library compat set some ports want (portmaster-libs.md).
 
 ## Starting point (verified on the device, 2026-11-16)
 

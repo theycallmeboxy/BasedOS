@@ -67,14 +67,17 @@ PortMaster's 32-bit ports (docs/lib32.md); BasedOS's own programs are all 64-bit
 | [docs/spruce-on-gkd.md](docs/spruce-on-gkd.md) | spruce support: the kit, status, what's left |
 | [docs/plan.md](docs/plan.md) | design, conventions, status |
 | [docs/vendor-minimal.md](docs/vendor-minimal.md) | shrinking the vendor layer to the closed drivers, firmware and kernel modules: inventory and plan |
+| [docs/lib32.md](docs/lib32.md) | the 32-bit libraries in `/usr/lib32`, for PortMaster's 32-bit ports |
+| [docs/portmaster-libs.md](docs/portmaster-libs.md), [docs/portmaster-libscan.md](docs/portmaster-libscan.md) | what PortMaster's ports load from the system: a scan of the whole catalogue, and what BasedOS adds |
 | [docs/boot-time.md](docs/boot-time.md), [docs/power.md](docs/power.md) | measurements |
 | [docs/recovery.md](docs/recovery.md) | eMMC backup, rescue SD card, USB disk mode, maskrom, full restore (all tested) |
 | [docs/recon.md](docs/recon.md) | hardware and stock-firmware notes |
 | [docs/spruce-handoff.md](docs/spruce-handoff.md) | what spruce needs to run on BasedOS |
 | `overlay/`, `initrd/` | BasedOS's own init, scripts and config |
-| `manifest/` | the stock harvest list and known stock-build fingerprints |
-| `tools/` | prepare-stock, harvest, rootfs and boot-file builders, dev install |
-| `tools/dev/` | SSH helper, rootfs slot update, recon, power and screenshot probes, eMMC backup |
+| `buildroot/` | BasedOS's Buildroot tree: the 64-bit and 32-bit (armhf) configurations |
+| `manifest/` | what each layer takes: `base.list` and `base32.list` from BasedOS's Buildroot roots, `harvest.list` from stock (the vendor layer); known stock-build fingerprints |
+| `tools/` | prepare-stock, harvest, rootfs and boot-file builders (`wsl/build.sh` runs them all), dev install, the 32-bit gap report (`lib32-gaps.py`) and the PortMaster library scan (`pm-libscan.py`) |
+| `tools/dev/` | SSH helper, rootfs slot update, recon, power and screenshot probes, eMMC backup, `lib-closure.py` (what a frontend's libraries need from the base) |
 | `tools/rescue/` | rescue SD card built on the device from its own files |
 | `tools/maskrom/` | builds the RK3576 maskrom USB loader from Rockchip's `rkbin` |
 

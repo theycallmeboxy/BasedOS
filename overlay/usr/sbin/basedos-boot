@@ -9,6 +9,8 @@
 #   basedos-boot uninstall      stock's boot script back and BasedOS removed: its folder on p1
 #                               (basedos/) and its data on p2 (basedos-data/, with the return
 #                               script if there is one). Stock is as it was before the install.
+#                               Done at the next start, by BasedOS's initrd, when none of these
+#                               files are in use; --reboot starts it.
 #   basedos-boot status         what boots next
 #   ... --reboot                restart once it has worked
 #
@@ -164,28 +166,24 @@ switch_to_stock() {
 uninstall() {
 	check_places
 	check_stock $B/boot.scr.stock || die "$B/boot.scr.stock isn't a stock boot script; not uninstalling"
-	log "boot: uninstalling BasedOS"
-	rw
-	# 1. The switch: stock's boot script, read back. Nothing is removed unless this worked.
-	put $B/boot.scr.stock /boot/boot.scr && cmp -s $B/boot.scr.stock /boot/boot.scr &&
-		[ "$(scr_kind /boot/boot.scr)" = stock ] || { ro; die "couldn't write stock's boot script; nothing removed"; }
-	# 2. BasedOS's files. The running system's are open (its layers are loop-mounted from them);
-	# removing them frees the space once they close, at the reboot.
-	rm -rf /boot/basedos
-	# A BasedOS boot script that older developer updates kept beside stock's files
-	# (tools/dev/update-basedos.sh now keeps it in basedos/). Only if it's BasedOS's.
-	[ "$(scr_kind /boot/boot.scr.prev)" = basedos ] && rm -f /boot/boot.scr.prev
-	ro
-	for _d in $(stock_ports_dirs); do rm -f "$_d/$RETURN_NAME"; done
-	# /data is a bind of this folder; logging stops here.
-	log "boot: uninstalled; removing /data"
-	rm -rf "$P2/basedos-data"
-	sync
+	grep -q "^/dev/mmcblk0p2 /data " /proc/mounts || die "/data isn't on the eMMC this boot; can't leave the flag"
+	# The removal itself happens at the restart, in BasedOS's initrd, before anything is mounted
+	# from these files: removing a running system's files leaves them half freed (stock's fsck
+	# then finds them as FSCK*.REC on p1) and some can't go at all (/etc/passwd, bound from
+	# /data). Here: everything checked, and the flag left with the SHA-256 of the stock boot
+	# script that was checked, which the initrd puts back only if it's still that file.
+	_sha=$(sha256sum < $B/boot.scr.stock | cut -c1-64)
+	echo "$_sha" > /data/uninstall.new && sync && mv /data/uninstall.new /data/uninstall && sync &&
+		[ "$(head -c 64 /data/uninstall)" = "$_sha" ] || { rm -f /data/uninstall /data/uninstall.new; die "couldn't leave the uninstall flag"; }
+	rm -f /data/boot-stock-once
+	log "boot: uninstall at the next start (stock's boot script back, then basedos/ and basedos-data/ removed)"
 }
 
 status() {
 	case "$(scr_kind /boot/boot.scr)" in
-	basedos) echo "next boot: BasedOS$( [ -f /data/boot-stock-once ] && echo ", except: stock once")" ;;
+	basedos)
+		if [ -f /data/uninstall ]; then echo "next boot: BasedOS UNINSTALLS itself, then stock"
+		else echo "next boot: BasedOS$( [ -f /data/boot-stock-once ] && echo ", except: stock once")"; fi ;;
 	stock) echo "next boot: stock (BasedOS switched off; '$RETURN_NAME' in stock's Ports comes back)" ;;
 	*) echo "next boot: /boot/boot.scr DOESN'T LOOK LIKE A BOOT SCRIPT" ;;
 	esac

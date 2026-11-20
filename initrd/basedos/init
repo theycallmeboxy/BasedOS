@@ -31,6 +31,40 @@ $bb mount -t vfat -o ro,noatime /dev/mmcblk0p1 /p1 || fallback "can't mount eMMC
 attempts=0
 if $bb mount -t ext4 -o noatime /dev/mmcblk0p2 /p2 2>/dev/null; then
 	$bb mkdir -p /p2/basedos-data
+	# Uninstall (basedos-boot uninstall checked everything while BasedOS ran, and left the
+	# SHA-256 of the stock boot script it checked): done here, where none of BasedOS's files are
+	# in use. Stock's boot script first, only if it's still that file, read back after; then
+	# BasedOS's data and folder; then stock boots. Any check failing drops the flag and BasedOS
+	# boots as usual. A power cut after the boot script is back leaves leftovers, but stock boots.
+	if [ -f /p2/basedos-data/uninstall ]; then
+		want=$($bb head -c 64 /p2/basedos-data/uninstall)
+		have=$($bb sha256sum < /p1/basedos/boot.scr.stock 2>/dev/null | $bb cut -c1-64)
+		if [ ${#want} -eq 64 ] && [ "$want" = "$have" ] && $bb mount -o remount,rw /p1; then
+			$bb rm -f /p1/boot.scr.new
+			if $bb cp /p1/basedos/boot.scr.stock /p1/boot.scr.new && $bb sync &&
+				echo 3 > /proc/sys/vm/drop_caches &&
+				[ "$($bb sha256sum < /p1/boot.scr.new | $bb cut -c1-64)" = "$want" ] &&
+				$bb mv /p1/boot.scr.new /p1/boot.scr && $bb sync &&
+				[ "$($bb sha256sum < /p1/boot.scr | $bb cut -c1-64)" = "$want" ]; then
+				$bb rm -f "/p2/roms/ports/Return to BasedOS.sh"
+				$bb rm -rf /p2/basedos-data
+				$bb rm -rf /p1/basedos
+				# An older developer update's copy of BasedOS's boot script, beside stock's files.
+				$bb grep -q "rdinit=/basedos/init" /p1/boot.scr.prev 2>/dev/null && $bb rm -f /p1/boot.scr.prev
+				$bb sync
+				$bb mount -o remount,ro /p1
+				fallback "BasedOS uninstalled"
+			fi
+			$bb rm -f /p1/boot.scr.new
+			$bb sync
+			$bb mount -o remount,ro /p1
+			log "uninstall: couldn't write stock's boot script; BasedOS stays"
+		else
+			log "uninstall: the saved stock boot script isn't the one checked; BasedOS stays"
+		fi
+		$bb rm -f /p2/basedos-data/uninstall
+		$bb sync
+	fi
 	# Stock for this one boot (basedos-boot stock-once: the Start key, the maintenance menu).
 	# The flag goes first, so the boot after this one is BasedOS's again whatever stock does.
 	# Honoured only once the flag is really gone: one that can't be removed (p2 read-only after an

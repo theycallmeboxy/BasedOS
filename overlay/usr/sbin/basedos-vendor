@@ -87,7 +87,7 @@ build() {
 	boot_rw
 	_out=$B/vendor-$_want.squashfs
 	# As the PC build packs it (tools/wsl/build-rootfs.sh); written as .new and renamed once whole.
-	mksquashfs "$STAGE" "$_out.new" -noappend -all-root -comp zstd -Xcompression-level 15 -b 256K -quiet ||
+	mksquashfs "$STAGE" "$_out.new" -noappend -all-root -comp zstd -Xcompression-level 15 -b 256K -quiet -no-progress ||
 		{ rm -f "$_out.new"; die "mksquashfs failed"; }
 	sync
 	mv "$_out.new" "$_out" && sync

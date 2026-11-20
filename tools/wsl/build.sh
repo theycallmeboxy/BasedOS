@@ -46,19 +46,22 @@ sdl2_current "$REPO/prepared/sdl2-armhf" armhf || {
 }
 [ -f "$REPO/prepared/bash/build-info" ] ||
 	bash "$REPO/tools/bash/build.sh" "$REPO/prepared/bash"
-sh "$REPO/tools/wsl/build-rootfs.sh" "$REPO" "$W" "$REPO/prepared/alpine/busybox.static" "$REPO/prepared/alpine/busybox.list"
+STOCK_P1=$STOCK sh "$REPO/tools/wsl/build-rootfs.sh" "$REPO" "$W" "$REPO/prepared/alpine/busybox.static" "$REPO/prepared/alpine/busybox.list"
+VENDOR_ID=$(sed -n 's/^BASEOS_VENDOR=//p' "$W/system/etc/baseos-release")
 mkdir -p "$REPO/out"
 cp "$W/rootfs.squashfs" "$REPO/out/rootfs.squashfs"
-# The vendor layer stays local: built from your own stock, never published (NOTICE.md).
-rm -f "$REPO"/out/vendor-*.squashfs
-cp "$W"/vendor-*.squashfs "$REPO/out/"
+# The vendor set stays local: built from your own stock, never published (NOTICE.md).
+rm -rf "$REPO"/out/vendor-*
+cp -r "$W/vendor-$VENDOR_ID" "$REPO/out/"
 # The update payload: the system layer and the initrd, nothing of stock's (publishable).
 python3 "$REPO/tools/mkboot.py" initrd "$REPO/prepared/alpine/busybox.static" "$W/initrd.uimg.new" >/dev/null
 mv "$W/initrd.uimg.new" "$REPO/out/initrd.uimg"
-# The boot script (not in the payload: install-dev.sh and update-basedos.sh put it on p1).
+# BasedOS's own boot script (initrd/boot.cmd), and boot.env naming the vendor set it boots
+# (setup puts both on the boot partition; not in a payload: the vendor set doesn't change).
 rm -f "$W/boot.scr.new"
-python3 "$REPO/tools/mkboot.py" bootscr "$STOCK/boot.scr" "$W/boot.scr.new" >/dev/null
+python3 "$REPO/tools/mkboot.py" script "$REPO/initrd/boot.cmd" "$W/boot.scr.new"
 mv "$W/boot.scr.new" "$REPO/out/boot.scr"
+echo "basedos_vendor=$VENDOR_ID" > "$REPO/out/boot.env"
 rm -f "$REPO"/out/baseos-*.bosupd
 python3 "$REPO/tools/mkupdate.py" "$W/rootfs.squashfs" "$REPO/out/initrd.uimg" 	"$(sed -n 's/^BASEOS_VENDOR=//p' "$W/system/etc/baseos-release")" "$(cat "$REPO/VERSION")" 	"$(sed -n 's/^BASEOS_BUILD=//p' "$W/system/etc/baseos-release")" "$REPO/out"
 for r in harvest-report.txt base32-report.txt lib32-gaps.txt; do

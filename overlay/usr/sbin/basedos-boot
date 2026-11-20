@@ -28,7 +28,7 @@
 # - The boot.scr switch is the last step that can fail: everything a switch needs (the return
 #   script, BasedOS's saved script) is in place and checked before it, and removals come only
 #   after it.
-# - Nothing is done unless /boot is the eMMC's p1 and p2 the eMMC's p2.
+# - Nothing is done unless /boot and p2 are the boot disk's (the eMMC on an eMMC install).
 export PATH=/usr/bin:/usr/sbin
 . /usr/lib/basedos/functions
 
@@ -49,7 +49,7 @@ put() {
 
 _made_rw=""
 rw() {
-	grep -q "^/dev/mmcblk0p1 /boot [^ ]* rw" /proc/mounts && return 0
+	grep -q "^$BOOT_P1 /boot [^ ]* rw" /proc/mounts && return 0
 	mount -o remount,rw /boot || die "can't write p1"
 	_made_rw=1
 }
@@ -78,9 +78,9 @@ check_stock() {
 
 # The device's own partitions, nothing else.
 check_places() {
-	grep -q "^/dev/mmcblk0p1 /boot " /proc/mounts || die "/boot isn't the eMMC's p1"
+	grep -q "^$BOOT_P1 /boot " /proc/mounts || die "/boot isn't the boot disk's p1 ($BOOT_P1)"
 	[ -d $B ] || die "no $B"
-	grep -q "^/dev/mmcblk0p2 $P2 " /proc/mounts || die "the eMMC's p2 isn't mounted at $P2"
+	grep -q "^$BOOT_P2 $P2 " /proc/mounts || die "the boot disk's p2 ($BOOT_P2) isn't mounted at $P2"
 }
 
 # The folders stock's Ports system reads, on this device's p2 (stock's /storage). Stock reads them
@@ -105,7 +105,7 @@ fail() { echo "Return to BasedOS: $*" >&2; echo "Still stock; nothing changed." 
 dd if="$SAVED" bs=64 skip=1 2>/dev/null | grep -q "rdinit=/basedos/init" || fail "$SAVED isn't BasedOS's."
 [ -f $P1/basedos/initrd.uimg ] || fail "BasedOS's files are gone ($P1/basedos/initrd.uimg)."
 ls $P1/basedos/rootfs*.squashfs >/dev/null 2>&1 || fail "BasedOS's system image is gone."
-ls $P1/basedos/vendor-*.squashfs >/dev/null 2>&1 || fail "BasedOS's vendor layer is gone."
+ls $P1/basedos/vendor-*/vendor.squashfs >/dev/null 2>&1 || fail "BasedOS's vendor set is gone."
 mount -o remount,rw $P1 || fail "can't write $P1."
 rm -f $P1/boot.scr.new
 if cp "$SAVED" $P1/boot.scr.new && sync && echo 3 > /proc/sys/vm/drop_caches &&
@@ -130,7 +130,7 @@ EOF
 
 stock_once() {
 	# The flag must be on p2: /data in RAM (p2 unusable this boot) would lose it.
-	grep -q "^/dev/mmcblk0p2 /data " /proc/mounts || die "/data isn't on the eMMC this boot; can't leave the flag"
+	grep -q "^$BOOT_P2 /data " /proc/mounts || die "/data isn't on the boot disk this boot; can't leave the flag"
 	: > /data/boot-stock-once && sync && [ -f /data/boot-stock-once ] || die "couldn't write /data/boot-stock-once"
 	log "boot: stock for the next boot"
 }
@@ -166,7 +166,7 @@ switch_to_stock() {
 uninstall() {
 	check_places
 	check_stock $B/boot.scr.stock || die "$B/boot.scr.stock isn't a stock boot script; not uninstalling"
-	grep -q "^/dev/mmcblk0p2 /data " /proc/mounts || die "/data isn't on the eMMC this boot; can't leave the flag"
+	grep -q "^$BOOT_P2 /data " /proc/mounts || die "/data isn't on the boot disk this boot; can't leave the flag"
 	# The removal itself happens at the restart, in BasedOS's initrd, before anything is mounted
 	# from these files: removing a running system's files leaves them half freed (stock's fsck
 	# then finds them as FSCK*.REC on p1) and some can't go at all (/etc/passwd, bound from

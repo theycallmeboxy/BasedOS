@@ -4,19 +4,22 @@
 #   <work>/stock-root must hold the unpacked stock SYSTEM (tools/wsl/unpack-stock.sh), and
 #   $BR_TARGET (default ~/basedos-br/out/target) BasedOS's own Buildroot root
 #   (tools/buildroot/build.sh build), and $BR32_TARGET (default ~/basedos-br/out-armhf/target)
-#   its 32-bit one (build.sh --armhf build).
+#   its 32-bit one (build.sh --armhf build), and $STOCK_P1 the stock build's boot files (Image,
+#   DTBs: prepared/<build>/).
 #
 # The root is two read-only layers, stacked by the initrd with overlayfs (docs/plan.md):
-#   vendor    only what manifest/harvest.list takes from stock: the closed GPU drivers, the
-#             firmware and the stock kernel's modules (docs/vendor-minimal.md). Built from your own
-#             device's firmware, never published. Named by a hash of its contents (VENDOR_ID), so
-#             the same stock build always gives the same id.
+#   vendor    the vendor set, the base this BasedOS is built on: the stock kernel and DTBs, and
+#             what manifest/harvest.list takes from stock (the closed GPU drivers, the firmware,
+#             the kernel's modules; docs/vendor-minimal.md). Built from your own device's
+#             firmware, never published. Named by a hash of its contents (VENDOR_ID), so the same
+#             stock build always gives the same id. Comes out as vendor-<id>/: Image and the DTBs
+#             as plain files (U-Boot loads them), vendor.squashfs with the rest.
 #   system    everything of BasedOS's own, on top: its userland from its Buildroot root
 #             (manifest/base.list: glibc, OpenSSH, wpa_supplicant, ALSA, ...), BusyBox, the overlay,
 #             SDL2, librga, bash, the boot tools and identity files.
 #             It names the vendor layer it was built against (usr/share/basedos/needs-vendor);
 #             a .bosupd carries this one alone.
-# Outputs in <work>: vendor-<id>.squashfs, rootfs.squashfs (the system layer; the slot files
+# Outputs in <work>: vendor-<id>/, rootfs.squashfs (the system layer; the slot files
 # keep their names), and rootfs/ (the two merged, for the checks and tools that want one tree).
 set -eu
 REPO=$1 W=$2 BB=$3 BBLIST=$4
@@ -27,7 +30,8 @@ VERSION=$(cat "$REPO/VERSION")
 BUILD=$(git -C "$REPO" describe --always --dirty 2>/dev/null || echo unknown)
 case $BUILD in *dirty) BUILD="$BUILD-$(date -u +%Y%m%d%H%M)" ;; esac
 
-rm -rf "$VEN" "$SYS" "$OUT" "$BASE" "$W"/vendor-*.squashfs "$W/rootfs.squashfs"
+VENDOR_BOOT_FILES="Image rk3576-gkd-atom.dtb rk3576-gkd-atom-hdmi.dtb rk3576-gkd-atom-usbdp.dtb"
+rm -rf "$VEN" "$SYS" "$OUT" "$BASE" "$W"/vendor-* "$W/rootfs.squashfs"
 mkdir -p "$VEN" "$SYS" "$BASE"
 chmod 755 "$VEN" "$SYS"
 
@@ -51,6 +55,16 @@ python3 "$REPO/tools/lib32-gaps.py" "$W/stock-root" "$BASE" > "$W/lib32-gaps.txt
 echo "--- vendor: harvest"
 # The blobs' own libraries (libstdc++, libwayland, glibc) are BasedOS's: --provided.
 python3 "$REPO/tools/harvest.py" "$W/stock-root" "$REPO/manifest/harvest.list" "$VEN" --provided "$BASE" 	--report "$W/harvest-report.txt" --sources "$W/vendor-sources.txt"
+# The kernel and stock's DTBs, from the stock build's boot partition ($STOCK_P1): part of the vendor
+# set, so BasedOS boots the kernel its modules came from, never stock's own copy (docs/plan.md,
+# Architecture). Staged under boot/ for the id and the recipe; they come out as plain files beside
+# vendor.squashfs (U-Boot can't read squashfs), which leaves boot/ out.
+[ -f "${STOCK_P1:?STOCK_P1: the prepared stock boot files}/Image" ] || { echo "no $STOCK_P1/Image" >&2; exit 1; }
+mkdir -p "$VEN/boot"
+for f in $VENDOR_BOOT_FILES; do
+	install -m 644 "$STOCK_P1/$f" "$VEN/boot/$f"
+	printf '/boot/%s\tp1:%s\n' "$f" "$f" >> "$W/vendor-sources.txt"
+done
 mkdir -p "$VEN/usr/share/basedos"
 # The same function basedos-vendor uses on the device, so both name the same files alike.
 . "$REPO/overlay/usr/lib/basedos/vendor-id"
@@ -303,9 +317,17 @@ echo "--- merged view"
 # vendor, then system on top, as the initrd stacks them.
 cp -a "$VEN" "$OUT"
 cp -a "$SYS/." "$OUT/"
+# /boot is the boot partition's mount point in the running system, not part of the root.
+rm -rf "$OUT/boot"
+mkdir -p "$OUT/boot"
 
 echo "--- squashfs"
-mksquashfs "$VEN" "$W/vendor-$VENDOR_ID.squashfs" -noappend -all-root -comp zstd -Xcompression-level 15 -b 256K -quiet
+# The vendor set: vendor-<id>/ with the kernel and DTBs as plain files and vendor.squashfs with
+# the rest (boot/ left out of it).
+mkdir -p "$W/vendor-$VENDOR_ID"
+for f in $VENDOR_BOOT_FILES; do install -m 644 "$VEN/boot/$f" "$W/vendor-$VENDOR_ID/$f"; done
+# (-e takes the rest of the line as names to leave out, so it goes last.)
+mksquashfs "$VEN" "$W/vendor-$VENDOR_ID/vendor.squashfs" -noappend -all-root -comp zstd -Xcompression-level 15 -b 256K -quiet -e boot
 mksquashfs "$SYS" "$W/rootfs.squashfs" -noappend -all-root -comp zstd -Xcompression-level 15 -b 256K -quiet
-ls -l "$W/vendor-$VENDOR_ID.squashfs" "$W/rootfs.squashfs"
+ls -l "$W/vendor-$VENDOR_ID" "$W/rootfs.squashfs"
 grep -E "^BASEOS_(VERSION|BUILD|VENDOR)=" "$SYS/etc/baseos-release"

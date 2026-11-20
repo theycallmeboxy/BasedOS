@@ -1,12 +1,10 @@
 #!/bin/sh
 # Developer update, run ON the device under BasedOS:
-#   update-basedos.sh <dir with rootfs.squashfs [vendor-<id>.squashfs] [initrd.uimg]
-#                     [rk3576-gkd-atom.dtb] [boot.scr]>
+#   update-basedos.sh <dir with rootfs.squashfs [initrd.uimg] [boot.scr]>
 # Writes the rootfs (the system layer) to the slot that is NOT running (rootfs.squashfs /
-# rootfs-b.squashfs on p1), verifies it from the card, then points /boot/basedos/slot at it. A
-# vendor layer it brings is added beside the others (vendor-<id>.squashfs, named by content, so
-# never overwritten); the new slot must find the one it names, and vendor layers neither slot
-# names are removed. The initrd must be one that stacks the layers (2026-11-19 and later). Reboot to use it; the
+# rootfs-b.squashfs on p1), verifies it from the card, then points /boot/basedos/slot at it. Like
+# a .bosupd it never changes the vendor set (docs/plan.md, Architecture): a rootfs built on
+# another one is refused; that needs a fresh setup (install-dev.sh). Reboot to use it; the
 # initrd's boot counter falls back to the other slot if the new one never reaches rcS.
 # The running slot is read from the loop device itself, not the slot file, so running this
 # twice without rebooting can never overwrite the image that is running.
@@ -50,36 +48,29 @@ needs_vendor() {
 	umount /tmp/.needs-vendor
 }
 new_vendor=$(needs_vendor "$SRC/rootfs.squashfs")
-run_vendor=$(cat /usr/share/basedos/needs-vendor 2>/dev/null || true)
 
 mount -o remount,rw /boot
 trap 'sync; mount -o remount,ro /boot || echo "WARNING: /boot stayed read-write" >&2' EXIT
-for v in "$SRC"/vendor-*.squashfs; do
-	[ -f "$v" ] || continue
-	[ -f "$B/${v##*/}" ] && cmp -s "$v" "$B/${v##*/}" && continue
-	put "$v" "$B/${v##*/}"
-done
-[ -z "$new_vendor" ] || [ -f "$B/vendor-$new_vendor.squashfs" ] ||
-	die "the new rootfs needs vendor-$new_vendor.squashfs, which isn't on p1 or in $SRC"
+[ -n "$new_vendor" ] && [ -f "$B/vendor-$new_vendor/vendor.squashfs" ] ||
+	die "the new rootfs is built on vendor set '$new_vendor', which this install doesn't have: a fresh setup, not an update"
 put "$SRC/rootfs.squashfs" "$B/$newfile"
-# The initrd, the panel DTB and boot.scr are not A/B: the slot fallback can't undo them, so each
+# The initrd and boot.scr are not A/B: the slot fallback can't undo them, so each
 # one replaced keeps the file it replaces as <name>.prev (boot.scr's as basedos/boot.scr.prev). To
 # go back (from SSH or maintenance mode):
 #   mount -o remount,rw /boot; cp <name>.prev <name>; sync
-# boot.scr boots stock when U-Boot rejects the initrd (CRC) or booti rejects the DTB (not a valid
-# FDT), reloading stock's DTB first. A valid DTB with wrong values (a black panel) and a boot.scr
-# that U-Boot can't run have no automatic way back: SSH and the .prev copy, or the rescue card.
+# boot.scr boots stock (its own saved script) when it can't load BasedOS's kernel, DTB or initrd.
+# A boot.scr that U-Boot can't run has no automatic way back: SSH and the .prev copy, or the
+# rescue card.
 # replace <src> <dst> [<where the old one goes>]: default <dst>.prev beside it.
 replace() {
 	if [ -f "$2" ] && ! cmp -s "$1" "$2"; then put "$2" "${3:-$2.prev}"; fi
 	put "$1" "$2"
 }
 [ -s "$SRC/initrd.uimg" ] && replace "$SRC/initrd.uimg" "$B/initrd.uimg"
-[ -s "$SRC/rk3576-gkd-atom.dtb" ] && replace "$SRC/rk3576-gkd-atom.dtb" "$B/rk3576-gkd-atom.dtb"
-# boot.scr last, and only BasedOS's own (mkboot.py bootscr): never stock's, which would leave BasedOS.
+# boot.scr last, and only BasedOS's own (mkboot.py script): never stock's, which would leave BasedOS.
 if [ -s "$SRC/boot.scr" ]; then
 	scr=$(dd if="$SRC/boot.scr" bs=72 skip=1 2>/dev/null)
-	case "$scr" in *"# BasedOS:"*"rdinit=/basedos/init"*) ;; *) die "$SRC/boot.scr isn't BasedOS's (mkboot.py bootscr)" ;; esac
+	case "$scr" in *"BasedOS"*"rdinit=/basedos/init"*) ;; *) die "$SRC/boot.scr isn't BasedOS's (mkboot.py script)" ;; esac
 	# The old one in BasedOS's folder, not beside stock's files: uninstall removes basedos/ whole.
 	replace "$SRC/boot.scr" /boot/boot.scr "$B/boot.scr.prev"
 fi
@@ -88,10 +79,5 @@ if [ "$new" = b ]; then
 else
 	rm -f "$B/slot"
 fi
-for v in "$B"/vendor-*.squashfs; do
-	[ -f "$v" ] || continue
-	case "${v##*/}" in "vendor-$new_vendor.squashfs"|"vendor-$run_vendor.squashfs") continue ;; esac
-	rm -f "$v" && echo "removed ${v##*/} (neither slot uses it)"
-done
 sync
-echo "running slot: $running; next boot: $new ($newfile${new_vendor:+, on vendor-$new_vendor}). Reboot to switch."
+echo "running slot: $running; next boot: $new ($newfile, on vendor set $new_vendor). Reboot to switch."

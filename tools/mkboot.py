@@ -2,7 +2,8 @@
 """Make BasedOS's boot files from the device's own stock boot.scr.
 
   mkboot.py initrd <busybox.static> <out initrd.uimg>
-  mkboot.py bootscr <stock boot.scr> <out boot.scr>
+  mkboot.py script <initrd/boot.cmd> <out boot.scr>
+  mkboot.py bootscr <stock boot.scr> <out boot.scr>       (the old, stock-derived script)
   mkboot.py dtb <stock rk3576-gkd-atom.dtb> <out rk3576-gkd-atom.dtb>
 
 initrd: a gzip cpio (newc) holding /basedos/init and /basedos/busybox, wrapped
@@ -56,6 +57,17 @@ def initrd(busybox, out):
     with open(out, "xb") as f:
         f.write(uimage(gz, typ=3, name=b"BasedOS initrd"))  # IH_TYPE_RAMDISK, uncompressed wrapper
     print(f"{out}: cpio {len(cpio)} B, gzip {len(gz)} B")
+
+
+def script(src, out):
+    """BasedOS's own boot script (initrd/boot.cmd) as a U-Boot script image, laid out as stock's
+    boot.scr is (the length, then 0xFFFFFFFF, then the text): this U-Boot runs that one."""
+    s = open(src, "rb").read().replace(b"\r\n", b"\n")
+    if not s.endswith(b"\n"):
+        s += b"\n"
+    data = struct.pack(">II", len(s), 0xFFFFFFFF) + s
+    with open(out, "xb") as f:
+        f.write(uimage(data, typ=6, arch=2, name=b"BasedOS boot script"))  # arch as stock's
 
 
 def bootscr(stock, out):
@@ -199,6 +211,8 @@ def dtb(stock, out):
 def main():
     if len(sys.argv) == 4 and sys.argv[1] == "initrd":
         initrd(sys.argv[2], sys.argv[3])
+    elif len(sys.argv) == 4 and sys.argv[1] == "script":
+        script(sys.argv[2], sys.argv[3])
     elif len(sys.argv) == 4 and sys.argv[1] == "bootscr":
         bootscr(sys.argv[2], sys.argv[3])
     elif len(sys.argv) == 4 and sys.argv[1] == "dtb":

@@ -30,6 +30,7 @@ libraries they need (`out/harvest-report.txt` says why each path is there).
 | Mali Vulkan driver | `libmali-vulkan-g52.so` (+ `libMaliVulkan.so.1`), `/usr/share/vulkan/icd.d/mali.json` | closed |
 | Wi-Fi and Bluetooth firmware | `/usr/lib/firmware/`: `fw_bcm4345*.bin`, `nvram_ap625*.txt`, `BCM4345C*.hcd` (10 files) | Broadcom, redistributable only as is |
 | Kernel modules | `/usr/lib/modules/6.1.118/` (`bcmdhd.ko` is the one BasedOS loads) | must match stock's kernel, which BasedOS boots |
+| Kernel and DTBs (since 2026-11-20) | stock's `Image` and `rk3576-gkd-atom{,-hdmi,-usbdp}.dtb`, as plain files beside `vendor.squashfs` in the vendor set (U-Boot loads them) | stock's build; in the vendor set so BasedOS boots its own copy of the kernel its modules came from, never stock's files (docs/plan.md, Architecture) |
 
 What the closed drivers need, read from their ELF headers (2026-11-19): glibc 2.28 or newer, with
 no versioned libstdc++ or CXXABI symbols; `libstdc++.so.6`, `libgcc_s.so.1`,

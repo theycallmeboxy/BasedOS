@@ -23,13 +23,24 @@ fallback() {
 	exec /init
 }
 
-# p1 of the eMMC (mmcblk0 is the eMMC by DT alias). Give it up to 5 s.
+# The disk boot.scr was loaded from (basedos.disk=mmcblkN: the eMMC is mmcblk0, the SD card
+# mmcblk1, by the DT aliases; an old stock-derived boot.scr passes none, and that's the eMMC), and
+# the vendor set its kernel came from (basedos.vendor=<id>). BasedOS's boot partition is the
+# disk's p1, the partition holding basedos-data its p2. Give p1 up to 5 s.
+disk="" kvendor=""
+for a in $($bb cat /proc/cmdline); do
+	case "$a" in
+	basedos.disk=mmcblk[0-9]) disk=${a#basedos.disk=} ;;
+	basedos.vendor=*) kvendor=${a#basedos.vendor=} ;;
+	esac
+done
+disk=${disk:-mmcblk0}
 i=0
-while [ ! -b /dev/mmcblk0p1 ] && [ $i -lt 50 ]; do $bb usleep 100000; i=$((i + 1)); done
-$bb mount -t vfat -o ro,noatime /dev/mmcblk0p1 /p1 || fallback "can't mount eMMC p1"
+while [ ! -b /dev/${disk}p1 ] && [ $i -lt 50 ]; do $bb usleep 100000; i=$((i + 1)); done
+$bb mount -t vfat -o ro,noatime /dev/${disk}p1 /p1 || fallback "can't mount ${disk}p1"
 
 attempts=0
-if $bb mount -t ext4 -o noatime /dev/mmcblk0p2 /p2 2>/dev/null; then
+if $bb mount -t ext4 -o noatime /dev/${disk}p2 /p2 2>/dev/null; then
 	$bb mkdir -p /p2/basedos-data
 	# Uninstall (basedos-boot uninstall checked everything while BasedOS ran, and left the
 	# SHA-256 of the stock boot script it checked): done here, where none of BasedOS's files are
@@ -85,7 +96,7 @@ if $bb mount -t ext4 -o noatime /dev/mmcblk0p2 /p2 2>/dev/null; then
 	$bb sync
 	$bb umount /p2
 else
-	log "can't mount eMMC p2; boot attempts not counted"
+	log "can't mount ${disk}p2; boot attempts not counted"
 fi
 [ "$attempts" -ge 6 ] && fallback "BasedOS did not reach rcS in the last $((attempts - 1)) boots"
 
@@ -98,11 +109,12 @@ if [ "$attempts" -ge 4 ] && [ -f "/p1/basedos/rootfs${other:+-$other}.squashfs" 
 	slot=$other
 fi
 
-# A slot's image is either the system layer, which names the vendor layer it needs
-# (usr/share/basedos/needs-vendor: vendor-<id>.squashfs, stock's files, built on this device's
-# own firmware), or a whole root from before the split. The system layer goes on top of the
-# vendor one with overlayfs, both read-only. A system layer whose vendor layer is missing or
-# different is refused like any other unusable slot.
+# A slot's image is either the system layer, which names the vendor set it's built on
+# (usr/share/basedos/needs-vendor: vendor-<id>/vendor.squashfs, stock's files, built on this
+# device's own firmware), or a whole root from before the split. The system layer goes on top of
+# the vendor set's squashfs with overlayfs, both read-only. A system layer whose vendor set is
+# missing, different, or not the one this boot's kernel came from is refused like any other
+# unusable slot.
 $bb mkdir -p /layers/system /layers/vendor
 mount_slot() {
 	$bb mount -t squashfs -o ro,loop "$1" /layers/system || { log "$1 does not mount"; return 1; }
@@ -112,7 +124,14 @@ mount_slot() {
 		$bb mount -t squashfs -o ro,loop "$1" /newroot || { log "$1 does not mount"; return 1; }
 		layers="whole root"
 	else
-		vendor=/p1/basedos/vendor-$want.squashfs
+		# The vendor set: the kernel booting now and vendor.squashfs (its modules, firmware and
+		# drivers) must be the same set, the one the slot was built on.
+		vendor=/p1/basedos/vendor-$want/vendor.squashfs
+		if [ -n "$kvendor" ] && [ "$kvendor" != "$want" ]; then
+			log "$1 is built on vendor set $want, but this kernel is vendor set $kvendor's"
+			$bb umount /layers/system
+			return 1
+		fi
 		if [ ! -f "$vendor" ]; then
 			log "$1 needs $vendor, which isn't there"
 			$bb umount /layers/system

@@ -22,8 +22,18 @@ splash() { [ -x /usr/bin/basedos-splash ] && /usr/bin/basedos-splash "$@" >/dev/
 # say "message": log it, and show it as the boot screen's status line.
 say() { log "$*"; splash "$*"; }
 
+# The disk BasedOS booted from (boot.scr passes basedos.disk=mmcblkN: the eMMC is mmcblk0, the SD
+# card mmcblk1): BasedOS's boot partition is its p1, the one with /data on it its p2.
+BOOT_DISK=""
+for _a in $(cat /proc/cmdline 2>/dev/null); do
+	case "$_a" in basedos.disk=mmcblk[0-9]) BOOT_DISK=${_a#basedos.disk=} ;; esac
+done
+BOOT_DISK=${BOOT_DISK:-mmcblk0}
+BOOT_P1=/dev/${BOOT_DISK}p1
+BOOT_P2=/dev/${BOOT_DISK}p2
+
 # Which rootfs slot this boot runs: the initrd loop-mounts rootfs.squashfs (a) or
-# rootfs-b.squashfs (b), and the vendor layer beside it.
+# rootfs-b.squashfs (b), and the vendor set's vendor.squashfs beside it.
 boot_slot() {
 	for _f in /sys/block/loop*/loop/backing_file; do
 		case "$(cat "$_f" 2>/dev/null)" in

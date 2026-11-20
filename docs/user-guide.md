@@ -23,15 +23,14 @@ between the 350H Ultra and your other spruce devices.
 2. Prepare your stock files from the backup:
    `python tools/prepare_stock.py <backup>/mmcblk0.img prepared`
 3. In WSL: build (`tools/wsl/build.sh`; it unpacks your stock image the first time). It writes
-   `out/`: the vendor layer (`vendor-<id>.squashfs`, from your stock, never shared), the system
-   layer (`rootfs.squashfs`), the initrd, the boot script and an update payload (`.bosupd`).
-4. Make the panel's DTB (60 Hz; see power.md):
-   `python tools/mkboot.py dtb prepared/<build>/rk3576-gkd-atom.dtb out/rk3576-gkd-atom.dtb`
-5. With the 350H Ultra running stock and reachable over SSH, copy `out/` to `/tmp` on the device and run
-   `tools/install-dev.sh /tmp/<dir>` there. It adds BasedOS's files to the boot partition (both
-   layers, the initrd, the DTB), keeps stock's boot script, copies your Wi-Fi network and SSH keys,
-   and leaves stock untouched.
-6. Reboot. BasedOS starts, then spruce from the card.
+   `out/`: the vendor set (`vendor-<id>/`: the kernel, DTBs and `vendor.squashfs`, from your stock,
+   never shared), `boot.env`, the system layer (`rootfs.squashfs`), the initrd, BasedOS's boot
+   script and an update payload (`.bosupd`).
+4. With the 350H Ultra running stock and reachable over SSH, copy `out/` to `/tmp` on the device and run
+   `tools/install-dev.sh /tmp/<dir>` there. It adds BasedOS's files to the boot partition (the
+   vendor set, `boot.env`, the system layer, the initrd), puts BasedOS's boot script in place of
+   stock's (kept), copies your Wi-Fi network and SSH keys, and leaves stock's own files untouched.
+5. Reboot. BasedOS starts, then spruce from the card.
 
 To go back to stock: the maintenance menu (above), or from SSH `basedos-boot stock-once`,
 `switch-to-stock` or `uninstall` (add `--reboot`); `basedos-boot status` says what boots next.
@@ -79,15 +78,14 @@ Without a card, BasedOS waits for one and says so once on screen.
 - It goes into the copy of BasedOS that isn't running, and is checked before it's used. If the new
   copy doesn't start, BasedOS goes back to the old one after a few tries, and won't try that
   update again.
-- An update holds only BasedOS's own files. When it needs different parts of your device's stock
-  firmware (the vendor layer), BasedOS builds them while installing, from the stock image that
-  stays on the device next to it (`basedos-vendor`, about a minute; the screen says so); no PC
-  needed. If your stock image isn't the build the update is for, the update fails and the running
-  version stays. Vendor layers no longer needed are removed once an update has started. To see what
-  an update would do, from SSH: `basedos-update status`; `basedos-vendor status` shows the vendor
-  layers.
-- An update doesn't carry the boot script either, so a change to BasedOS's kernel options needs a
-  developer update (`tools/dev/update-basedos.sh`) for now.
+- An update holds only BasedOS's own files, never the parts from your device's stock firmware
+  (the vendor set: the kernel, its modules, the GPU drivers, the firmware). Each BasedOS release is
+  built on one stock firmware build; an update for another one is refused, and moving to it is a
+  fresh setup (your frontend keeps your settings and games). To see what an update would do, from
+  SSH: `basedos-update status`.
+- An update doesn't carry the boot script either; it rarely changes (what does, the vendor set's
+  name, is in `basedos/boot.env`), and a change needs a developer update
+  (`tools/dev/update-basedos.sh`) for now.
 
 ## Safeguards
 

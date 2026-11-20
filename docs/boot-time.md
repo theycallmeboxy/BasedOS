@@ -28,8 +28,9 @@ Measured on the unit, 2026-11-16 (BasedOS b8121f5 plus the loglevel change, spru
 
 `frontend` (the mark taken just before spruce starts) went from 2.96 s of uptime to 1.26-1.42 s
 over four boots, and the kernel's `Freeing unused kernel memory` from 3.69 s to 2.49-2.54 s.
-BasedOS's boot script (`mkboot.py bootscr`) adds two options to stock's command line; stock's own
-boot (the fallback, and `install-dev.sh revert`) has neither:
+BasedOS's boot script (`initrd/boot.cmd`; until 2026-11-20 stock's, rewritten by `mkboot.py
+bootscr`) has two options stock's command line doesn't; stock's own boot (the fallback, and
+`install-dev.sh revert`) has neither:
 
 - **`initcall_blacklist=raid6_select_algo`**: the stock kernel has btrfs built in, and with it the
   RAID6 library, which benchmarked eight parity routines at every boot (0.51 s;

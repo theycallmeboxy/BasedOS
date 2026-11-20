@@ -9,12 +9,9 @@
 #             once the new slot has booted; note a rollback otherwise).
 #   status    what is installed, and what each payload on the card would do.
 #
-# A payload carries the system layer and the initrd, never stock's files: the vendor layer it
-# names (p1/basedos/vendor-<id>.squashfs) is used if it's on this device, and otherwise built here
-# from this device's stock image by basedos-vendor, following the recipe in the new system layer
-# (refused if there's no stock image to build it from; the update fails, and the running system
-# stays, if the stock image isn't the build the recipe is for). Once an update is confirmed,
-# vendor layers neither slot needs are removed (basedos-vendor prune). The
+# A payload carries the system layer and the initrd, never stock's files. It names the vendor set
+# (the base: docs/plan.md, Architecture) it's built on; updates never change the vendor set, so a
+# payload for another base is refused: that needs a fresh setup, not an update. The
 # system layer goes to the slot that isn't running (A/B, as tools/dev/update-basedos.sh), the
 # initrd replaces the old one when it differs (kept as initrd.uimg.prev). Each file is written as
 # <name>.new, synced, re-read from the eMMC against the manifest's SHA-256 and only then renamed,
@@ -57,7 +54,7 @@ version_newer() {
 # Judge one payload: 0 = apply, 1 = nothing to do, 2 = refused. Sets EV_VERSION, EV_BUILD,
 # EV_SHA, EV_REASON, and leaves its manifest in $MANIFEST.
 evaluate() {
-	EV_VERSION="" EV_BUILD="" EV_SHA="" EV_REASON="" EV_VENDOR="" EV_VENDOR_BUILD=""
+	EV_VERSION="" EV_BUILD="" EV_SHA="" EV_REASON="" EV_VENDOR=""
 	if ! tar -xOf "$1" manifest > "$MANIFEST" 2>/dev/null || [ ! -s "$MANIFEST" ]; then
 		EV_REASON="not a BasedOS update"; return 2
 	fi
@@ -69,11 +66,8 @@ evaluate() {
 	case "$EV_SHA" in [0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) ;; *) EV_REASON="no rootfs-sha256"; return 2 ;; esac
 	EV_VENDOR=$(field "$MANIFEST" vendor)
 	[ -n "$EV_VENDOR" ] || { EV_REASON="names no vendor layer"; return 2; }
-	if [ ! -f "$B/vendor-$EV_VENDOR.squashfs" ]; then
-		[ -f /boot/SYSTEM ] && command -v basedos-vendor >/dev/null ||
-			{ EV_REASON="needs vendor layer $EV_VENDOR, and there's no stock image here to build it from"; return 2; }
-		EV_VENDOR_BUILD=1
-	fi
+	[ -f "$B/vendor-$EV_VENDOR/vendor.squashfs" ] ||
+		{ EV_REASON="built for another base (vendor set $EV_VENDOR; this device has ${BASEOS_VENDOR:-none}): that needs a fresh setup, not an update"; return 2; }
 	# Only forward, or a rebuild of the running version: an old payload left on the card must not
 	# downgrade the device once it has moved past it.
 	if version_newer "$EV_VERSION" "${BASEOS_VERSION:-0}"; then :
@@ -117,27 +111,6 @@ apply() {
 	*) log "can't tell which slot is running; not updating"; return 1 ;;
 	esac
 	say "updating BasedOS to $EV_VERSION ($EV_BUILD)"
-	# Its vendor layer first, if this device lacks it: from this device's stock, by the recipe in
-	# the new system layer, read from a verified copy on /data. Both slots are untouched until it
-	# exists, so a failed build leaves the device as it was (and the fallback slot usable).
-	if [ -n "$EV_VENDOR_BUILD" ]; then
-		_pending=$STATE_DIR/pending-rootfs.squashfs
-		_m=/run/basedos/update-slot
-		mkdir -p "$_m"
-		_ok=""
-		if member "$_chosen" rootfs.squashfs "$_pending" "$EV_SHA" &&
-			mount -t squashfs -o ro,loop "$_pending" "$_m"; then
-			basedos-vendor build "$_m/usr/share/basedos/vendor-recipe" && _ok=1
-			umount "$_m"
-		fi
-		rm -f "$_pending" "$_pending.new"
-		if [ -z "$_ok" ] || [ ! -f "$B/vendor-$EV_VENDOR.squashfs" ]; then
-			# Not again at every boot: the same stock image would fail the same way.
-			echo "$EV_SHA $EV_VERSION $EV_BUILD vendor-build-failed" >> "$HISTORY"
-			say "BasedOS update failed: couldn't build vendor layer $EV_VENDOR from this device's stock; still on $BASEOS_VERSION"
-			return 1
-		fi
-	fi
 	mount -o remount,rw /boot || { log "can't write p1; not updating"; return 1; }
 	if ! member "$_chosen" rootfs.squashfs "$B/$_file" "$EV_SHA"; then
 		mount -o remount,ro /boot
@@ -173,7 +146,6 @@ confirm() {
 	if [ "$(running_slot)" = "$_want" ]; then
 		_p=$(field "$STATE" payload)
 		rm -f "$_p" && log "update to $(field "$STATE" version) ($(field "$STATE" build)) confirmed; removed $_p"
-		command -v basedos-vendor >/dev/null && basedos-vendor prune
 	else
 		log "update to $(field "$STATE" version) didn't boot; back on $BASEOS_VERSION ($BASEOS_BUILD). Its payload stays on the card and won't be applied again"
 	fi
@@ -183,7 +155,7 @@ confirm() {
 
 status() {
 	echo "running: BasedOS $BASEOS_VERSION ($BASEOS_BUILD), slot $(running_slot), vendor ${BASEOS_VENDOR:-none}"
-	for _v in "$B"/vendor-*.squashfs; do [ -f "$_v" ] && echo "vendor layer: ${_v##*/}"; done
+	for _v in "$B"/vendor-*/vendor.squashfs; do [ -f "$_v" ] && { _d=${_v%/vendor.squashfs}; echo "vendor set: ${_d##*/}"; }; done
 	[ -f "$STATE" ] && echo "pending: $(field "$STATE" version) in slot $(field "$STATE" slot)"
 	_any=""
 	for _p in "$CARD"/*.bosupd; do
@@ -191,7 +163,7 @@ status() {
 		_any=1
 		evaluate "$_p"; _r=$?
 		case $_r in
-		0) echo "$_p: $EV_VERSION ($EV_BUILD) WILL BE INSTALLED at the next boot${EV_VENDOR_BUILD:+ (building vendor layer $EV_VENDOR from stock first)}" ;;
+		0) echo "$_p: $EV_VERSION ($EV_BUILD) WILL BE INSTALLED at the next boot" ;;
 		1) echo "$_p: $EV_VERSION ($EV_BUILD) skipped: $EV_REASON" ;;
 		*) echo "$_p: refused: $EV_REASON" ;;
 		esac

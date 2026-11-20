@@ -38,10 +38,10 @@ mkdir -p /run/p2
 # The clock first: e2fsck compares the superblock's times with it, and a clock at 1970 would
 # make it check the whole filesystem (or refuse, times "in the future").
 hwclock -u -s 2>/dev/null || early_rtc=1
-e2fsck -p /dev/mmcblk0p2 > /run/basedos/e2fsck.log 2>&1
+e2fsck -p $BOOT_P2 > /run/basedos/e2fsck.log 2>&1
 fsck_rc=$?
 data_ok=0
-if [ $fsck_rc -lt 4 ] && mount -t ext4 -o noatime /dev/mmcblk0p2 /run/p2 &&
+if [ $fsck_rc -lt 4 ] && mount -t ext4 -o noatime $BOOT_P2 /run/p2 &&
 	mkdir -p /run/p2/basedos-data && mount --bind /run/p2/basedos-data /data; then
 	data_ok=1
 	# Userspace is up: this boot counts as good (the initrd counts attempts that don't get here).
@@ -55,7 +55,7 @@ fi
 cat /run/basedos/early.log >> /data/basedos.log 2>/dev/null && rm -f /run/basedos/early.log
 [ -n "${early_rtc:-}" ] && log "no RTC time"
 log "boot $(cut -c1-8 /proc/sys/kernel/random/boot_id): BasedOS $BASEOS_VERSION ($BASEOS_BUILD)"
-[ $data_ok = 1 ] || say "eMMC p2 unusable (e2fsck exit $fsck_rc): /data is in RAM this boot; settings and logs won't persist"
+[ $data_ok = 1 ] || say "$BOOT_DISK p2 unusable (e2fsck exit $fsck_rc): /data is in RAM this boot; settings and logs won't persist"
 
 # Accounts live on /data so a frontend can add its own (spruce's SSH/Samba user); the read-only
 # root links /etc/passwd, group and shadow there. Seeded from the defaults on first boot.

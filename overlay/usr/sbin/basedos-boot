@@ -135,7 +135,15 @@ stock_once() {
 	log "boot: stock for the next boot"
 }
 
+# On an SD card install stock is simply the device without the card: nothing to switch or remove
+# (the card can be reformatted).
+not_on_card() {
+	on_sd_card && die "BasedOS runs from the SD card here: without the card, the device starts stock by itself"
+	return 0
+}
+
 switch_to_stock() {
+	not_on_card
 	check_places
 	[ "$(scr_kind /boot/boot.scr)" = basedos ] || die "/boot/boot.scr isn't BasedOS's; nothing to switch"
 	check_stock $B/boot.scr.stock || die "$B/boot.scr.stock isn't a stock boot script; not switching"
@@ -164,6 +172,7 @@ switch_to_stock() {
 }
 
 uninstall() {
+	not_on_card
 	check_places
 	check_stock $B/boot.scr.stock || die "$B/boot.scr.stock isn't a stock boot script; not uninstalling"
 	grep -q "^$BOOT_P2 /data " /proc/mounts || die "/data isn't on the boot disk this boot; can't leave the flag"

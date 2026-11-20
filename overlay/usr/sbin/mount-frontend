@@ -1,6 +1,7 @@
 #!/bin/sh
 # Mount the frontend card (the SD slot, controller 2a310000.mmc) on /mnt/SDCARD. Exit 0 when
-# mounted. QUIET=1 keeps "no card" out of the log (frontend-session polls with it).
+# mounted. QUIET=1 keeps "no card" out of the log (frontend-session polls with it). Only the SD
+# slot is ever looked at, never the eMMC.
 . /usr/lib/basedos/functions
 SD=/mnt/SDCARD
 
@@ -18,9 +19,18 @@ for b in /sys/block/mmcblk*; do
 	case "$(readlink -f "$b")" in */2a310000.mmc/*) disk=${b##*/}; break ;; esac
 done
 [ -n "$disk" ] || { [ -n "${QUIET:-}" ] || log "no card in the slot"; exit 1; }
+# BasedOS running from this card (an SD install, basedos-setup): p1 and p2 are BasedOS's own
+# (boot, data); the frontend's partition is the one labelled BASEOS.
+if [ "$disk" = "$BOOT_DISK" ]; then
+	dev=""
+	for p in /dev/${disk}p[3-9]; do
+		[ -b "$p" ] || continue
+		[ "$(blkid "$p" 2>/dev/null | sed -n 's/.* LABEL="\([^"]*\)".*/\1/p')" = BASEOS ] && { dev=$p; break; }
+	done
+	[ -n "$dev" ] || { [ -n "${QUIET:-}" ] || log "BasedOS's card has no BASEOS partition"; exit 1; }
 # The whole-disk node appears a moment before its partitions: use the disk itself only when it
 # has no partition table at all.
-if [ -b "/dev/${disk}p1" ]; then
+elif [ -b "/dev/${disk}p1" ]; then
 	dev=/dev/${disk}p1
 elif [ -n "$(ls -d /sys/block/$disk/${disk}p* 2>/dev/null)" ]; then
 	exit 1

@@ -31,6 +31,8 @@ done
 BOOT_DISK=${BOOT_DISK:-mmcblk0}
 BOOT_P1=/dev/${BOOT_DISK}p1
 BOOT_P2=/dev/${BOOT_DISK}p2
+# 0 when BasedOS runs from an SD card (basedos-setup's SD install), not the eMMC.
+on_sd_card() { [ "$BOOT_DISK" != mmcblk0 ]; }
 
 # Which rootfs slot this boot runs: the initrd loop-mounts rootfs.squashfs (a) or
 # rootfs-b.squashfs (b), and the vendor set's vendor.squashfs beside it.

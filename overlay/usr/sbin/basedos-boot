@@ -172,6 +172,9 @@ uninstall() {
 	# 2. BasedOS's files. The running system's are open (its layers are loop-mounted from them);
 	# removing them frees the space once they close, at the reboot.
 	rm -rf /boot/basedos
+	# A BasedOS boot script that older developer updates kept beside stock's files
+	# (tools/dev/update-basedos.sh now keeps it in basedos/). Only if it's BasedOS's.
+	[ "$(scr_kind /boot/boot.scr.prev)" = basedos ] && rm -f /boot/boot.scr.prev
 	ro
 	for _d in $(stock_ports_dirs); do rm -f "$_d/$RETURN_NAME"; done
 	# /data is a bind of this folder; logging stops here.

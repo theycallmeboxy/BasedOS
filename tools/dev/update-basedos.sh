@@ -63,13 +63,15 @@ done
 	die "the new rootfs needs vendor-$new_vendor.squashfs, which isn't on p1 or in $SRC"
 put "$SRC/rootfs.squashfs" "$B/$newfile"
 # The initrd, the panel DTB and boot.scr are not A/B: the slot fallback can't undo them, so each
-# one replaced keeps the file it replaces as <name>.prev. To go back (from SSH or maintenance mode):
+# one replaced keeps the file it replaces as <name>.prev (boot.scr's as basedos/boot.scr.prev). To
+# go back (from SSH or maintenance mode):
 #   mount -o remount,rw /boot; cp <name>.prev <name>; sync
 # boot.scr boots stock when U-Boot rejects the initrd (CRC) or booti rejects the DTB (not a valid
 # FDT), reloading stock's DTB first. A valid DTB with wrong values (a black panel) and a boot.scr
 # that U-Boot can't run have no automatic way back: SSH and the .prev copy, or the rescue card.
+# replace <src> <dst> [<where the old one goes>]: default <dst>.prev beside it.
 replace() {
-	if [ -f "$2" ] && ! cmp -s "$1" "$2"; then put "$2" "$2.prev"; fi
+	if [ -f "$2" ] && ! cmp -s "$1" "$2"; then put "$2" "${3:-$2.prev}"; fi
 	put "$1" "$2"
 }
 [ -s "$SRC/initrd.uimg" ] && replace "$SRC/initrd.uimg" "$B/initrd.uimg"
@@ -78,7 +80,8 @@ replace() {
 if [ -s "$SRC/boot.scr" ]; then
 	scr=$(dd if="$SRC/boot.scr" bs=72 skip=1 2>/dev/null)
 	case "$scr" in *"# BasedOS:"*"rdinit=/basedos/init"*) ;; *) die "$SRC/boot.scr isn't BasedOS's (mkboot.py bootscr)" ;; esac
-	replace "$SRC/boot.scr" /boot/boot.scr
+	# The old one in BasedOS's folder, not beside stock's files: uninstall removes basedos/ whole.
+	replace "$SRC/boot.scr" /boot/boot.scr "$B/boot.scr.prev"
 fi
 if [ "$new" = b ]; then
 	echo b > "$B/slot.new" && sync && mv "$B/slot.new" "$B/slot"

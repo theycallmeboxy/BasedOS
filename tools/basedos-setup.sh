@@ -1,8 +1,12 @@
 #!/bin/sh
 # basedos-setup: set up BasedOS on a GKD 350H Ultra. Run it ON the device, under stock ROCKNIX,
-# over SSH (ssh root@<device>; stock's root has no password), from the BasedOS release folder:
+# over SSH (ssh root@<device>; stock's root has no password). The script on its own is enough: it
+# downloads the rest of its release (from the GitHub release it belongs to, checked against that
+# release's SHA256SUMS) into RAM. Nothing is needed on a PC:
 #
-#   sh basedos-setup.sh
+#   wget -O /tmp/basedos-setup.sh <the release's basedos-setup.sh URL> && sh /tmp/basedos-setup.sh
+#
+# (Run from a folder that already holds the release files, it uses those instead.)
 #
 # Three choices:
 #
@@ -38,6 +42,9 @@
 set -u
 
 HERE=$(cd "$(dirname "$0")" && pwd)
+# The release this script belongs to (tools/wsl/release.sh writes it in).
+RELEASE_TAG=@RELEASE_TAG@
+RELEASE_URL=https://github.com/theycallmeboxy/BasedOS/releases/download/$RELEASE_TAG
 STOCK_P1=/flash
 T=/tmp/basedos-setup            # RAM: nothing of setup's own goes on the eMMC
 SDC=2a310000.mmc                # the SD slot's controller
@@ -170,6 +177,30 @@ fi
 need=""
 [ "$TARGET" != recovery ] && need="rootfs.squashfs initrd.uimg boot.scr"
 [ "$REC" = yes ] && need="$need recovery-initrd.uimg recovery.scr"
+# Not beside the script: downloaded from its release into RAM, each checked against the release's
+# SHA256SUMS.
+fetch() {  # fetch <url> <file>
+	if command -v curl >/dev/null 2>&1; then curl -fsSL --retry 3 -o "$2" "$1"
+	elif command -v wget >/dev/null 2>&1; then wget -q -O "$2" "$1"
+	else return 1; fi
+}
+missing=""
+for f in $need; do [ -s "$HERE/$f" ] || missing=1; done
+if [ -n "$missing" ]; then
+	case "$RELEASE_TAG" in @*) die "this copy of the script belongs to no release: run it from a release folder" ;; esac
+	step "Downloading BasedOS $RELEASE_TAG"
+	DL=$T/release
+	rm -rf "$DL"; mkdir -p "$DL"
+	fetch "$RELEASE_URL/SHA256SUMS" "$DL/SHA256SUMS" || die "can't download $RELEASE_URL/SHA256SUMS (is Wi-Fi up?)"
+	for f in $need; do
+		want=$(awk -v f="$f" '$2 == f || $2 == "*" f { print $1 }' "$DL/SHA256SUMS")
+		[ ${#want} -eq 64 ] || die "the release's SHA256SUMS doesn't list $f"
+		say "$f"
+		fetch "$RELEASE_URL/$f" "$DL/$f" || die "can't download $RELEASE_URL/$f"
+		[ "$(sha256sum < "$DL/$f" | cut -c1-64)" = "$want" ] || die "$f doesn't match the release's SHA256SUMS"
+	done
+	HERE=$DL
+fi
 for f in $need; do
 	[ -s "$HERE/$f" ] || die "the release folder ($HERE) has no $f"
 done

@@ -6,7 +6,8 @@
 # Boot attempts are counted on p2 (basedos-data/boot-attempts) before the root is
 # chosen, and rcS deletes the count once userspace is up. Boots that never reach
 # rcS keep counting: from the 4th the other rootfs slot is used, from the 6th
-# stock boots. The count stays until rcS (or you) deletes it.
+# stock boots. The count stays until rcS (or you) deletes it. basedos-data/boot-stock-once,
+# if there, is removed and stock boots once.
 bb=/basedos/busybox
 log() { echo "basedos-init: $*" > /dev/kmsg; }
 
@@ -30,6 +31,13 @@ $bb mount -t vfat -o ro,noatime /dev/mmcblk0p1 /p1 || fallback "can't mount eMMC
 attempts=0
 if $bb mount -t ext4 -o noatime /dev/mmcblk0p2 /p2 2>/dev/null; then
 	$bb mkdir -p /p2/basedos-data
+	# Stock for this one boot (basedos-boot stock-once: the Start key, the maintenance menu).
+	# The flag goes first, so the boot after this one is BasedOS's again whatever stock does.
+	if [ -f /p2/basedos-data/boot-stock-once ]; then
+		$bb rm -f /p2/basedos-data/boot-stock-once
+		$bb sync
+		fallback "stock asked for this boot"
+	fi
 	attempts=$($bb cat /p2/basedos-data/boot-attempts 2>/dev/null)
 	case "$attempts" in ''|*[!0-9]*) attempts=0 ;; esac
 	attempts=$((attempts + 1))

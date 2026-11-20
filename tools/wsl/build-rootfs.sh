@@ -219,7 +219,7 @@ find "$SYS" -name __pycache__ -prune -exec rm -rf {} +
 # poweroff's wrapper (it notes which of the three was asked for) answers to all three names.
 for a in reboot halt; do rm -f usr/sbin/$a; ln -s poweroff usr/sbin/$a; done
 find "$SYS/etc" "$SYS/usr/lib/basedos" "$SYS/usr/share/udhcpc" "$SYS/usr/share/basedos" -type f -exec chmod 644 {} +
-chmod 755 etc/init.d/* usr/sbin/poweroff usr/sbin/mount-frontend usr/sbin/frontend-session usr/sbin/basedos-suspend usr/sbin/basedos-update usr/sbin/basedos-udev usr/sbin/basedos-vendor usr/share/udhcpc/default.script
+chmod 755 etc/init.d/* usr/sbin/poweroff usr/sbin/mount-frontend usr/sbin/frontend-session usr/sbin/basedos-suspend usr/sbin/basedos-update usr/sbin/basedos-udev usr/sbin/basedos-vendor usr/sbin/basedos-boot usr/sbin/basedos-menu usr/share/udhcpc/default.script
 # Accounts are on /data (rcS seeds them from these defaults), so a frontend can add users.
 chmod 644 usr/share/basedos/accounts/passwd usr/share/basedos/accounts/group
 chmod 600 usr/share/basedos/accounts/shadow

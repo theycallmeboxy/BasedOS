@@ -1,0 +1,92 @@
+#!/bin/sh
+# basedos-menu: maintenance mode's menu on the boot screen (frontend-session runs it). Up and
+# Down choose, A runs; the two that change what boots (switch to stock, uninstall) want A held
+# 3 s, and B goes back. Wi-Fi and SSH run beside it as before. Each choice is basedos-boot's
+# (or reboot, poweroff), so the same can be done over SSH.
+. /usr/lib/basedos/functions
+
+UP=$(button_code up) DOWN=$(button_code down) A=$(button_code a) B=$(button_code b)
+ITEMS="stock-once|Start stock once (BasedOS again after)
+switch|Switch to stock (back from stock's Ports)
+uninstall|Uninstall BasedOS
+reboot|Restart
+poweroff|Power off"
+N=$(echo "$ITEMS" | wc -l)
+sel=1
+
+held() { echo " $(/usr/bin/basedos-keys 2>/dev/null | tr '\n' ' ') "; }
+is_held() { case "$1" in *" $2 "*) return 0 ;; esac; return 1; }
+
+# draw [status]: the menu, the selected line highlighted.
+draw() {
+	_ip=$(ip -4 addr show wlan0 2>/dev/null | sed -n 's/.*inet \([0-9.]*\).*/\1/p' | head -1)
+	{
+		echo "!MAINTENANCE MODE"
+		echo "ssh root@${_ip:-(waiting for Wi-Fi)}   no password"
+		_i=0
+		echo "$ITEMS" | while IFS='|' read -r _k _label; do
+			_i=$((_i + 1))
+			if [ $_i = $sel ]; then echo "!> $_label"; else echo "   $_label"; fi
+		done
+		echo "Up/Down choose, A select.  BasedOS $BASEOS_VERSION ($BASEOS_BUILD)"
+	} > "$SPLASH_INFO"
+	splash "${1:-}"
+}
+
+# confirm <what>: 0 once A has been held 3 s, 1 if B is pressed first.
+confirm() {
+	{
+		echo "!$1"
+		echo "Hold A for 3 seconds to go ahead."
+		echo "Press B to go back."
+	} > "$SPLASH_INFO"
+	splash ""
+	# Let go of the A that chose this first.
+	while is_held "$(held)" "$A"; do usleep 50000; done
+	_t=0
+	while :; do
+		_h=$(held)
+		is_held "$_h" "$B" && return 1
+		if is_held "$_h" "$A"; then _t=$((_t + 1)); [ $_t -ge 30 ] && return 0; else _t=0; fi
+		usleep 100000
+	done
+}
+
+run() {
+	case "$1" in
+	stock-once)
+		draw "starting stock once"
+		basedos-boot stock-once --reboot ;;
+	switch)
+		confirm "Switch to stock? BasedOS stays installed; 'Return to BasedOS' in stock's Ports brings it back." || return
+		draw "switching to stock"
+		basedos-boot switch-to-stock --reboot || draw "couldn't switch to stock: see /data/basedos.log" ;;
+	uninstall)
+		confirm "Uninstall BasedOS? Its files and settings on this device are removed; stock is as before." || return
+		draw "uninstalling BasedOS"
+		basedos-boot uninstall --reboot || draw "couldn't uninstall: see /data/basedos.log" ;;
+	reboot)
+		draw "restarting"; reboot ;;
+	poweroff)
+		draw "powering off"; poweroff ;;
+	esac
+}
+
+draw
+prev=$(held)
+tick=0
+while :; do
+	usleep 80000
+	now=$(held)
+	# A press is a key down now that wasn't before.
+	if is_held "$now" "$UP" && ! is_held "$prev" "$UP"; then sel=$((sel > 1 ? sel - 1 : N)); draw
+	elif is_held "$now" "$DOWN" && ! is_held "$prev" "$DOWN"; then sel=$((sel < N ? sel + 1 : 1)); draw
+	elif is_held "$now" "$A" && ! is_held "$prev" "$A"; then
+		run "$(echo "$ITEMS" | sed -n "${sel}p" | cut -d'|' -f1)"
+		draw
+		now=$(held)
+	fi
+	prev=$now
+	# The address appears once Wi-Fi is up.
+	tick=$((tick + 1)); [ $((tick % 60)) = 0 ] && draw
+done

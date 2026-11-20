@@ -103,6 +103,7 @@ boot_key_hints() {
 		button_code "$_b" >/dev/null || continue
 		case "$_a" in
 		maintenance) _what="maintenance mode" ;;
+		stock) _what="start stock instead, once" ;;
 		frontend) _what="start $_arg" ;;
 		*) _what="$_a" ;;
 		esac

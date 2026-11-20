@@ -2,10 +2,11 @@
 # layer's needs-vendor carry it: the first 12 hex digits of a SHA-256 over every file and link,
 # sorted by path, as "F ./path sha256 mode" and "L ./path target". Sourced, not run, by both
 # tools/wsl/build-rootfs.sh (the PC build, GNU tools) and basedos-vendor (the device, BusyBox):
-# the two must give the same id for the same files, so this is the one copy. Computed before
-# usr/share/basedos/vendor-release is written, which isn't part of it.
+# the two must give the same id for the same files, so this is the one copy.
+# usr/share/basedos/vendor-release, which records the id, isn't part of it (so a built layer's
+# id can be checked from its own files).
 vendor_id() {
-	(cd "$1" && find . \( -type f -o -type l \) | LC_ALL=C sort | while read -r _f; do
+	(cd "$1" && find . \( -type f -o -type l \) ! -path ./usr/share/basedos/vendor-release | LC_ALL=C sort | while read -r _f; do
 		if [ -L "$_f" ]; then
 			echo "L $_f $(readlink "$_f")"
 		else

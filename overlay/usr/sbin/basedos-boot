@@ -10,114 +10,183 @@
 #                               (basedos/) and its data on p2 (basedos-data/, with the return
 #                               script if there is one). Stock is as it was before the install.
 #   basedos-boot status         what boots next
+#   ... --reboot                restart once it has worked
 #
-# The maintenance menu (basedos-menu) and the Start boot key call these; they reboot (or, for
-# switch-to-stock and uninstall, the caller reboots: --reboot does it here).
-# install-dev.sh, which installed BasedOS, changed only those: it kept stock's boot.scr as
+# The maintenance menu (basedos-menu) and the Start boot key call these.
+# install-dev.sh, which installed BasedOS, changed only these: it kept stock's boot.scr as
 # basedos/boot.scr.stock and wrote BasedOS's own; stock's SYSTEM, kernel, DTBs and /storage are
 # untouched.
+#
+# Caution, since a wrong boot.scr is the one thing here that can stop the device booting:
+# - Every boot.scr written is checked first (a well-formed U-Boot script image; BasedOS's or
+#   stock's, as expected; stock's matched against the known stock builds when it can be) and
+#   read back from the eMMC after.
+# - Each write is <name>.new, synced, re-read and compared, then renamed: a power cut leaves the
+#   old or the new file whole.
+# - The boot.scr switch is the last step that can fail: everything a switch needs (the return
+#   script, BasedOS's saved script) is in place and checked before it, and removals come only
+#   after it.
+# - Nothing is done unless /boot is the eMMC's p1 and p2 the eMMC's p2.
 export PATH=/usr/bin:/usr/sbin
 . /usr/lib/basedos/functions
 
 B=/boot/basedos
 P2=/run/p2
 RETURN_NAME="Return to BasedOS.sh"
+KNOWN_STOCK=/usr/share/basedos/stock-boot-scr.sha256
 
 die() { log "boot: $*"; echo "basedos-boot: $*" >&2; exit 1; }
 
-# put <src> <dst>: written as <dst>.new, synced, re-read from the eMMC and compared, then renamed
-# (install-dev.sh's way: a power cut leaves either file whole).
 put() {
-	cp "$1" "$2.new" || return 1
+	cp "$1" "$2.new" || { rm -f "$2.new"; return 1; }
 	sync
 	echo 3 > /proc/sys/vm/drop_caches
 	cmp -s "$1" "$2.new" || { rm -f "$2.new"; return 1; }
 	mv "$2.new" "$2" && sync
 }
 
-rw() { mount -o remount,rw /boot || die "can't write p1"; }
-ro() { sync; mount -o remount,ro /boot; }
+_made_rw=""
+rw() {
+	grep -q "^/dev/mmcblk0p1 /boot [^ ]* rw" /proc/mounts && return 0
+	mount -o remount,rw /boot || die "can't write p1"
+	_made_rw=1
+}
+ro() { sync; [ -n "$_made_rw" ] && mount -o remount,ro /boot; _made_rw=""; }
 
-is_basedos_scr() { dd if="$1" bs=72 skip=1 2>/dev/null | grep -q "rdinit=/basedos/init"; }
+# scr_kind <file>: basedos, stock or bad. A U-Boot legacy script image (magic 27051956, type 6
+# "script", its size as the header says); BasedOS's has rdinit=/basedos/init.
+scr_kind() {
+	[ -s "$1" ] || { echo bad; return; }
+	[ "$(dd if="$1" bs=4 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n')" = 27051956 ] || { echo bad; return; }
+	[ "$(dd if="$1" bs=1 skip=30 count=1 2>/dev/null | od -An -tu1 | tr -d ' \n')" = 6 ] || { echo bad; return; }
+	_len=$(dd if="$1" bs=1 skip=12 count=4 2>/dev/null | od -An -tu1 | awk '{print (($1*256+$2)*256+$3)*256+$4}')
+	[ "$(stat -c %s "$1")" -eq $((_len + 64)) ] || { echo bad; return; }
+	if dd if="$1" bs=64 skip=1 2>/dev/null | grep -q "rdinit=/basedos/init"; then echo basedos; else echo stock; fi
+}
 
-# The folders stock's Ports system reads, on this device's p2 (stock's /storage).
+# check_stock <file>: 0 if it's a stock script; says whether it's a known stock build.
+check_stock() {
+	[ "$(scr_kind "$1")" = stock ] || return 1
+	if grep -q "^$(sha256sum < "$1" | cut -c1-64)" "$KNOWN_STOCK" 2>/dev/null; then
+		log "boot: $1 is a known stock build's boot.scr"
+	else
+		log "boot: $1 is a stock-looking boot.scr but not a known stock build's (stock updated?)"
+	fi
+}
+
+# The device's own partitions, nothing else.
+check_places() {
+	grep -q "^/dev/mmcblk0p1 /boot " /proc/mounts || die "/boot isn't the eMMC's p1"
+	[ -d $B ] || die "no $B"
+	grep -q "^/dev/mmcblk0p2 $P2 " /proc/mounts || die "the eMMC's p2 isn't mounted at $P2"
+}
+
+# The folders stock's Ports system reads, on this device's p2 (stock's /storage). Stock reads them
+# from the eMMC also with a spruce card in (it mounts the card apart, at games-external).
 stock_ports_dirs() { echo "$P2/roms/ports"; }
 
 # The script stock runs from its Ports menu to come back. Written by switch-to-stock; it removes
-# every copy of itself once it has put BasedOS's boot script back.
+# every copy of itself once it has put BasedOS's boot script back. It runs on stock (bash and
+# BusyBox; no cmp), so it checks with md5sum and od.
 return_script() {
 	cat <<'EOF'
 #!/bin/bash
 # Return to BasedOS: written by BasedOS when you switched to stock (basedos-boot switch-to-stock).
-# Puts BasedOS's boot script back and restarts into BasedOS. Uninstall BasedOS instead from its
-# maintenance mode (hold Select at power-on) if you want it gone.
+# Puts BasedOS's boot script back and restarts into BasedOS. To remove BasedOS instead, return
+# to it and choose "Uninstall BasedOS" in its maintenance mode (hold Select at power-on).
 P1=/flash
 SAVED=$P1/basedos/boot.scr.basedos
-if [ ! -f "$SAVED" ]; then
-	echo "BasedOS's boot script isn't there ($SAVED); nothing to return to." >&2
-	sleep 5; exit 1
-fi
-mount -o remount,rw $P1 || { echo "can't write $P1" >&2; sleep 5; exit 1; }
-# (stock has md5sum but no cmp)
-cp "$SAVED" $P1/boot.scr.new && sync && echo 3 > /proc/sys/vm/drop_caches &&
+fail() { echo "Return to BasedOS: $*" >&2; echo "Still stock; nothing changed." >&2; sleep 6; exit 1; }
+[ -f "$SAVED" ] || fail "BasedOS's boot script isn't there ($SAVED)."
+[ "$(dd if="$SAVED" bs=4 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n')" = 27051956 ] ||
+	fail "$SAVED isn't a boot script."
+dd if="$SAVED" bs=64 skip=1 2>/dev/null | grep -q "rdinit=/basedos/init" || fail "$SAVED isn't BasedOS's."
+[ -f $P1/basedos/initrd.uimg ] || fail "BasedOS's files are gone ($P1/basedos/initrd.uimg)."
+ls $P1/basedos/rootfs*.squashfs >/dev/null 2>&1 || fail "BasedOS's system image is gone."
+ls $P1/basedos/vendor-*.squashfs >/dev/null 2>&1 || fail "BasedOS's vendor layer is gone."
+mount -o remount,rw $P1 || fail "can't write $P1."
+rm -f $P1/boot.scr.new
+if cp "$SAVED" $P1/boot.scr.new && sync && echo 3 > /proc/sys/vm/drop_caches &&
 	[ "$(md5sum < "$SAVED")" = "$(md5sum < $P1/boot.scr.new)" ] &&
-	mv $P1/boot.scr.new $P1/boot.scr && sync ||
-	{ rm -f $P1/boot.scr.new; mount -o remount,ro $P1; echo "couldn't write boot.scr; still stock" >&2; sleep 5; exit 1; }
-rm -f "$SAVED"
-mount -o remount,ro $P1
-for d in /storage/roms/ports /roms/ports; do rm -f "$d/Return to BasedOS.sh"; done
-sync
-reboot
+	mv $P1/boot.scr.new $P1/boot.scr && sync &&
+	[ "$(md5sum < "$SAVED")" = "$(md5sum < $P1/boot.scr)" ]; then
+	rm -f "$SAVED"
+	mount -o remount,ro $P1
+	for d in /storage/roms/ports /roms/ports; do rm -f "$d/Return to BasedOS.sh"; done
+	sync
+	echo "Back to BasedOS: restarting."
+	sleep 2
+	reboot
+else
+	rm -f $P1/boot.scr.new
+	sync
+	mount -o remount,ro $P1
+	fail "couldn't write $P1/boot.scr."
+fi
 EOF
 }
 
 stock_once() {
-	[ -d /data ] && [ -w /data ] || die "no /data to leave the flag on"
-	: > /data/boot-stock-once && sync || die "couldn't write /data/boot-stock-once"
+	# The flag must be on p2: /data in RAM (p2 unusable this boot) would lose it.
+	grep -q "^/dev/mmcblk0p2 /data " /proc/mounts || die "/data isn't on the eMMC this boot; can't leave the flag"
+	: > /data/boot-stock-once && sync && [ -f /data/boot-stock-once ] || die "couldn't write /data/boot-stock-once"
 	log "boot: stock for the next boot"
 }
 
 switch_to_stock() {
-	[ -f $B/boot.scr.stock ] || die "no saved stock boot script ($B/boot.scr.stock)"
-	is_basedos_scr /boot/boot.scr || die "/boot/boot.scr isn't BasedOS's; nothing to switch"
-	_dirs=$(stock_ports_dirs)
-	grep -q " $P2 " /proc/mounts || die "p2 isn't mounted at $P2"
-	rw
-	put /boot/boot.scr $B/boot.scr.basedos || { ro; die "couldn't save BasedOS's boot script"; }
-	put $B/boot.scr.stock /boot/boot.scr || { ro; die "couldn't write stock's boot script; still BasedOS"; }
-	ro
-	for _d in $_dirs; do
-		mkdir -p "$_d" && return_script > "$_d/$RETURN_NAME" && chmod 755 "$_d/$RETURN_NAME" &&
-			log "boot: wrote $_d/$RETURN_NAME"
+	check_places
+	[ "$(scr_kind /boot/boot.scr)" = basedos ] || die "/boot/boot.scr isn't BasedOS's; nothing to switch"
+	check_stock $B/boot.scr.stock || die "$B/boot.scr.stock isn't a stock boot script; not switching"
+	# 1. The way back, written and read back before anything that boots changes.
+	_n=0
+	for _d in $(stock_ports_dirs); do
+		mkdir -p "$_d" && return_script > "$_d/$RETURN_NAME.new" && chmod 755 "$_d/$RETURN_NAME.new" &&
+			sync && return_script | cmp -s - "$_d/$RETURN_NAME.new" &&
+			mv "$_d/$RETURN_NAME.new" "$_d/$RETURN_NAME" && sync && _n=$((_n + 1)) ||
+			rm -f "$_d/$RETURN_NAME.new"
 	done
-	sync
+	[ $_n -gt 0 ] || die "couldn't write '$RETURN_NAME' in stock's Ports; not switching"
+	undo_return() { for _d in $(stock_ports_dirs); do rm -f "$_d/$RETURN_NAME"; done; sync; }
+	rw
+	put /boot/boot.scr $B/boot.scr.basedos && [ "$(scr_kind $B/boot.scr.basedos)" = basedos ] ||
+		{ ro; undo_return; die "couldn't save BasedOS's boot script; not switching"; }
+	# 2. The switch. On a failure, BasedOS's script goes back (put keeps the old file whole until
+	# the rename, so boot.scr is one or the other either way).
+	put $B/boot.scr.stock /boot/boot.scr && cmp -s $B/boot.scr.stock /boot/boot.scr || {
+		cmp -s $B/boot.scr.basedos /boot/boot.scr || put $B/boot.scr.basedos /boot/boot.scr
+		rm -f $B/boot.scr.basedos; ro; undo_return
+		die "couldn't write stock's boot script; still BasedOS"
+	}
+	ro
 	log "boot: switched to stock (BasedOS's files stay; '$RETURN_NAME' in stock's Ports comes back)"
 }
 
 uninstall() {
-	[ -f $B/boot.scr.stock ] || die "no saved stock boot script ($B/boot.scr.stock); not uninstalling"
-	is_basedos_scr $B/boot.scr.stock && die "$B/boot.scr.stock is BasedOS's own; not uninstalling"
-	grep -q " $P2 " /proc/mounts || die "p2 isn't mounted at $P2"
+	check_places
+	check_stock $B/boot.scr.stock || die "$B/boot.scr.stock isn't a stock boot script; not uninstalling"
 	log "boot: uninstalling BasedOS"
 	rw
-	put $B/boot.scr.stock /boot/boot.scr || { ro; die "couldn't write stock's boot script; nothing removed"; }
-	# The running system's files are open (its layers are loop-mounted from them); removing them
-	# frees the space once they close, at the reboot.
-	rm -rf $B
+	# 1. The switch: stock's boot script, read back. Nothing is removed unless this worked.
+	put $B/boot.scr.stock /boot/boot.scr && cmp -s $B/boot.scr.stock /boot/boot.scr &&
+		[ "$(scr_kind /boot/boot.scr)" = stock ] || { ro; die "couldn't write stock's boot script; nothing removed"; }
+	# 2. BasedOS's files. The running system's are open (its layers are loop-mounted from them);
+	# removing them frees the space once they close, at the reboot.
+	rm -rf /boot/basedos
 	ro
 	for _d in $(stock_ports_dirs); do rm -f "$_d/$RETURN_NAME"; done
 	# /data is a bind of this folder; logging stops here.
-	rm -rf $P2/basedos-data
+	log "boot: uninstalled; removing /data"
+	rm -rf "$P2/basedos-data"
 	sync
 }
 
 status() {
-	if is_basedos_scr /boot/boot.scr; then
-		echo "next boot: BasedOS$( [ -f /data/boot-stock-once ] && echo ", except: stock once")"
-	else
-		echo "next boot: stock (BasedOS switched off; '$RETURN_NAME' in stock's Ports comes back)"
-	fi
-	[ -f $B/boot.scr.stock ] && echo "stock's boot script: saved" || echo "stock's boot script: NOT saved"
+	case "$(scr_kind /boot/boot.scr)" in
+	basedos) echo "next boot: BasedOS$( [ -f /data/boot-stock-once ] && echo ", except: stock once")" ;;
+	stock) echo "next boot: stock (BasedOS switched off; '$RETURN_NAME' in stock's Ports comes back)" ;;
+	*) echo "next boot: /boot/boot.scr DOESN'T LOOK LIKE A BOOT SCRIPT" ;;
+	esac
+	if check_stock $B/boot.scr.stock; then echo "stock's boot script: saved"; else echo "stock's boot script: NOT saved or not valid"; fi
 }
 
 case "${1:-}" in

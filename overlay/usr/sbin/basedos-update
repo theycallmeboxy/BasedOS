@@ -117,28 +117,32 @@ apply() {
 	*) log "can't tell which slot is running; not updating"; return 1 ;;
 	esac
 	say "updating BasedOS to $EV_VERSION ($EV_BUILD)"
-	mount -o remount,rw /boot || { log "can't write p1; not updating"; return 1; }
-	if ! member "$_chosen" rootfs.squashfs "$B/$_file" "$EV_SHA"; then
-		mount -o remount,ro /boot
-		say "BasedOS update failed: the system image didn't verify; still on $BASEOS_VERSION"
-		return 1
-	fi
-	# Its vendor layer, from this device's stock, by the recipe in the new system layer.
+	# Its vendor layer first, if this device lacks it: from this device's stock, by the recipe in
+	# the new system layer, read from a verified copy on /data. Both slots are untouched until it
+	# exists, so a failed build leaves the device as it was (and the fallback slot usable).
 	if [ -n "$EV_VENDOR_BUILD" ]; then
+		_pending=$STATE_DIR/pending-rootfs.squashfs
 		_m=/run/basedos/update-slot
 		mkdir -p "$_m"
 		_ok=""
-		if mount -t squashfs -o ro,loop "$B/$_file" "$_m"; then
+		if member "$_chosen" rootfs.squashfs "$_pending" "$EV_SHA" &&
+			mount -t squashfs -o ro,loop "$_pending" "$_m"; then
 			basedos-vendor build "$_m/usr/share/basedos/vendor-recipe" && _ok=1
 			umount "$_m"
 		fi
+		rm -f "$_pending" "$_pending.new"
 		if [ -z "$_ok" ] || [ ! -f "$B/vendor-$EV_VENDOR.squashfs" ]; then
-			mount -o remount,ro /boot
 			# Not again at every boot: the same stock image would fail the same way.
 			echo "$EV_SHA $EV_VERSION $EV_BUILD vendor-build-failed" >> "$HISTORY"
 			say "BasedOS update failed: couldn't build vendor layer $EV_VENDOR from this device's stock; still on $BASEOS_VERSION"
 			return 1
 		fi
+	fi
+	mount -o remount,rw /boot || { log "can't write p1; not updating"; return 1; }
+	if ! member "$_chosen" rootfs.squashfs "$B/$_file" "$EV_SHA"; then
+		mount -o remount,ro /boot
+		say "BasedOS update failed: the system image didn't verify; still on $BASEOS_VERSION"
+		return 1
 	fi
 	_isha=$(field "$MANIFEST" initrd-sha256)
 	if [ -n "$_isha" ] && [ "$(sha256sum < "$B/initrd.uimg" | cut -d' ' -f1)" != "$_isha" ]; then

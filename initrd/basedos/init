@@ -33,10 +33,16 @@ if $bb mount -t ext4 -o noatime /dev/mmcblk0p2 /p2 2>/dev/null; then
 	$bb mkdir -p /p2/basedos-data
 	# Stock for this one boot (basedos-boot stock-once: the Start key, the maintenance menu).
 	# The flag goes first, so the boot after this one is BasedOS's again whatever stock does.
+	# Honoured only once the flag is really gone: one that can't be removed (p2 read-only after an
+	# error) would otherwise send every boot to stock.
 	if [ -f /p2/basedos-data/boot-stock-once ]; then
 		$bb rm -f /p2/basedos-data/boot-stock-once
 		$bb sync
-		fallback "stock asked for this boot"
+		if [ -f /p2/basedos-data/boot-stock-once ]; then
+			log "boot-stock-once can't be removed; ignoring it"
+		else
+			fallback "stock asked for this boot"
+		fi
 	fi
 	attempts=$($bb cat /p2/basedos-data/boot-attempts 2>/dev/null)
 	case "$attempts" in ''|*[!0-9]*) attempts=0 ;; esac

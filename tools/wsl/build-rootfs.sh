@@ -244,6 +244,10 @@ ln -sf /run/machine-id etc/machine-id
 echo "--- system: identity"
 echo "$VENDOR_ID" > usr/share/basedos/needs-vendor
 install -m 644 "$W/vendor-recipe" usr/share/basedos/vendor-recipe
+# The known stock builds' boot.scr hashes (manifest/stock-builds.txt): basedos-boot checks the
+# saved stock script against them before it puts it back.
+awk '$2 == "boot.scr" && length($1) == 64 { print $1 }' "$REPO/manifest/stock-builds.txt" > usr/share/basedos/stock-boot-scr.sha256
+[ -s usr/share/basedos/stock-boot-scr.sha256 ] || { echo "no stock boot.scr hashes in manifest/stock-builds.txt" >&2; exit 1; }
 cat > etc/baseos-release <<EOF
 BASEOS=1
 BASEOS_NAME=BasedOS

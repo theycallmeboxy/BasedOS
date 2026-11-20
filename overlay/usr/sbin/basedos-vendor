@@ -23,12 +23,16 @@ export PATH=/usr/bin:/usr/sbin
 B=/boot/basedos
 STOCK_IMAGE=/boot/SYSTEM
 STAGE=/data/.vendor-build
+IMG=/data/.vendor-build.squashfs
 MNT=/run/basedos/vendor-stock
+CHK=/run/basedos/vendor-check
 
 die() { log "vendor: $*"; echo "basedos-vendor: $*" >&2; cleanup; exit 1; }
 cleanup() {
 	grep -q " $MNT " /proc/mounts && umount "$MNT"
-	rm -rf "$STAGE"
+	grep -q " $CHK " /proc/mounts && umount "$CHK"
+	rm -rf "$STAGE" "$IMG"
+	rm -f "$B"/vendor-*.squashfs.new
 	[ -n "${_made_rw:-}" ] && { sync; mount -o remount,ro /boot; }
 	_made_rw=""
 }
@@ -84,13 +88,32 @@ build() {
 	printf 'VENDOR_ID=%s\nSTOCK_BUILD=%s\n' "$_want" "$_stock" > "$STAGE/usr/share/basedos/vendor-release"
 	chmod 755 "$STAGE"
 
+	# Packed as the PC build packs it (tools/wsl/build-rootfs.sh), on /data (ext4, room to spare),
+	# then checked as the initrd will use it: it mounts, its files give the id, and its
+	# vendor-release names it.
+	rm -f "$IMG"
+	mksquashfs "$STAGE" "$IMG" -noappend -all-root -comp zstd -Xcompression-level 15 -b 256K -quiet -no-progress ||
+		die "mksquashfs failed"
+	sync
+	mkdir -p "$CHK"
+	mount -t squashfs -o ro,loop "$IMG" "$CHK" || die "the new vendor layer does not mount"
+	_got=$(vendor_id "$CHK")
+	_rel=$(sed -n 's/^VENDOR_ID=//p' "$CHK/usr/share/basedos/vendor-release" 2>/dev/null)
+	umount "$CHK"
+	[ "$_got" = "$_want" ] && [ "$_rel" = "$_want" ] || die "the packed layer gives id '$_got' (release '$_rel'), not $_want"
+
+	# Onto p1, if it fits with 16 MB to spare: .new, synced, re-read from the eMMC and compared,
+	# then renamed, so a power cut leaves no half layer under the real name.
+	_need=$(( $(stat -c %s "$IMG") / 1024 + 16384 ))
+	_free=$(df -k /boot | awk 'NR == 2 { print $4 }')
+	[ "${_free:-0}" -ge "$_need" ] || die "p1 has ${_free} KB free; the vendor layer needs ${_need} KB"
 	boot_rw
 	_out=$B/vendor-$_want.squashfs
-	# As the PC build packs it (tools/wsl/build-rootfs.sh); written as .new and renamed once whole.
-	mksquashfs "$STAGE" "$_out.new" -noappend -all-root -comp zstd -Xcompression-level 15 -b 256K -quiet -no-progress ||
-		{ rm -f "$_out.new"; die "mksquashfs failed"; }
+	cp "$IMG" "$_out.new" || die "couldn't write $_out.new"
 	sync
-	mv "$_out.new" "$_out" && sync
+	echo 3 > /proc/sys/vm/drop_caches
+	cmp -s "$IMG" "$_out.new" || die "$_out.new doesn't read back as written"
+	mv "$_out.new" "$_out" && sync || die "couldn't rename $_out.new"
 	log "vendor: built vendor-$_want.squashfs from $_n entries"
 	cleanup
 	echo "built vendor-$_want.squashfs"

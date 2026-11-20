@@ -52,19 +52,23 @@ confirm() {
 	done
 }
 
+# run <choice>: does it; on a failure, MSG says so under the menu (basedos-boot changes nothing
+# that boots unless every step before the switch worked, and logs why in /data/basedos.log).
+MSG=""
 run() {
+	MSG=""
 	case "$1" in
 	stock-once)
 		draw "starting stock once"
-		basedos-boot stock-once --reboot ;;
+		basedos-boot stock-once --reboot || MSG="couldn't set up stock once: see /data/basedos.log" ;;
 	switch)
 		confirm "Switch to stock? BasedOS stays installed; 'Return to BasedOS' in stock's Ports brings it back." || return
 		draw "switching to stock"
-		basedos-boot switch-to-stock --reboot || draw "couldn't switch to stock: see /data/basedos.log" ;;
+		basedos-boot switch-to-stock --reboot || MSG="couldn't switch to stock (still BasedOS): see /data/basedos.log" ;;
 	uninstall)
 		confirm "Uninstall BasedOS? Its files and settings on this device are removed; stock is as before." || return
 		draw "uninstalling BasedOS"
-		basedos-boot uninstall --reboot || draw "couldn't uninstall: see /data/basedos.log" ;;
+		basedos-boot uninstall --reboot || MSG="couldn't uninstall (still BasedOS): see /data/basedos.log" ;;
 	reboot)
 		draw "restarting"; reboot ;;
 	poweroff)
@@ -79,14 +83,14 @@ while :; do
 	usleep 80000
 	now=$(held)
 	# A press is a key down now that wasn't before.
-	if is_held "$now" "$UP" && ! is_held "$prev" "$UP"; then sel=$((sel > 1 ? sel - 1 : N)); draw
-	elif is_held "$now" "$DOWN" && ! is_held "$prev" "$DOWN"; then sel=$((sel < N ? sel + 1 : 1)); draw
+	if is_held "$now" "$UP" && ! is_held "$prev" "$UP"; then sel=$((sel > 1 ? sel - 1 : N)); draw "$MSG"
+	elif is_held "$now" "$DOWN" && ! is_held "$prev" "$DOWN"; then sel=$((sel < N ? sel + 1 : 1)); draw "$MSG"
 	elif is_held "$now" "$A" && ! is_held "$prev" "$A"; then
 		run "$(echo "$ITEMS" | sed -n "${sel}p" | cut -d'|' -f1)"
-		draw
+		draw "$MSG"
 		now=$(held)
 	fi
 	prev=$now
 	# The address appears once Wi-Fi is up.
-	tick=$((tick + 1)); [ $((tick % 60)) = 0 ] && draw
+	tick=$((tick + 1)); [ $((tick % 60)) = 0 ] && draw "$MSG"
 done

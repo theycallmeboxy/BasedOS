@@ -1,0 +1,78 @@
+# What BasedOS takes from its 32-bit (armhf) Buildroot root (tools/buildroot/build.sh --armhf,
+# buildroot/configs/basedos_gkd350hultra_armhf_defconfig) into the system layer's /usr/lib32: the
+# libraries PortMaster's 32-bit ports run on (docs/lib32.md). Same format as base.list, with
+# paths as they are in that root (/usr/lib); build-rootfs.sh moves them all to /usr/lib32, so
+# only /usr/lib paths may be listed. The libraries these need are added automatically, and the
+# build fails if one is missing. The 32-bit Mali driver is the vendor layer's (harvest.list).
+
+## glibc (2.41), whose loader looks in /usr/lib32 (buildroot/external.mk). No gconv modules:
+## the 32-bit iconv() looks for them in /usr/lib/gconv, which holds the 64-bit ones, so only
+## its built-in conversions (UTF-8, ASCII, Latin-1, UCS) work.
+/usr/lib/ld-linux-armhf.so.3
+/usr/lib/libc.so.6
+/usr/lib/libm.so.6
+/usr/lib/libdl.so.2
+/usr/lib/libpthread.so.0
+/usr/lib/librt.so.1
+/usr/lib/libresolv.so.2
+/usr/lib/libutil.so.1
+/usr/lib/libanl.so.1
+/usr/lib/libnss_files.so.2
+/usr/lib/libnss_dns.so.2
+
+## GCC 14's runtime
+/usr/lib/libstdc++.so.6
+/usr/lib/libgcc_s.so.1
+/usr/lib/libgomp.so.1
+/usr/lib/libatomic.so.1
+
+## what the closed 32-bit Mali driver needs (vendor layer)
+/usr/lib/libwayland-client.so.0
+/usr/lib/libwayland-server.so.0
+/usr/lib/libdrm.so.2
+/usr/lib/libdrm.so
+
+## loaded at run time by SDL2 (ALSA, udev), so the closure can't see them
+/usr/lib/libasound.so.2
+/usr/lib/libudev.so.1
+/usr/lib/libudev.so
+
+## SDL2's add-ons (BasedOS's own 32-bit SDL2 is installed by build-rootfs.sh)
+/usr/lib/libSDL2_image-2.0.so.0
+/usr/lib/libSDL2_ttf-2.0.so.0
+/usr/lib/libSDL2_mixer-2.0.so.0
+/usr/lib/libSDL2_net-2.0.so.0
+
+## the 64-bit layer's libraries for ports, in 32 bits (base.list; no LuaJIT, see the defconfig)
+/usr/lib/libssl.so.3
+/usr/lib/libcrypto.so.3
+/usr/lib/libexpat.so.1
+/usr/lib/libfontconfig.so.1
+/usr/lib/libfreetype.so.6
+/usr/lib/libglib-2.0.so.0
+/usr/lib/libncursesw.so.6
+/usr/lib/libtinfo.so.6
+/usr/lib/libsndfile.so.1
+/usr/lib/libogg.so.0
+/usr/lib/libvorbis.so.0
+/usr/lib/libvorbisfile.so.3
+/usr/lib/libvorbisenc.so.2
+/usr/lib/libuuid.so.1
+/usr/lib/libz.so.1
+/usr/lib/liblzma.so.5
+/usr/lib/libpng16.so.16
+/usr/lib/libenet.so.7
+/usr/lib/libjson-c.so.5
+/usr/lib/libevdev.so.2
+/usr/lib/libspeexdsp.so.1
+/usr/lib/libusb-1.0.so.0
+/usr/lib/libcurl.so.4
+/usr/lib/libfluidsynth.so.3
+/usr/lib/libharfbuzz.so.0
+/usr/lib/libturbojpeg.so.0
+/usr/lib/libtiff.so.6
+
+## audio libraries 32-bit ports load from the system (stock's /usr/lib32 has them)
+/usr/lib/libopenal.so.1
+/usr/lib/libmpg123.so.0
+/usr/lib/libmodplug.so.1

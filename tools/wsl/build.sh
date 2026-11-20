@@ -9,6 +9,11 @@ cp "$REPO/prepared/rocknix-20260613-c8ed06c/BUILD" "$W/STOCK_BUILD"
 # BasedOS's userland (glibc, OpenSSH, wpa_supplicant and wpa_cli, ALSA, ...): about an hour the first
 # time, then only what changed.
 bash "$REPO/tools/buildroot/build.sh" build
+# Its 32-bit libraries for PortMaster's 32-bit ports (docs/lib32.md), and SDL2 for them, built with
+# that root's toolchain.
+bash "$REPO/tools/buildroot/build.sh" --armhf build
+[ -f "$REPO/prepared/sdl2-armhf/libSDL2.build-info" ] ||
+	SDL2_ARCH=armhf bash "$REPO/tools/sdl2/build.sh" "$REPO/prepared/rocknix-20260613-c8ed06c/SYSTEM" "$REPO/prepared/sdl2-armhf" 270
 [ -f "$REPO/prepared/bash/build-info" ] ||
 	bash "$REPO/tools/bash/build.sh" "$REPO/prepared/bash"
 sh "$REPO/tools/wsl/build-rootfs.sh" "$REPO" "$W" "$REPO/prepared/alpine/busybox.static" "$REPO/prepared/alpine/busybox.list"

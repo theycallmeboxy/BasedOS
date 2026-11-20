@@ -26,6 +26,7 @@ libraries they need (`out/harvest-report.txt` says why each path is there).
 |---|---|---|
 | Mali Bifrost G52 GLES/EGL driver | `libmali.so.1.9.0` (+ `libmali.so`, `.so.1`), `libmali-hook.so.1.9.0` (+ `.so.1`) | closed (Arm, Rockchip build `g24p0`) |
 | Mali's GL API wrappers | `libEGL.so.1`, `libGLESv1_CM.so.1`, `libGLESv2.so.2`, `libgbm.so.1`, `libwayland-egl.so.1` (stock's `/usr/lib/mali/`, real files, not links) | part of the Mali package |
+| Mali GLES/EGL driver, 32-bit, and its wrappers | stock's `/usr/lib32`: the same files as above (38 MB), for PortMaster's 32-bit ports (docs/lib32.md, 2026-11-19) | closed |
 | Mali Vulkan driver | `libmali-vulkan-g52.so` (+ `libMaliVulkan.so.1`), `/usr/share/vulkan/icd.d/mali.json` | closed |
 | Wi-Fi and Bluetooth firmware | `/usr/lib/firmware/`: `fw_bcm4345*.bin`, `nvram_ap625*.txt`, `BCM4345C*.hcd` (10 files) | Broadcom, redistributable only as is |
 | Kernel modules | `/usr/lib/modules/6.1.118/` (`bcmdhd.ko` is the one BasedOS loads) | must match stock's kernel, which BasedOS boots |

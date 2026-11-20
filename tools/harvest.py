@@ -3,9 +3,13 @@
 every library those files need (a closed set), into a staging tree.
 
   harvest.py <source root> <list> <staging root> [--provided <root>] [--report <file>]
+             [--lib32 <dir>]
 
 --provided: a root whose libraries count as there already (the system layer's, when harvesting
 the vendor layer's blobs), so they aren't copied from the source again.
+--lib32: where 32-bit (armhf) libraries are looked for, in every root (default /usr/lib32, as
+the system layer and stock lay them out; /usr/lib for BasedOS's 32-bit Buildroot root, whose
+libraries build-rootfs.sh then moves to /usr/lib32). 64-bit ones are looked for in /usr/lib.
 --report: where the report goes (default <staging root>/../harvest-report.txt).
 
 Run it on a filesystem with real symlinks (WSL's ext4, not /mnt/c).
@@ -20,20 +24,41 @@ import sys
 LIBDIRS = ("/usr/lib",)
 
 
+def elf_class(path):
+    """64 or 32 for an ELF file, None for anything else."""
+    try:
+        with open(path, "rb") as f:
+            b = f.read(5)
+    except OSError:
+        return None
+    if b[:4] != b"\x7fELF":
+        return None
+    return {1: 32, 2: 64}.get(b[4])
+
+
 def elf_needed(path):
     try:
         with open(path, "rb") as f:
             b = f.read()
     except OSError:
         return None
-    if b[:4] != b"\x7fELF" or b[4] != 2:
+    if b[:4] != b"\x7fELF" or b[4] not in (1, 2):
         return None
-    phoff, = struct.unpack_from("<Q", b, 0x20)
-    phentsize, phnum = struct.unpack_from("<HH", b, 0x36)
+    if b[4] == 2:
+        phoff, = struct.unpack_from("<Q", b, 0x20)
+        phentsize, phnum = struct.unpack_from("<HH", b, 0x36)
+        # p_type, p_flags, p_offset, p_vaddr, p_paddr, p_filesz
+        ph, ph_fields, dyn_fmt, dyn_size = "<IIQQQQ", (0, 2, 3, 5), "<qQ", 16
+    else:
+        phoff, = struct.unpack_from("<I", b, 0x1C)
+        phentsize, phnum = struct.unpack_from("<HH", b, 0x2A)
+        # p_type, p_offset, p_vaddr, p_paddr, p_filesz
+        ph, ph_fields, dyn_fmt, dyn_size = "<IIIII", (0, 1, 2, 4), "<iI", 8
     dyn = None
     loads = []
     for i in range(phnum):
-        p_type, _, p_off, p_vaddr, _, p_filesz = struct.unpack_from("<IIQQQQ", b, phoff + i * phentsize)
+        f = struct.unpack_from(ph, b, phoff + i * phentsize)
+        p_type, p_off, p_vaddr, p_filesz = (f[j] for j in ph_fields)
         if p_type == 2:
             dyn = (p_off, p_filesz)
         elif p_type == 1:
@@ -41,8 +66,8 @@ def elf_needed(path):
     if not dyn:
         return []
     needed, strtab = [], None
-    for o in range(dyn[0], dyn[0] + dyn[1], 16):
-        tag, val = struct.unpack_from("<qQ", b, o)
+    for o in range(dyn[0], dyn[0] + dyn[1], dyn_size):
+        tag, val = struct.unpack_from(dyn_fmt, b, o)
         if tag == 0:
             break
         if tag == 1:
@@ -61,8 +86,13 @@ def elf_needed(path):
 
 
 class Harvest:
-    def __init__(self, stock, dest, provided=None):
+    def __init__(self, stock, dest, provided=None, lib32="/usr/lib32"):
         self.stock, self.dest, self.provided, self.why = stock, dest, provided, {}
+        self.lib32 = (lib32,)
+
+    def libdirs(self, path):
+        """Where the libraries an ELF file needs are: its own class's directory."""
+        return self.lib32 if elf_class(path) == 32 else LIBDIRS
 
     def s(self, p):
         return os.path.join(self.stock, p.lstrip("/"))
@@ -107,8 +137,8 @@ class Harvest:
             shutil.copy2(self.s(real), out, follow_symlinks=True)
             self.why[dst] = why
 
-    def find_lib(self, name):
-        for d in LIBDIRS:
+    def find_lib(self, name, dirs):
+        for d in dirs:
             p = f"{d}/{name}"
             if os.path.lexists(self.s(p)):
                 return p
@@ -125,17 +155,18 @@ class Harvest:
                 full = self.d(p)
                 if os.path.islink(full) or not os.path.isfile(full):
                     continue
+                dirs = self.libdirs(full)
                 for lib in elf_needed(full) or []:
-                    if any(os.path.lexists(self.d(f"{d}/{lib}")) for d in LIBDIRS):
+                    if any(os.path.lexists(self.d(f"{d}/{lib}")) for d in dirs):
                         continue
                     # Beside the file that needs it ($ORIGIN): glibc's gconv modules and their
                     # helper libraries (libJIS.so, libGB.so, ...) in /usr/lib/gconv.
                     if os.path.lexists(os.path.join(os.path.dirname(full), lib)):
                         continue
                     if self.provided and any(
-                            os.path.lexists(os.path.join(self.provided, d.lstrip("/"), lib)) for d in LIBDIRS):
+                            os.path.lexists(os.path.join(self.provided, d.lstrip("/"), lib)) for d in dirs):
                         continue
-                    src = self.find_lib(lib)
+                    src = self.find_lib(lib, dirs)
                     if not src:
                         missing.append(f"{lib} (needed by {p})")
                         continue
@@ -147,14 +178,14 @@ def main():
     args, opts = [], {}
     it = iter(sys.argv[1:])
     for a in it:
-        if a in ("--provided", "--report"):
+        if a in ("--provided", "--report", "--lib32"):
             opts[a] = next(it, None)
         else:
             args.append(a)
     if len(args) != 3 or None in opts.values():
         sys.exit(__doc__)
     stock, listfile, dest = args
-    h = Harvest(stock, dest, opts.get("--provided"))
+    h = Harvest(stock, dest, opts.get("--provided"), opts.get("--lib32", "/usr/lib32"))
     for line in open(listfile, encoding="utf-8"):
         line = line.split("#", 1)[0].strip()
         if not line:

@@ -12,7 +12,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from harvest import elf_needed  # noqa: E402
+from harvest import elf_class, elf_needed  # noqa: E402
 
 # RetroArch and the standalone emulators too: spruce's ra64.universal links libudev.so.1, which a
 # check of the spruce/ folders alone missed (2026-11-19).
@@ -33,7 +33,9 @@ def main():
         for root, _dirs, files in os.walk(top):
             for f in files:
                 p = os.path.join(root, f)
-                if os.path.islink(p):
+                # 64-bit only, as before: the card's 32-bit files are other devices' (the
+                # reader handles both classes since BasedOS has /usr/lib32, docs/lib32.md).
+                if os.path.islink(p) or elf_class(p) != 64:
                     continue
                 for lib in elf_needed(p) or []:
                     if lib not in have:

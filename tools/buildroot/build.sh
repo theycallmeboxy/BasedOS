@@ -5,6 +5,8 @@
 #   build.sh config     fetch and check Buildroot, apply the defconfig, check every option took
 #   build.sh sources    config, then list each package source Buildroot would download
 #   build.sh build      config, then build (the root lands in $BR_OUT/target)
+#   build.sh --armhf ...  the same for the 32-bit root (basedos_gkd350hultra_armhf_defconfig,
+#                       $BR_OUT default $BR_WORK/out-armhf): the libraries 32-bit ports need
 #
 # Needs (Ubuntu in WSL): build-essential file wget cpio unzip rsync bc python3 perl
 # Downloads go to ~/basedos-br-dl (BR2_DL_DIR) and are checked against Buildroot's own hashes.
@@ -13,13 +15,18 @@ set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 W=${BR_WORK:-$HOME/basedos-br}
-BR_OUT=${BR_OUT:-$W/out}
+DEFCONFIG=basedos_gkd350hultra_defconfig
+OUTDIR=out
+if [ "${1:-}" = --armhf ]; then
+	DEFCONFIG=basedos_gkd350hultra_armhf_defconfig OUTDIR=out-armhf
+	shift
+fi
+BR_OUT=${BR_OUT:-$W/$OUTDIR}
 VER=2025.02.20
 # From the release's signed buildroot-$VER.tar.gz.sign (https://buildroot.org/downloads/).
 SHA256=44904ee44ac6750e06135454ed5cbcb8ea9354e6d5b7e2b2668581bd8b6ba1b6
 TAR=buildroot-$VER.tar.gz
 SRC=$W/buildroot-$VER
-DEFCONFIG=basedos_gkd350hultra_defconfig
 
 config() {
 	mkdir -p "$W"
@@ -59,5 +66,5 @@ print("%d downloads" % n, file=sys.stderr)
 build)
 	config
 	make -C "$SRC" O="$BR_OUT" -j"$(nproc)" ;;
-*) echo "usage: $0 config|sources|build" >&2; exit 2 ;;
+*) echo "usage: $0 [--armhf] config|sources|build" >&2; exit 2 ;;
 esac

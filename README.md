@@ -55,6 +55,9 @@ What it leaves out on purpose: systemd, udev (udevd runs only for the length of 
 port, `basedos-udev`), NetworkManager, Wayland/sway, a desktop. The frontend draws straight to the
 display (KMS). Boot to SSH in about 2 s; 67 MB of RAM in use.
 
+32-bit programs: a 32-bit (armhf) set of libraries in `/usr/lib32`, as stock lays it out, for
+PortMaster's 32-bit ports (docs/lib32.md); BasedOS's own programs are all 64-bit.
+
 ## What's here
 
 | Path | What |

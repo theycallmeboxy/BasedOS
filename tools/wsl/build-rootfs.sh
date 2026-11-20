@@ -3,7 +3,8 @@
 # Usage: build-rootfs.sh <repo> <work dir> <busybox.static> <busybox.list>
 #   <work>/stock-root must hold the unpacked stock SYSTEM (tools/wsl/unpack-stock.sh), and
 #   $BR_TARGET (default ~/basedos-br/out/target) BasedOS's own Buildroot root
-#   (tools/buildroot/build.sh build).
+#   (tools/buildroot/build.sh build), and $BR32_TARGET (default ~/basedos-br/out-armhf/target)
+#   its 32-bit one (build.sh --armhf build).
 #
 # The root is two read-only layers, stacked by the initrd with overlayfs (docs/plan.md):
 #   vendor    only what manifest/harvest.list takes from stock: the closed GPU drivers, the
@@ -21,6 +22,7 @@ set -eu
 REPO=$1 W=$2 BB=$3 BBLIST=$4
 VEN=$W/vendor SYS=$W/system OUT=$W/rootfs BASE=$W/base
 BR_TARGET=${BR_TARGET:-$HOME/basedos-br/out/target}
+BR32_TARGET=${BR32_TARGET:-$HOME/basedos-br/out-armhf/target}
 VERSION=$(cat "$REPO/VERSION")
 BUILD=$(git -C "$REPO" describe --always --dirty 2>/dev/null || echo unknown)
 case $BUILD in *dirty) BUILD="$BUILD-$(date -u +%Y%m%d%H%M)" ;; esac
@@ -32,6 +34,17 @@ chmod 755 "$VEN" "$SYS"
 echo "--- base: BasedOS's userland from its Buildroot root"
 [ -d "$BR_TARGET/usr/lib" ] || { echo "no Buildroot root at $BR_TARGET (tools/buildroot/build.sh build)" >&2; exit 1; }
 python3 "$REPO/tools/harvest.py" "$BR_TARGET" "$REPO/manifest/base.list" "$BASE" --report "$W/base-report.txt"
+
+echo "--- base: the 32-bit libraries, from the 32-bit Buildroot root, into /usr/lib32"
+# PortMaster's 32-bit ports (docs/lib32.md). That root has them in /usr/lib; they move to
+# /usr/lib32, where its loader looks (buildroot/external.mk) and stock had them.
+[ -d "$BR32_TARGET/usr/lib" ] || { echo "no 32-bit Buildroot root at $BR32_TARGET (tools/buildroot/build.sh --armhf build)" >&2; exit 1; }
+rm -rf "$W/base32"
+python3 "$REPO/tools/harvest.py" "$BR32_TARGET" "$REPO/manifest/base32.list" "$W/base32" --lib32 /usr/lib --report "$W/base32-report.txt"
+stray=$(cd "$W/base32" && find . -mindepth 1 ! -path ./usr ! -path ./usr/lib ! -path './usr/lib/*')
+[ -z "$stray" ] || { echo "base32 outside /usr/lib: $stray" >&2; exit 1; }
+mkdir -p "$BASE/usr/lib32"
+cp -a "$W/base32/usr/lib/." "$BASE/usr/lib32/"
 
 echo "--- vendor: harvest"
 # The blobs' own libraries (libstdc++, libwayland, glibc) are BasedOS's: --provided.
@@ -91,15 +104,45 @@ if missing:
 EOF
 grep -h '^sha256\|  lib' "$S/libSDL2.build-info" | head -3
 
+echo "--- system: sdl2 (32-bit)"
+# The same SDL2 and librga built for armhf (SDL2_ARCH=armhf tools/sdl2/build.sh), for 32-bit
+# ports: without it they'd get no turned picture. Buildroot's 32-bit SDL2 is replaced the same way.
+rm -f usr/lib32/libSDL2-2.0.so.0.*
+S32=$REPO/prepared/sdl2-armhf
+grep -q '^arch armhf$' "$S32/libSDL2.build-info" || { echo "$S32 is not an armhf SDL2 build" >&2; exit 1; }
+SDL32=$(cd "$S32" && ls libSDL2-2.0.so.0.*.*) RGA32=$(cd "$S32" && ls librga.so.*.*.*)
+install -m 755 "$S32/$SDL32" "$S32/$RGA32" usr/lib32/
+ln -sf "$SDL32" usr/lib32/libSDL2-2.0.so.0
+ln -sf libSDL2-2.0.so.0 usr/lib32/libSDL2-2.0.so
+ln -sf "$RGA32" usr/lib32/librga.so.1
+python3 - "$REPO/tools" "$SYS/usr/lib32" "$VEN/usr/lib32" "$SDL32" "$RGA32" <<'EOF'
+import os, sys
+sys.path.insert(0, sys.argv[1])
+from harvest import elf_class, elf_needed
+mine, vendor = sys.argv[2], sys.argv[3]
+have = lambda n: os.path.exists(os.path.join(mine, n)) or os.path.lexists(os.path.join(vendor, n))
+for f in sys.argv[4:]:
+    if elf_class(os.path.join(mine, f)) != 32:
+        sys.exit(f"sdl2 (32-bit): {f} is not 32-bit")
+missing = [n for f in sys.argv[4:] for n in elf_needed(os.path.join(mine, f)) if not have(n)]
+if missing:
+    sys.exit("sdl2 (32-bit): missing " + " ".join(sorted(set(missing))))
+EOF
+# The loader where armhf programs ask for it (their PT_INTERP is /lib/ld-linux-armhf.so.3), as
+# stock links it. PortMaster offers its 32-bit ports when it finds this or /usr/lib32.
+ln -sf /usr/lib32/ld-linux-armhf.so.3 usr/lib/ld-linux-armhf.so.3
+
 echo "--- system: GL library names"
 # The Mali package's unversioned names, as stock's /usr/lib/mali/ carries them beside each library:
 # programs built against them (PortMaster's Weston, for one) ask for libGLESv2.so, not .so.2. The
-# targets are the vendor layer's files.
+# targets are the vendor layer's files, 64-bit in /usr/lib and 32-bit in /usr/lib32.
 for l in libEGL.so:libEGL.so.1 libGLESv1_CM.so:libGLESv1_CM.so.1 libGLESv2.so:libGLESv2.so.2 \
 	libgbm.so:libgbm.so.1 libwayland-egl.so:libwayland-egl.so.1 libmali-hook.so:libmali-hook.so.1 \
 	libmali-bifrost-g52-g24p0-wayland-gbm.so:libmali.so.1; do
-	[ -e "$VEN/usr/lib/${l#*:}" ] || { echo "vendor layer has no ${l#*:}" >&2; exit 1; }
-	ln -sf "${l#*:}" "usr/lib/${l%%:*}"
+	for d in usr/lib usr/lib32; do
+		[ -e "$VEN/$d/${l#*:}" ] || { echo "vendor layer has no $d/${l#*:}" >&2; exit 1; }
+		ln -sf "${l#*:}" "$d/${l%%:*}"
+	done
 done
 
 echo "--- system: bash"

@@ -20,6 +20,9 @@
 # nothing vendor-made ends up in the repo or the output.
 #
 #   build.sh <stock SYSTEM squashfs> <out dir> [270|90]
+#   SDL2_ARCH=armhf build.sh ...  the same for 32-bit ports (/usr/lib32), with BasedOS's 32-bit
+#                                 Buildroot toolchain (tools/buildroot/build.sh --armhf build)
+#                                 and stock's 32-bit libraries to link against
 # tools/wsl/build.sh runs it into prepared/sdl2 when that is missing.
 set -euo pipefail
 
@@ -27,12 +30,21 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 SYSTEM=$1
 OUT=$2
 ROT=${3:-270}
-W=${SDL2_WORK:-$HOME/basedos-sdl2}
+ARCH=${SDL2_ARCH:-aarch64}
+case "$ARCH" in
+aarch64)
+    CROSS=aarch64-linux-gnu PROC=aarch64 STOCK_LIB=usr/lib
+    W=${SDL2_WORK:-$HOME/basedos-sdl2} ;;
+armhf)
+    CROSS=${SDL2_CROSS:-$HOME/basedos-br/out-armhf/host/bin/arm-buildroot-linux-gnueabihf}
+    PROC=arm STOCK_LIB=usr/lib32
+    W=${SDL2_WORK:-$HOME/basedos-sdl2-armhf} ;;
+*) echo "SDL2_ARCH must be aarch64 or armhf" >&2; exit 1 ;;
+esac
 
 SDL_COMMIT=5d249570393f7a37e037abf22cd6012a4cc56a71   # SDL 2.32.10, ArkOS scripts/sdl2.sh
 SDL_EXT=3200.10
 RGA_COMMIT=57a1067a246c71fa6c9a355d1668884fda155dd5   # librga 1.10.5, linux-rga-multi
-CROSS=aarch64-linux-gnu
 
 case "$ROT" in 270|90) ;; *) echo "rotation must be 270 or 90" >&2; exit 1 ;; esac
 for t in cmake ninja pkg-config $CROSS-gcc $CROSS-g++ unsquashfs git patch; do
@@ -51,7 +63,7 @@ cp -r /usr/include/libdrm /usr/include/alsa "$SR/usr/include/"
 cp /usr/include/xf86drm.h /usr/include/xf86drmMode.h /usr/include/gbm.h "$SR/usr/include/"
 cat > "$W/toolchain.cmake" <<EOF
 set(CMAKE_SYSTEM_NAME Linux)
-set(CMAKE_SYSTEM_PROCESSOR aarch64)
+set(CMAKE_SYSTEM_PROCESSOR $PROC)
 set(CMAKE_C_COMPILER $CROSS-gcc)
 set(CMAKE_CXX_COMPILER $CROSS-g++)
 set(CMAKE_FIND_ROOT_PATH $SR /usr/$CROSS)
@@ -76,8 +88,8 @@ cp -a "$W/librga/install/lib/"librga.so* "$SR/usr/lib/"
 
 # The rest to link against, from stock.
 unsquashfs -q -d "$W/stock" "$SYSTEM" \
-    'usr/lib/libdrm.so*' 'usr/lib/libgbm.so*' 'usr/lib/libasound.so*' >/dev/null
-cp -a "$W/stock/usr/lib/"* "$SR/usr/lib/"
+    "$STOCK_LIB/libdrm.so*" "$STOCK_LIB/libgbm.so*" "$STOCK_LIB/libasound.so*" >/dev/null
+cp -a "$W/stock/$STOCK_LIB/"* "$SR/usr/lib/"
 for pc in "libdrm:drm:-I\${includedir}/libdrm" "gbm:gbm:" "alsa:asound:"; do
     IFS=: read -r name lib cflags <<EOF
 $pc
@@ -143,6 +155,7 @@ $CROSS-strip "$OUT/$RGA_SO"
     echo "SDL $SDL_COMMIT (2.32.10)"
     echo "librga $RGA_COMMIT ($RGA_SO)"
     echo "rotation $ROT"
+    echo "arch $ARCH"
     for p in "$HERE/patches/"sdl2-patch*; do echo "patch ${p##*/} $(sha256sum "$p" | cut -c1-16)"; done
     (cd "$OUT" && sha256sum "libSDL2-2.0.so.0.$SDL_EXT" "$RGA_SO")
 } > "$OUT/libSDL2.build-info"

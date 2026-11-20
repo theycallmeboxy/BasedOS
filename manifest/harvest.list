@@ -22,6 +22,20 @@
 /usr/lib/mali/libgbm.so.1 => /usr/lib/libgbm.so.1
 /usr/lib/mali/libwayland-egl.so.1 => /usr/lib/libwayland-egl.so.1
 
+## GPU: the same driver's 32-bit (armhf) build and its wrappers, for PortMaster's 32-bit ports
+## (docs/lib32.md). It needs the same open libraries in 32 bits, from the system layer's
+## /usr/lib32 (manifest/base32.list). No 32-bit Vulkan: stock has only Mesa's for armhf.
+/usr/lib32/libmali.so.1.9.0
+/usr/lib32/libmali.so.1
+/usr/lib32/libmali.so
+/usr/lib32/libmali-hook.so.1.9.0
+/usr/lib32/libmali-hook.so.1
+/usr/lib32/mali/libEGL.so.1 => /usr/lib32/libEGL.so.1
+/usr/lib32/mali/libGLESv1_CM.so.1 => /usr/lib32/libGLESv1_CM.so.1
+/usr/lib32/mali/libGLESv2.so.2 => /usr/lib32/libGLESv2.so.2
+/usr/lib32/mali/libgbm.so.1 => /usr/lib32/libgbm.so.1
+/usr/lib32/mali/libwayland-egl.so.1 => /usr/lib32/libwayland-egl.so.1
+
 ## GPU: Arm's Mali Vulkan driver for the G52, as the Khronos loader's ICD (the loader is
 ## BasedOS's). spruce's DSperate draws through it: without it, it scales and turns the picture on
 ## the CPU, too slow on this 1440x1600 portrait panel (2.4 fps; 59 fps with it, 2026-11-16).

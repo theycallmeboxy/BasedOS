@@ -5,13 +5,17 @@
 
 PortMaster's 32-bit ports are built for ROCKNIX-style systems, whose /usr/lib32 is stock's, so a
 library they load from the system and BasedOS lacks is likely in this list (docs/lib32.md).
-Prints each missing library name (versioned .so.N names in /usr/lib32 itself), leaving out what
-BasedOS doesn't carry on purpose (KNOWN_ABSENT). Prints only; build-rootfs.sh writes it beside
-its reports, it doesn't fail the build.
+Compares by SONAME (the name programs ask for: libz.so.1, libcrypto.so.1.1), read from each of
+stock's libraries in /usr/lib32 itself, against the names BasedOS's /usr/lib32 has, leaving out
+what BasedOS doesn't carry on purpose (KNOWN_ABSENT). Prints only; build-rootfs.sh writes it
+beside its reports, it doesn't fail the build.
 """
 import os
 import re
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from harvest import elf_soname  # noqa: E402
 
 # Stock carries these for its own desktop, services and Mesa, and BasedOS has no use for them; or
 # they are the 32-bit Mali driver's (EGL, GLES, gbm, wayland-egl), which are the vendor layer's.
@@ -22,22 +26,22 @@ KNOWN_ABSENT = re.compile(
     r"gthread|girepository|json-glib|nss_|BrokenLocale|c_malloc_debug|thread_db|nsl|asm|dw|elf|"
     r"pcap|pciaccess|kmod|mount|blkid|smartcols|gnutls|hogweed|nettle|idn2|gmp|asprintf|"
     r"gettextpo|textstyle|history|readline|form|menu|panel|ncurses\.|tinfow|crypt\.|vulkan_|"
-    r"atopology|harfbuzz-|tiffxx|FLAC\+\+|out123|syn123|opusurl|jsoncpp|wavpack|pulse)")
-
-
-def sonames(d):
-    out = set()
-    if os.path.isdir(d):
-        for n in os.listdir(d):
-            if re.search(r"\.so\.\d+$", n):
-                out.add(n)
-    return out
+    r"atopology|harfbuzz-|tiffxx|FLAC\+\+|out123|syn123|opusurl|jsoncpp|wavpack|pulse|gallium|wlroots|"
+    r"gettextlib|gettextsrc|gnuintl|memusage|pcprofile)")
 
 
 def main():
     stock, mine = sys.argv[1], sys.argv[2]
-    have = sonames(os.path.join(mine, "usr/lib32"))
-    missing = sorted(n for n in sonames(os.path.join(stock, "usr/lib32")) - have if not KNOWN_ABSENT.match(n))
+    sd, md = os.path.join(stock, "usr/lib32"), os.path.join(mine, "usr/lib32")
+    have = set(os.listdir(md)) if os.path.isdir(md) else set()
+    stock_sonames = set()
+    for n in os.listdir(sd):
+        p = os.path.join(sd, n)
+        if ".so" in n and os.path.isfile(p) and not os.path.islink(p):
+            s = elf_soname(p)
+            if s:
+                stock_sonames.add(s)
+    missing = sorted(s for s in stock_sonames - have if not KNOWN_ABSENT.match(s))
     for n in missing:
         print(n)
     print(f"{len(missing)} in stock's /usr/lib32 and not BasedOS's", file=sys.stderr)

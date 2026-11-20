@@ -45,7 +45,11 @@ Sokobrawn, Everpatch, Reverse Bros, Snaklipse, Operius, Maldita Castilla and Bum
 Broadswords run upright and full width on BasedOS's 32-bit SDL2 and the 32-bit Mali driver
 (Sokobrawn: pad checked, quitting from its menu returns to spruce). Sulka doesn't start:
 its gmloader needs `libcrypto.so.1.1` (OpenSSL 1.1), which the other ports carry in their own
-`libs/` and Sulka's package doesn't (stock's `/usr/lib32` doesn't have it either; ArkOS's does).
+`libs/` and Sulka's package doesn't (PortMaster-New's `ports/sulka` has only `libzip.so.5` there).
+Stock has no 32-bit `libcrypto.so.1.1` either: its `libcrypto.so.1.1` is in ROCKNIX's 64-bit
+compat folder (`/usr/lib/compat/compat/`, which ROCKNIX's PortMaster `control.txt` names as
+`clibs` and puts on `LD_LIBRARY_PATH` in `get_controls`; see vendor-minimal.md). Which system the
+port was made on isn't recorded.
 
 The 32-bit ports that aren't GameMaker (Braid, Super Meat Boy, Shovel Knight, Serious Sam,
 SteamWorld Dig and Heist on the Weston pack, ...) need the buyer's own game files and are untested.

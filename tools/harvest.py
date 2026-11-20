@@ -57,7 +57,21 @@ def elf_info(path):
     return (64 if b[4] == 2 else 32), _needed(b)
 
 
-def _needed(b):
+def elf_soname(path):
+    """An ELF library's DT_SONAME, None if it has none or isn't ELF."""
+    try:
+        with open(path, "rb") as f:
+            b = f.read()
+    except OSError:
+        return None
+    if b[:4] != b"\x7fELF" or b[4] not in (1, 2):
+        return None
+    names = _needed(b, want=14)
+    return names[0] if names else None
+
+
+def _needed(b, want=1):
+    """The dynamic section's strings with tag `want` (1 DT_NEEDED, 14 DT_SONAME)."""
     if b[4] == 2:
         phoff, = struct.unpack_from("<Q", b, 0x20)
         phentsize, phnum = struct.unpack_from("<HH", b, 0x36)
@@ -84,7 +98,7 @@ def _needed(b):
         tag, val = struct.unpack_from(dyn_fmt, b, o)
         if tag == 0:
             break
-        if tag == 1:
+        if tag == want:
             needed.append(val)
         elif tag == 5:
             strtab = val

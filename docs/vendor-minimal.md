@@ -72,6 +72,15 @@ Also from the same build, for PortMaster's ports (the list of 2026-11-19): `libg
 BasedOS's own builds stay as they are or move into the same tree: SDL2 with its patches and
 librga (`tools/sdl2`), bash (`tools/bash`), BusyBox (Alpine's static build today).
 
+Not carried yet: **ROCKNIX's compat libraries** (`/usr/lib/compat/compat/`, 64-bit only, 49
+files): older-ABI builds for ports made on older systems, among them `libcrypto.so.1.1`,
+`libxml2.so.2`, FFmpeg 4 (`libavcodec.so.58`, ...), `libvpx.so.6`, `libwebp.so.6`, `libFLAC.so.8`,
+krb5 and a second SDL2. Stock's PortMaster `control.txt` names that folder's parent as `clibs`
+(`/usr/lib/compat/`) and its `get_controls` sets `LD_LIBRARY_PATH` to it, one level above the
+libraries themselves as the image is laid out. spruce's `control.txt` has no `clibs`. PortMaster's
+own docs don't describe `clibs` or list what a system provides (2026-11-19); they ask ports to
+carry what they need in `libs.<arch>`. Buildroot builds none of these old versions.
+
 Not in spruce's needs and not stock's either (the card brings them, or they're unused on
 BasedOS): `libpython3.10`, `libbsd`, `libcrypto.so.1.1`, `libffi.so.8`, Samba's `libtalloc`,
 `libtdb`, `libtevent`, `libtheoraenc`.

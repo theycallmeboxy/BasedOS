@@ -15,15 +15,12 @@ SLOTS="$(slot_line a ":$TAB")
 $(slot_line b ":$TAB")"
 OTHER=b; [ "$(next_slot)" = b ] && OTHER=a
 OTHER_S=$(echo "$OTHER" | tr ab AB)
-# An update on the card, read once (the card may not be mounted yet in maintenance mode).
-QUIET=1 /usr/sbin/mount-frontend >/dev/null 2>&1
-UPD=$(basedos-update check 2>/dev/null)
-case "$UPD" in
-ready\ *) UPD_LABEL="Update to ${UPD#ready }" ;;
-*) UPD_LABEL="Update" ;;
-esac
+# The running slot, and the spare one updates go to (the running one is never written).
+RUN=$(boot_slot) RUN_S=$(boot_slot | tr ab AB)
+SPARE=b; [ "$RUN" = b ] && SPARE=a
+SPARE_S=$(echo "$SPARE" | tr ab AB)
 ITEMS="stock-once|Boot Stock OS
-update|$UPD_LABEL
+update|Install update
 slot|Switch to slot $OTHER_S
 disable|Disable BasedOS
 uninstall|Uninstall BasedOS
@@ -68,6 +65,38 @@ unlisten() {
 	KW=""
 }
 
+# pick <title> <line>... <label>...: a list to choose from, under the title and the lines before the
+# first "-" argument; the labels follow it. PICKED is the chosen label's number (from 1), or empty
+# when B goes back. Keys come from the menu's reader.
+pick() {
+	_t=$1; shift
+	_pre=""
+	while [ $# -gt 0 ] && [ "$1" != - ]; do _pre="$_pre$1
+"; shift; done
+	shift
+	_n=$# _s=1 PICKED=""
+	while :; do
+		{
+			echo "!$_t"
+			printf '%s' "$_pre"
+			_i=0
+			for _l in "$@"; do
+				_i=$((_i + 1))
+				if [ $_i = $_s ]; then echo "!> $_l"; else echo "   $_l"; fi
+			done
+		} > "$SPLASH_INFO"
+		splash "Up/Down: choose    A: select    B: back"
+		_k=""
+		read -r -t 1 _k <&5
+		case "$_k" in
+		"$UP") _s=$((_s > 1 ? _s - 1 : _n)) ;;
+		"$DOWN") _s=$((_s < _n ? _s + 1 : 1)) ;;
+		"$A") PICKED=$_s; return 0 ;;
+		"$B") return 1 ;;
+		esac
+	done
+}
+
 # confirm <question> <line>...: 0 once A, B, X, Y are tapped in that order; 1 on any other button,
 # or 10 s without one. The lines say what happens; the status line shows how far it's got.
 confirm() {
@@ -105,18 +134,42 @@ run() {
 		draw "Starting stock..."
 		basedos-boot stock-once --reboot || MSG="Couldn't start stock." ;;
 	update)
-		case "$UPD" in
-		ready\ *) ;;
-		skip\ *) MSG="The update on the SD card is ${UPD#skip }."; return ;;
-		*) MSG="No update on the SD card."; return ;;
-		esac
+		# A .bosupd on the card, picked by hand (older ones too), into the slot that isn't running.
 		[ -f /run/basedos/data-ok ] || { MSG="Can't update: settings storage unavailable."; return; }
-		confirm "Update to ${UPD#ready }?" "It goes into the other slot, and the device restarts into it." \
-			"If it doesn't start, this version comes back." || return
-		draw "Updating..."
-		basedos-update apply
-		[ $? -eq 10 ] && while :; do sleep 3600; done
-		MSG="Update failed. BasedOS is unchanged." ;;
+		QUIET=1 /usr/sbin/mount-frontend >/dev/null 2>&1
+		_list=$(basedos-update list 2>/dev/null)
+		[ -n "$_list" ] || { MSG="No update on the SD card."; return; }
+		_labels=$(echo "$_list" | while IFS='|' read -r _p _b _k _w; do
+			case "$_k" in
+			new) echo "$_b" ;;
+			old) echo "$_b  (older or installed before)" ;;
+			*) echo "$_b  (can't install: $_w)" ;;
+			esac
+		done)
+		_old_ifs=$IFS; IFS='
+'
+		# shellcheck disable=SC2086
+		pick "Install which update?" "It goes into slot $SPARE_S. Slot $RUN_S is running and isn't touched." "" - $_labels || { IFS=$_old_ifs; return; }
+		IFS=$_old_ifs
+		_line=$(echo "$_list" | sed -n "${PICKED}p")
+		_p=${_line%%|*} _r=${_line#*|} _b=${_r%%|*} _r=${_r#*|} _k=${_r%%|*} _w=${_r#*|}
+		[ "$_k" = no ] && { MSG="$_b can't be installed: $_w."; return; }
+		pick "Install $_b in slot $SPARE_S, then:" - "Boot slot $SPARE_S" "Keep booting slot $RUN_S" || return
+		if [ "$PICKED" = 1 ]; then _then=boot; else _then=keep; fi
+		if [ $_then = boot ]; then
+			confirm "Install $_b in slot $SPARE_S and boot it?" "What's in slot $SPARE_S now is replaced." 				"If it doesn't start, slot $RUN_S comes back." || return
+		else
+			confirm "Install $_b in slot $SPARE_S?" "What's in slot $SPARE_S now is replaced." "Slot $RUN_S still boots." || return
+		fi
+		draw "Installing in slot $SPARE_S..."
+		basedos-update install "$_p" $_then
+		case $? in
+		10) while :; do sleep 3600; done ;;   # installed; the reboot is under way
+		0) MSG="Slot $SPARE_S has $_b. Slot $RUN_S still boots."
+		   SLOTS="$(slot_line a ":$TAB")
+$(slot_line b ":$TAB")" ;;
+		*) MSG="Install failed. BasedOS is unchanged." ;;
+		esac ;;
 	slot)
 		# One that can't start isn't offered (basedos-boot would refuse it too).
 		slot_info "$OTHER"

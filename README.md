@@ -48,7 +48,8 @@ and starts it, again if it exits.
 Updates: a `baseos-gkd350hultra-<version>.bosupd` at the card root is installed by
 `basedos-update` only when asked for: by spruce's firmware updater (BasedOS's own copy fetches or
 finds one, runs `basedos-update request` and reboots; installed at the next boot, once the card
-is mounted and before the frontend starts) or from the maintenance menu ("Update to ..."): the system layer to the spare slot, verified,
+is mounted and before the frontend starts) or from the maintenance menu ("Install update": any payload on the card, older ones too, into the
+slot that isn't running, booted or kept as a spare): the system layer to the spare slot, verified,
 then the slot flips. One it won't install is renamed on the card (`.skipped`, `.refused`,
 `.failed`), so it isn't offered again. It carries nothing of stock's; each
 release is made for one stock build, and one for another stock build is refused

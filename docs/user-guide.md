@@ -80,7 +80,7 @@ script is back.
 | You do | BasedOS does |
 |---|---|
 | Power on | boots in about 4 s to spruce's menu |
-| Power on **holding Select** | **maintenance mode**: no spruce; Wi-Fi and SSH, what's in BasedOS's two copies (slots A and B: which build, which runs, which boots next), and a menu (Up/Down, A): **Boot Stock OS** (this boot only); **Update to** *version* (when there's an update on the card: see Updates); **Switch to slot A/B** (the other copy, if it's there and would start; it restarts into it); **Disable BasedOS** (stock boots from then on, and an "Enable BasedOS" entry in stock's Ports turns BasedOS back on); **Uninstall BasedOS** (removes its files and settings from the device while it restarts, then starts stock; stock is as before the install); Restart; Power off. Updating, changing slots, disabling and uninstalling want A, B, X, Y tapped in that order (as the recovery card); any other button goes back. The screen shows the address to SSH to once Wi-Fi is up |
+| Power on **holding Select** | **maintenance mode**: no spruce; Wi-Fi and SSH, what's in BasedOS's two copies (slots A and B: which build, which runs, which boots next), and a menu (Up/Down, A): **Boot Stock OS** (this boot only); **Install update** (a `.bosupd` from the card into the slot that isn't running: see Updates); **Switch to slot A/B** (the other copy, if it's there and would start; it restarts into it); **Disable BasedOS** (stock boots from then on, and an "Enable BasedOS" entry in stock's Ports turns BasedOS back on); **Uninstall BasedOS** (removes its files and settings from the device while it restarts, then starts stock; stock is as before the install); Restart; Power off. Updating, changing slots, disabling and uninstalling want A, B, X, Y tapped in that order (as the recovery card); any other button goes back. The screen shows the address to SSH to once Wi-Fi is up |
 | Power on **holding Start** | **stock, for this boot**: BasedOS restarts into stock once; the next power-on is BasedOS again |
 | Power on **holding another button** | whatever `/data/boot-keys.conf` maps it to (none by default): maintenance mode, stock once, or a frontend on the card other than the first one found. The format and the button names are in `/usr/share/basedos/boot-keys.conf`; copy it to `/data/` to change it. The boot screen labels the mapped buttons: Select's and Start's beside the buttons themselves ("Maintenance", "Boot Stock OS" by default), any other in a list |
 | Hold **Volume Up + Volume Down** together **3 s** | clean shutdown with any frontend, also a hung one: programs get 3 s to save and quit, then the card is synced and unmounted (`basedos-shutdown-keys`). Holding power is the frontend's (spruce: Button Settings > Power button hold time) |
@@ -115,8 +115,11 @@ once (or whatever `/data/boot-keys.conf` maps them to), without restarting first
     restarts once more into the new version. (The app's download only sees GitHub's latest full
     release, so while BasedOS has only pre-releases, download the `.bosupd` from the release page
     yourself and put it at the root of the card.)
-  - **The maintenance menu** (Select held at power-on): **Update to** *version* when there's one on
-    the card; it asks for A, B, X, Y and restarts into the new version.
+  - **The maintenance menu** (Select held at power-on): **Install update** lists the `.bosupd`
+    files on the card, older ones too (you're choosing by hand). The one you pick goes into the
+    slot that isn't running, and you choose whether to boot it now or keep booting the running
+    slot (then it waits in the other slot as a spare). The running slot can't be written while
+    it runs: to update it, switch to the other slot first. It asks for A, B, X, Y.
 
   A `.bosupd` that's only on the card is never installed by itself.
 - It goes into the copy of BasedOS that isn't running, and is checked before it's used. If the new

@@ -84,5 +84,5 @@ mount -o remount,ro $P1
 for d in $PORTS /storage/roms/ports /storage/.config/modules; do rm -f "$d/$NAME" "$d/Return to BasedOS.sh"; done
 sync
 echo "$(date) disable: stock's boot script in place" >> /storage/basedos-data/basedos.log 2>/dev/null
-show -t "Disable BasedOS" -m "BasedOS is disabled. Stock boots from now on. Use Enable BasedOS to turn it back on."
+show -t "Disable BasedOS" -m "BasedOS is disabled: the device boots stock from now on. BasedOS stays installed. To boot it again, run Enable BasedOS from Ports."
 exit 0

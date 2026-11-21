@@ -15,7 +15,7 @@ SLOTS="$(slot_line a ":$TAB")
 $(slot_line b ":$TAB")"
 OTHER=b; [ "$(next_slot)" = b ] && OTHER=a
 OTHER_S=$(echo "$OTHER" | tr ab AB)
-ITEMS="stock-once|Boot Stock OS once
+ITEMS="stock-once|Boot Stock OS
 slot|Switch to slot $OTHER_S
 disable|Disable BasedOS
 uninstall|Uninstall BasedOS
@@ -60,16 +60,18 @@ unlisten() {
 	KW=""
 }
 
-# confirm <question> <what happens>: 0 once A, B, X, Y are tapped in that order; 1 on any other
-# button, or 10 s without one. The status line shows how far it's got.
+# confirm <question> <line>...: 0 once A, B, X, Y are tapped in that order; 1 on any other button,
+# or 10 s without one. The lines say what happens; the status line shows how far it's got.
 confirm() {
+	_q=$1; shift
 	_i=0
 	listen
 	while :; do
 		case $_i in 0) _p="_ _ _ _" ;; 1) _p="A _ _ _" ;; 2) _p="A B _ _" ;; *) _p="A B X _" ;; esac
 		{
-			echo "!$1"
-			echo "$2"
+			echo "!$_q"
+			printf '%s
+' "$@"
 			echo ""
 			echo "Tap A, B, X, Y to confirm."
 			echo "Any other button cancels."
@@ -106,7 +108,7 @@ run() {
 		draw "Switching to slot $OTHER_S..."
 		basedos-boot slot "$OTHER" --reboot 2>/dev/null || MSG="Couldn't switch slots." ;;
 	disable)
-		confirm "Disable BasedOS?" "Stock boots from now on. Enable BasedOS again from stock's Ports." || return
+		confirm "Disable BasedOS?" "The device boots stock instead of BasedOS." "BasedOS stays installed." 			"To boot it again, run Enable BasedOS from stock's Ports." || return
 		draw "Disabling BasedOS..."
 		basedos-boot disable --reboot || MSG="Couldn't disable BasedOS." ;;
 	uninstall)

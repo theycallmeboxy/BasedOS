@@ -76,32 +76,40 @@ bootloader, below, are newer and not yet tested on the unit).
 **It needs the eMMC's own bootloader to start.** The boot ROM only ever starts the bootloader from
 the eMMC (sectors 64 to 32767): tested 2026-11-20 with those sectors zeroed and a card carrying a
 copy of them in the slot, the device showed only its power LED, and only maskrom (below) brought
-it back. So a recovery card fixes everything after the bootloader (the partition table, stock's
-files, BasedOS, the data partition), and a lost bootloader takes maskrom and a PC.
+it back. So a recovery card fixes everything but the bootloader (the partition table, stock's
+files, BasedOS, the data partition), and a lost bootloader takes maskrom and a PC, with the
+card's own `.1-bootloader.img` and `maskrom/` (writing just the bootloader at `0x40` through
+maskrom was tested 2026-11-20).
 
 - The card: MBR, one bootable FAT32 partition `RECOVERY` (U-Boot reads FAT, not exFAT) holding
   `boot.scr` (`tools/recovery/boot.cmd`), `RECOVERY.txt`, `recovery/` (this device's own stock
   `Image` and DTBs, copied when the card is made, the recovery initrd, and `backup.info`: the
-  backup's name, its MD5s, the eMMC's ID and size) and `backup/`.
-- The backup (`backup/`) is images only: `GKD350HUltra-eMMC-<date>.img.zst.001`, `.002`, ... (the
-  eMMC's main area, byte for byte, from sector 0: partition table, the Rockchip bootloader at
-  sector 64, stock's p1 and p2; 2000 MiB of it per piece, each piece its own zstd stream with
-  zstd's checksum, so they decompress back to back as one image). Joined and decompressed
-  (`cat *.img.zst.* | zstd -d > emmc.img`), it's what maskrom writes from offset 0. boot0 and boot1
-  (an unrelated Amlogic loader) aren't in it; RPMB can't be read without its key.
-- Every backup is checked when it's made: read back and compared with the MD5 taken while the
-  eMMC was read.
+  backup's name, each region's start, size and MD5, the eMMC's ID and size), `backup/` and
+  `maskrom/`.
+- The backup (`backup/`) is the eMMC's main area by region, images only:
+  `GKD350HUltra-eMMC-<date>.0-partition-table.img` (sectors 0 to 63, raw, 32 KB),
+  `.1-bootloader.img` (64 up to p1, raw, 16 MB), and `.2-p1.img.zst.001`, ... and
+  `.3-p2.img.zst.001`, ... (p1 and p2, zstd, 2000 MiB of the eMMC per piece, each piece its own
+  stream so they decompress back to back). Laid end to end in name order (the partitions
+  decompressed), they're the whole main area, byte for byte; setup refuses a layout where they
+  wouldn't be. boot0 and boot1 (an unrelated Amlogic loader) aren't in it; RPMB can't be read
+  without its key.
+- `maskrom/`: Rockchip's RK3576 USB loader (`rk3576_usb_loader_ddr1.13_usbplug1.04.bin`, rkbin's
+  DDR init and usbplug, shipped in BasedOS releases under rkbin's licence, which is beside it) and
+  `MASKROM.txt`, the steps for RKDevTool and `rkdeveloptool` with this device's own sector numbers:
+  the bootloader alone (`.1-bootloader.img` at `0x40`, as tested 2026-11-20), or everything.
+- Every backup is checked when it's made: each region read back and compared with the MD5 taken
+  while the eMMC was read.
 - Booted, the recovery initrd (`tools/recovery/init`: static BusyBox, zstd, BasedOS's boot screen
   and key reader; nothing of stock's) writes nothing until you confirm. It refuses a backup of
   another unit's eMMC (ID) or a different size, decompresses the backup and checks its MD5, and
   wants 30 % battery or the charger. Then it shows what it would restore: tap A, B, X, Y in order
   to restore (a wrong key or a 5 s pause starts over; the keys are read as events, so taps can't
   be missed), tap power to power off.
-- The restore writes sector 0 and everything from sector 32768 (p1) on, from the decompressed
-  backup, and leaves the bootloader (sectors 64 to 32767) as it is: it's what started the card,
-  and a restore that never touches it can always be tried again from the card. It checks the MD5
-  of what it decompressed, then reads back what it wrote and checks that against the backup's. On
-  a failure it says so and offers to try again.
+- The restore writes the partition table, p1 and p2, each at its sector, and leaves the bootloader
+  region as it is: it's what started the card, and a restore that never touches it can always be
+  tried again from the card. It checks the MD5 of what it decompressed, then reads each region back
+  and checks it against the backup's. On a failure it says so and offers to try again.
 
 ## Rescue SD card (built and boot-tested 2026-11-16)
 

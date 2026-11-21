@@ -3,16 +3,16 @@
 # device's own stock kernel). It puts the built-in storage (the eMMC) back from the backup on the
 # card:
 #
-#   1. checks, writing nothing: the card's backup (backup/, named in recovery/backup.info) is this
-#      device's eMMC (its ID and size), it decompresses to the MD5 recorded when it was made, and
-#      the battery has enough charge (or the charger is in);
+#   1. checks, writing nothing: the card's backup (backup/, by region, described in
+#      recovery/backup.info) is this device's eMMC (its ID and size), each region it writes back
+#      decompresses to the MD5 recorded when it was made, and the battery has enough charge (or
+#      the charger is in);
 #   2. shows what it would restore, and restores only once A, B, X and Y are tapped in that order
 #      (tapping power powers off, on every screen);
-#   3. writes the backup to the eMMC: sector 0 (the partition table) and everything from sector
-#      32768 (p1) on. Sectors 64 to 32767, the bootloader, are left as they are: it's what
-#      started this card, so it works, and a restore that never touches it can always be tried
-#      again from the card. The MD5 of what was decompressed is checked, then what was written is
-#      read back and checked against the backup's;
+#   3. writes the partition table, p1 and p2 back to the eMMC, each at its sector, checking the
+#      MD5 of what it decompressed, then reads each back and checks it again. The bootloader
+#      region is left as it is: it's what started this card, so it works, and a restore that
+#      never touches it can always be tried again from the card;
 #   4. says so, and powers off when power is tapped: take the card out and the device starts from
 #      the eMMC as it was when the backup was made.
 #
@@ -30,7 +30,6 @@ log() { echo "recovery: $*" > /dev/kmsg; }
 
 # Linux key codes: the pad's A, B, X, Y (as BasedOS's button_code has them) and the power key.
 A=305 B=304 X=307 Y=308 POWER=116
-LOADER_END=32768                       # sectors 64..32767 are the bootloader; p1 starts here
 INFO=/run/basedos/splash
 # screen <status> <line>...: the boot screen, its lines ('!' first: highlighted) and status.
 screen() {
@@ -94,23 +93,34 @@ EMMC=$(disk_of 2a330000.mmc)
 [ -b /dev/${CARD}p1 ] || usleep 500000
 mount -t vfat -o ro /dev/${CARD}p1 /card || stop "The card's partition doesn't mount."
 
-# The backup this card was made with: its images in backup/, named in recovery/backup.info.
+# The backup this card was made with: by region in backup/, described in recovery/backup.info
+# (each region's start, sectors and MD5: R0 the partition table, R1 the bootloader, R2 p1, R3 p2).
 BK=/card/backup
 [ -f /card/recovery/backup.info ] || stop "This card has no recovery/backup.info."
 info() { sed -n "s/^$1=//p" /card/recovery/backup.info | head -1; }
-NAME=$(info NAME) WANT_MD5=$(info IMG_MD5) WANT_REST=$(info REST_MD5) WANT_LOADER=$(info LOADER_MD5)
-WANT_CID=$(info EMMC_CID) WANT_SECTORS=$(info EMMC_SECTORS) WHEN=$(info DATE) WHAT=$(info STOCK)
-[ -n "$NAME" ] && [ ${#WANT_MD5} -eq 32 ] && [ -n "$WANT_SECTORS" ] || stop "The card's recovery/backup.info is incomplete."
-[ ${#WANT_REST} -eq 32 ] || stop "This card was made by an older BasedOS setup." "Make a new recovery card."
-[ -f "$BK/$NAME.img.zst.001" ] || stop "The backup's images aren't in backup/ ($NAME)."
+NAME=$(info NAME) WANT_CID=$(info EMMC_CID) WANT_SECTORS=$(info EMMC_SECTORS) WHEN=$(info DATE) WHAT=$(info STOCK)
+[ -n "$NAME" ] && [ -n "$WANT_SECTORS" ] || stop "The card's recovery/backup.info is incomplete."
+[ -n "$(info R3_START)" ] || stop "This card was made by an older BasedOS setup." "Make a new recovery card."
+for r in 0 1 2 3; do
+	_s=$(info R${r}_START) _n=$(info R${r}_SECTORS) _m=$(info R${r}_MD5)
+	case "$_s:$_n" in *[!0-9:]*|:*|*:) stop "The card's recovery/backup.info is damaged." ;; esac
+	case "$_m" in *[!0-9a-f]*) _m="" ;; esac
+	[ ${#_m} -eq 32 ] || stop "The card's recovery/backup.info is damaged."
+	eval "R${r}_START=$_s R${r}_SECTORS=$_n R${r}_MD5=$_m"
+done
+[ $((R2_START % 8192)) -eq 0 ] && [ $((R3_START % 8192)) -eq 0 ] || stop "The backup's partitions aren't where a restore can write them."
+[ -f "$BK/$NAME.0-partition-table.img" ] && [ -f "$BK/$NAME.2-p1.img.zst.001" ] && [ -f "$BK/$NAME.3-p2.img.zst.001" ] ||
+	stop "The backup's images aren't all in backup/ ($NAME)."
 SECTORS=$(cat /sys/block/$EMMC/size)
 CID=$(cat /sys/block/$EMMC/device/cid)
 [ "$CID" = "$WANT_CID" ] || stop "This backup is of another 350H Ultra's storage" "(ID $WANT_CID; this one is $CID)." "Nothing was written."
 [ "$SECTORS" = "$WANT_SECTORS" ] || stop "The backup is $WANT_SECTORS sectors; this storage is $SECTORS." "Nothing was written."
 
 screen "checking the backup (a few minutes)" "!RECOVERY CARD" "Backup of $WHEN" "$WHAT" "Checking the backup..."
-[ "$(cat "$BK/$NAME.img.zst."* | zstd -dcq | md5sum | cut -c1-32)" = "$WANT_MD5" ] ||
-	stop "The backup on this card is damaged or incomplete" "(it doesn't decompress to what was backed up)." "Nothing was written."
+[ "$(md5sum < "$BK/$NAME.0-partition-table.img" | cut -c1-32)" = "$R0_MD5" ] &&
+	[ "$(cat "$BK/$NAME.2-p1.img.zst."* | zstd -dcq | md5sum | cut -c1-32)" = "$R2_MD5" ] &&
+	[ "$(cat "$BK/$NAME.3-p2.img.zst."* | zstd -dcq | md5sum | cut -c1-32)" = "$R3_MD5" ] ||
+	stop "The backup on this card is damaged or incomplete" "(it doesn't read as it was made)." "Nothing was written."
 log "backup $NAME checks out"
 
 # Enough charge for a write of about 15 GB: 30 %, or the charger in.
@@ -127,49 +137,59 @@ power_ok() {
 	[ -n "$_chg" ] || [ -z "$_cap" ] || [ "$_cap" -ge 30 ]
 }
 
-# progress <stat field> <what>: the share of the eMMC's sectors read (3) or written (7) since
-# it started, on the screen every 2 s, until killed.
+# progress <stat field> <what>: the share of p1 and p2's sectors read (3) or written (7) since it
+# started, on the screen every 2 s, until killed.
 progress() {
 	_base=$(awk -v f=$1 '{ print $f }' /sys/block/$EMMC/stat)
+	_all=$((R2_SECTORS + R3_SECTORS))
 	while sleep 2; do
 		_now=$(awk -v f=$1 '{ print $f }' /sys/block/$EMMC/stat)
-		screen "$2: $(( (_now - _base) * 100 / SECTORS )) %  (don't power off)" "!RESTORING" "Backup of $WHEN" "$WHAT"
+		screen "$2: $(( (_now - _base) * 100 / _all )) %  (don't power off)" "!RESTORING" "Backup of $WHEN" "$WHAT"
 	done
 }
 
-# eMMC_rest: the eMMC as a restore writes it: sector 0 and everything from p1 on.
-emmc_rest() {
-	dd if=/dev/$EMMC bs=32768 count=1 2>/dev/null
-	dd if=/dev/$EMMC bs=4M skip=$((LOADER_END / 8192)) 2>/dev/null
+# region_md5 <start> <sectors>: the MD5 of that region of the eMMC, read past the page cache's
+# leftovers (drop_caches first).
+region_md5() {
+	dd if=/dev/$EMMC bs=4M skip=$(($1 / 8192)) count=$(( ($2 + 8191) / 8192 )) 2>/dev/null |
+		head -c $(($2 * 512)) | md5sum | cut -c1-32
+}
+
+# write_region <n> <file pattern>: a p1/p2 region back at its sector, its MD5 taken on the way.
+write_region() {
+	eval "_s=\$R${1}_START _m=\$R${1}_MD5"
+	rm -f /tmp/fifo /tmp/w.md5; mkfifo /tmp/fifo
+	md5sum < /tmp/fifo | cut -c1-32 > /tmp/w.md5 & M=$!
+	cat $2 | zstd -dcq | tee /tmp/fifo | dd of=/dev/$EMMC bs=4M seek=$((_s / 8192)) conv=fsync 2>/tmp/dd.err
+	_rc=$?
+	wait $M
+	[ $_rc -eq 0 ] || { FAIL="the write stopped ($(tail -1 /tmp/dd.err 2>/dev/null))"; return 1; }
+	[ "$(cat /tmp/w.md5)" = "$_m" ] || { FAIL="the backup didn't decompress as it was made (MD5)"; return 1; }
 }
 
 restore() {
-	# The image, decompressed once: its MD5 taken on the way (all of it), then written in three
-	# parts: sectors 0..63 (the partition table), 64..32767 skipped (the bootloader, left as it is),
-	# and the rest from p1 on. head -c reads exactly that much from the stream, no more.
-	rm -f /tmp/fifo /tmp/w.md5; mkfifo /tmp/fifo
-	md5sum < /tmp/fifo | cut -c1-32 > /tmp/w.md5 & M=$!
+	# The partition table, then p1 and p2. Never the bootloader (R1).
+	dd if="$BK/$NAME.0-partition-table.img" of=/dev/$EMMC bs=512 seek=$R0_START count=$R0_SECTORS conv=fsync 2>/dev/null ||
+		{ FAIL="the partition table didn't write"; return 1; }
 	progress 7 writing & P=$!
-	cat "$BK/$NAME.img.zst."* | zstd -dcq | tee /tmp/fifo | {
-		head -c 32768 | dd of=/dev/$EMMC bs=32768 conv=fsync 2>/dev/null &&
-			head -c $(( (LOADER_END - 64) * 512 )) > /dev/null &&
-			dd of=/dev/$EMMC bs=4M seek=$((LOADER_END / 8192)) conv=fsync 2>/tmp/dd.err
-	}
-	rc=$?
-	wait $M; kill $P 2>/dev/null; wait $P 2>/dev/null
+	write_region 2 "$BK/$NAME.2-p1.img.zst.*" && write_region 3 "$BK/$NAME.3-p2.img.zst.*"
+	_rc=$?
+	kill $P 2>/dev/null; wait $P 2>/dev/null
 	sync
-	[ $rc -eq 0 ] || { FAIL="the write stopped ($(tail -1 /tmp/dd.err 2>/dev/null))"; return 1; }
-	[ "$(cat /tmp/w.md5)" = "$WANT_MD5" ] || { FAIL="the backup didn't decompress as it was made (MD5)"; return 1; }
+	[ $_rc -eq 0 ] || return 1
 	# Read back, past the page cache: everything that was written.
 	echo 3 > /proc/sys/vm/drop_caches
 	progress 3 checking & P=$!
-	got=$(emmc_rest | md5sum | cut -c1-32)
+	_g0=$(dd if=/dev/$EMMC bs=512 skip=$R0_START count=$R0_SECTORS 2>/dev/null | md5sum | cut -c1-32)
+	_g2=$(region_md5 $R2_START $R2_SECTORS)
+	_g3=$(region_md5 $R3_START $R3_SECTORS)
 	kill $P 2>/dev/null; wait $P 2>/dev/null
-	[ "$got" = "$WANT_REST" ] || { FAIL="the storage doesn't read back as the backup (MD5)"; return 1; }
-	log "eMMC restored and read back: $got"
+	[ "$_g0" = "$R0_MD5" ] && [ "$_g2" = "$R2_MD5" ] && [ "$_g3" = "$R3_MD5" ] ||
+		{ FAIL="the storage doesn't read back as the backup (MD5)"; return 1; }
+	log "eMMC restored and read back"
 	# The bootloader, for the record only: it isn't written.
-	_l=$(dd if=/dev/$EMMC bs=512 skip=64 count=$((LOADER_END - 64)) 2>/dev/null | md5sum | cut -c1-32)
-	[ "$_l" = "$WANT_LOADER" ] && log "the bootloader matches the backup's" || log "the bootloader differs from the backup's (left as it is)"
+	_l=$(dd if=/dev/$EMMC bs=512 skip=$R1_START count=$R1_SECTORS 2>/dev/null | md5sum | cut -c1-32)
+	[ "$_l" = "$R1_MD5" ] && log "the bootloader matches the backup's" || log "the bootloader differs from the backup's (left as it is)"
 }
 
 while :; do

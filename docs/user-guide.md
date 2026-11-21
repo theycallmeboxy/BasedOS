@@ -128,7 +128,9 @@ If anything goes wrong, see [recovery.md](recovery.md). In short, from gentlest 
 
 Every SD card, the recovery card included, needs the device's own bootloader (at the start of the
 built-in storage) to start: the chip never starts one from a card (tested). If the bootloader
-itself is gone, only maskrom and a PC bring the device back.
+itself is gone, only maskrom and a PC bring the device back; the recovery card carries what that
+needs (its `maskrom/` folder: Rockchip's USB loader and the steps, and the backup's own copy of
+the bootloader).
 
 ## Logs
 

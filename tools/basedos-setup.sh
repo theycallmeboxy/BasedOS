@@ -15,10 +15,12 @@
 #      partition, its boot script in place of stock's (kept). Stock's own files are used in place
 #      (its kernel, device trees and SYSTEM) and never changed. A recovery card first is
 #      recommended and offered in the same run.
-#   2. Make a recovery SD card: a backup of the built-in storage as it is now, and a small recovery
-#      system that starts from the card and puts it back (tools/recovery). It needs the device's
-#      own bootloader to start (nothing on a card can replace that: a lost bootloader takes
-#      maskrom and a PC, docs/recovery.md).
+#   2. Make a recovery SD card: a backup of the built-in storage as it is now, by region (the
+#      partition table, the bootloader, p1, p2; together the whole main area, byte for byte), a
+#      small recovery system that starts from the card and puts it back (tools/recovery), and
+#      what a maskrom restore from a PC needs (Rockchip's USB loader and the steps). It needs
+#      the device's own bootloader to start: a lost bootloader takes maskrom and a PC, with the
+#      card's bootloader.img (docs/recovery.md).
 #
 # It states its requirements first, checks every tool and stock's files, asks everything, shows a
 # numbered summary and asks for the typed confirmations (capitals don't matter); only then does it
@@ -270,7 +272,9 @@ fi
 
 # The rest of the release, now.
 step "Getting BasedOS $VERSION"
-if [ "$REC" = yes ]; then release_file recovery-initrd.uimg; release_file recovery.scr; fi
+if [ "$REC" = yes ]; then
+	for f in recovery-initrd.uimg recovery.scr rk3576_usb_loader_ddr1.13_usbplug1.04.bin LICENSE.rkbin.txt; do release_file $f; done
+fi
 if [ "$TARGET" = install ]; then
 	for f in rootfs.squashfs initrd.uimg boot.scr; do release_file $f; done
 	mkdir -p "$T/mnt/rootfs"
@@ -300,53 +304,85 @@ if [ -n "$CARD" ]; then
 	D=/dev/$CARD
 fi
 
-# backup_emmc <drive>: a full backup of the built-in storage's main area in <drive>/backup/, images
-# only: GKD350HUltra-eMMC-<date>.img.zst.001, .002, ..., byte for byte from sector 0, in 2000 MiB
-# pieces, each read straight from the eMMC (dd skip/count) and zstd-compressed on its own (zstd
-# decompresses them back to back as one stream; every piece carries zstd's own checksum). The MD5
-# of what's read is taken on the way (one md5sum on a FIFO), and the backup is read back and
-# checked against it. Sets BK_NAME and BK_MD5 (the whole image), BK_REST_MD5 (all of it but the
-# bootloader, sectors 64..32767: what a recovery card writes back) and BK_LOADER_MD5.
+# The eMMC's main area as four regions back to back, the whole of it: the partition table (sectors
+# 0..63), the bootloader (64 up to p1), p1 and p2 (to the end). R_<n>_START and R_<n>_SECTORS for
+# n = 0..3; setup stops if the layout isn't that (stock's is), so a backup is always the whole
+# main area. p1 and p2 start on a 4 MiB boundary (the reads and the recovery card's writes are in
+# 4 MiB blocks).
+regions() {
+	_t=$(parted -s /dev/$EMMC unit s print 2>/dev/null)
+	_p1s=$(echo "$_t" | awk '$1 == 1 { sub(/s$/, "", $2); print $2 }')
+	_p1e=$(echo "$_t" | awk '$1 == 1 { sub(/s$/, "", $3); print $3 }')
+	_p2s=$(echo "$_t" | awk '$1 == 2 { sub(/s$/, "", $2); print $2 }')
+	_p2e=$(echo "$_t" | awk '$1 == 2 { sub(/s$/, "", $3); print $3 }')
+	_end=$(( $(cat /sys/block/$EMMC/size) - 1 ))
+	[ -n "$_p1s" ] && [ -n "$_p2e" ] && [ "$(echo "$_t" | awk '$1 ~ /^[0-9]+$/' | wc -l)" -eq 2 ] ||
+		die "the built-in storage doesn't have stock's two partitions"
+	[ "$_p2s" -eq $((_p1e + 1)) ] && [ "$_p2e" -eq "$_end" ] && [ "$_p1s" -gt 64 ] &&
+		[ $((_p1s % 8192)) -eq 0 ] && [ $((_p2s % 8192)) -eq 0 ] ||
+		die "the built-in storage's partitions aren't laid out as stock's (p1 $_p1s-$_p1e, p2 $_p2s-$_p2e)"
+	R_0_START=0 R_0_SECTORS=64
+	R_1_START=64 R_1_SECTORS=$((_p1s - 64))
+	R_2_START=$_p1s R_2_SECTORS=$((_p1e - _p1s + 1))
+	R_3_START=$_p2s R_3_SECTORS=$((_p2e - _p2s + 1))
+}
+
+# backup_emmc <drive>: a full backup of the built-in storage's main area in <drive>/backup/, by
+# region, images only:
+#   <name>.0-partition-table.img        sectors 0..63, raw (32 KB)
+#   <name>.1-bootloader.img             sectors 64 up to p1, raw (16 MB): what maskrom writes back
+#                                       at 0x40 if the bootloader is ever lost
+#   <name>.2-p1.img.zst.001, ...        p1, then p2, zstd in pieces of 2000 MiB of the eMMC, each
+#   <name>.3-p2.img.zst.001, ...        piece its own stream (zstd decompresses them back to back)
+# Laid end to end in name order (the .zst ones decompressed), they're the whole main area, byte for
+# byte. Each region's MD5 is taken while it's read, and the backup is read back and checked against
+# them. Sets BK_NAME and BK_MD5_0..3.
 backup_emmc() {
 	step "Backing up the built-in storage"
+	regions
 	BK_DIR=$1/backup
 	BK_NAME=GKD350HUltra-eMMC-$(date +%Y%m%d-%H%M)
 	mkdir -p "$BK_DIR" || die "can't write $BK_DIR"
 	sync
 	w0=$(awk '{ print $5 }' /sys/block/$EMMC/${EMMC}p2/stat)
-	_bytes=$(( $(cat /sys/block/$EMMC/size) * 512 ))
-	_piece=500                              # 4 MiB blocks: 2000 MiB a piece
-	_np=$(( (_bytes + _piece * 4194304 - 1) / (_piece * 4194304) ))
-	rm -f "$T/fifo"; mkfifo "$T/fifo"
-	md5sum < "$T/fifo" | cut -c1-32 > "$T/read.md5" & _m=$!
-	exec 3> "$T/fifo"
-	_i=0
-	while [ $_i -lt $_np ]; do
-		say "reading and compressing part $((_i + 1)) of $_np..."
-		dd if=/dev/$EMMC bs=4M skip=$((_i * _piece)) count=$_piece 2>/dev/null | tee /dev/fd/3 |
-			zstd -3 -T0 -q -c > "$BK_DIR/$BK_NAME.img.zst.$(printf '%03d' $((_i + 1)))" ||
-			{ exec 3>&-; die "the backup didn't complete (is the card full?)"; }
-		_i=$((_i + 1))
+	dd if=/dev/$EMMC of="$BK_DIR/$BK_NAME.0-partition-table.img" bs=512 count=$R_0_SECTORS 2>/dev/null ||
+		die "couldn't read the partition table"
+	dd if=/dev/$EMMC of="$BK_DIR/$BK_NAME.1-bootloader.img" bs=512 skip=$R_1_START count=$R_1_SECTORS 2>/dev/null ||
+		die "couldn't read the bootloader"
+	BK_MD5_0=$(md5sum < "$BK_DIR/$BK_NAME.0-partition-table.img" | cut -c1-32)
+	BK_MD5_1=$(md5sum < "$BK_DIR/$BK_NAME.1-bootloader.img" | cut -c1-32)
+	for r in 2 3; do
+		eval "_start=\$R_${r}_START _sect=\$R_${r}_SECTORS"
+		_label=p$((r - 1))
+		_bytes=$((_sect * 512)) _piece=$((500 * 4194304))   # 2000 MiB of the eMMC a piece
+		_np=$(( (_bytes + _piece - 1) / _piece ))
+		rm -f "$T/fifo"; mkfifo "$T/fifo"
+		md5sum < "$T/fifo" | cut -c1-32 > "$T/read.md5" & _m=$!
+		exec 3> "$T/fifo"
+		_i=0
+		while [ $_i -lt $_np ]; do
+			_left=$((_bytes - _i * _piece)); [ $_left -gt $_piece ] && _left=$_piece
+			say "reading and compressing $_label, part $((_i + 1)) of $_np..."
+			dd if=/dev/$EMMC bs=4M skip=$((_start / 8192 + _i * 500)) count=500 2>/dev/null | head -c $_left | tee /dev/fd/3 |
+				zstd -3 -T0 -q -c > "$BK_DIR/$BK_NAME.$r-$_label.img.zst.$(printf '%03d' $((_i + 1)))" ||
+				{ exec 3>&-; die "the backup didn't complete (is the card full?)"; }
+			_i=$((_i + 1))
+		done
+		exec 3>&-
+		wait $_m
+		eval "BK_MD5_$r=\$(cat \"\$T/read.md5\")"
+		rm -f "$T/fifo" "$T/read.md5"
 	done
-	exec 3>&-
-	wait $_m
 	w1=$(awk '{ print $5 }' /sys/block/$EMMC/${EMMC}p2/stat)
 	sync
 	echo 3 > /proc/sys/vm/drop_caches
 	say "checking the backup (reading it back from the card)..."
-	BK_MD5=$(cat "$T/read.md5")
-	rm -f "$T/fifo" "$T/read.md5"
-	# Read back once: the whole image's MD5, and the MD5 without the bootloader (head -c reads
-	# exactly that much of the stream).
-	mkfifo "$T/fifo"
-	md5sum < "$T/fifo" | cut -c1-32 > "$T/back.md5" & _m=$!
-	BK_REST_MD5=$(cat "$BK_DIR/$BK_NAME.img.zst."* | zstd -dc -q | tee "$T/fifo" |
-		{ head -c 32768; head -c $(( (32768 - 64) * 512 )) > /dev/null; cat; } | md5sum | cut -c1-32)
-	wait $_m
-	[ ${#BK_MD5} -eq 32 ] && [ "$(cat "$T/back.md5")" = "$BK_MD5" ] ||
+	[ "$(md5sum < "$BK_DIR/$BK_NAME.0-partition-table.img" | cut -c1-32)" = "$BK_MD5_0" ] &&
+		[ "$(md5sum < "$BK_DIR/$BK_NAME.1-bootloader.img" | cut -c1-32)" = "$BK_MD5_1" ] &&
+		[ "$(cat "$BK_DIR/$BK_NAME.2-p1.img.zst."* | zstd -dc -q | md5sum | cut -c1-32)" = "$BK_MD5_2" ] &&
+		[ "$(cat "$BK_DIR/$BK_NAME.3-p2.img.zst."* | zstd -dc -q | md5sum | cut -c1-32)" = "$BK_MD5_3" ] &&
+		[ ${#BK_MD5_2} -eq 32 ] && [ ${#BK_MD5_3} -eq 32 ] ||
 		die "the backup on the card doesn't read back as the built-in storage was read"
-	rm -f "$T/fifo" "$T/back.md5"
-	BK_LOADER_MD5=$(dd if=/dev/$EMMC bs=512 skip=64 count=$((32768 - 64)) 2>/dev/null | md5sum | cut -c1-32)
 	[ "$w0" = "$w1" ] || warn "stock wrote to its data while this copied; the backup is the built-in storage as it was read."
 	sync
 	ok "backup made and checked: $(du -sk "$BK_DIR" | awk '{ printf "%.1f", $1 * 1024 / 1e9 }') GB"
@@ -372,19 +408,62 @@ if [ "$REC" = yes ]; then
 		put "$STOCK_P1/$f" "$C/recovery/$f"
 	done
 	put "$HERE/recovery-initrd.uimg" "$C/recovery/initrd.uimg"
-	# What the recovery system checks before it restores: the backup's name, its MD5s, and the
-	# eMMC it's of (its ID and size).
-	cat > "$T/backup.info" <<EOF
-NAME=$BK_NAME
-IMG_MD5=$BK_MD5
-REST_MD5=$BK_REST_MD5
-LOADER_MD5=$BK_LOADER_MD5
-EMMC_CID=$(cat /sys/block/$EMMC/device/cid)
-EMMC_SECTORS=$(cat /sys/block/$EMMC/size)
-DATE=$(date '+%Y-%m-%d %H:%M')
-STOCK=$(. /etc/os-release 2>/dev/null; echo "stock ${OS_NAME:-?} ${OS_VERSION:-?} ($(echo "${BUILD_ID:-?}" | cut -c1-7))")$([ -n "$INSTALLED" ] && echo ", with BasedOS")
-EOF
+	# What the recovery system checks before it restores: the backup's name, each region's start,
+	# size and MD5, and the eMMC it's of (its ID and size).
+	{
+		echo "NAME=$BK_NAME"
+		for r in 0 1 2 3; do
+			eval "echo R${r}_START=\$R_${r}_START; echo R${r}_SECTORS=\$R_${r}_SECTORS; echo R${r}_MD5=\$BK_MD5_$r"
+		done
+		echo "EMMC_CID=$(cat /sys/block/$EMMC/device/cid)"
+		echo "EMMC_SECTORS=$(cat /sys/block/$EMMC/size)"
+		echo "DATE=$(date '+%Y-%m-%d %H:%M')"
+		echo "STOCK=$(. /etc/os-release 2>/dev/null; echo "stock ${OS_NAME:-?} ${OS_VERSION:-?} ($(echo "${BUILD_ID:-?}" | cut -c1-7))")$([ -n "$INSTALLED" ] && echo ", with BasedOS")"
+	} > "$T/backup.info"
 	put "$T/backup.info" "$C/recovery/backup.info"
+	# A maskrom restore from a PC, with nothing else needed: Rockchip's USB loader, its licence, and
+	# the steps with this device's own sector numbers.
+	mkdir -p "$C/maskrom"
+	put "$HERE/rk3576_usb_loader_ddr1.13_usbplug1.04.bin" "$C/maskrom/rk3576_usb_loader_ddr1.13_usbplug1.04.bin"
+	put "$HERE/LICENSE.rkbin.txt" "$C/maskrom/LICENSE.rkbin.txt"
+	hex() { printf '0x%08X' "$1"; }
+	cat > "$C/maskrom/MASKROM.txt" <<EOF
+Restoring this GKD 350H Ultra from a PC, in maskrom (when the device won't start at all, or this
+card can't start because the device's bootloader is gone).
+
+What you need: this card's backup/ folder, this maskrom/ folder, a USB-A to USB-C cable (USB-C to
+USB-C may not work), and on the PC either RKDevTool (Windows, from Rockchip) or rkdeveloptool
+(Linux or macOS, open source).
+
+1. Power off. Take this card out of the device (read it on the PC).
+2. Connect the cable, hold Volume Down and press power. RKDevTool shows "Found One MASKROM Device";
+   rkdeveloptool ld lists it.
+3. Load the USB loader (into RAM only):
+     RKDevTool: Advanced Function, Boot: maskrom/rk3576_usb_loader_ddr1.13_usbplug1.04.bin, Download.
+     rkdeveloptool db maskrom/rk3576_usb_loader_ddr1.13_usbplug1.04.bin
+4. Write what's needed, each at its sector (RKDevTool: Download Image, untick every row, Loader
+   above all; one row per file with its address, Write by Address, Run. rkdeveloptool: wl).
+
+   Only the bootloader lost (the device shows nothing at all, even with this card in):
+     $BK_NAME.1-bootloader.img    at $(hex $R_1_START)   (rkdeveloptool wl $R_1_START <file>)
+
+   Everything (as when this backup was made):
+     $BK_NAME.0-partition-table.img   at $(hex $R_0_START)
+     $BK_NAME.1-bootloader.img        at $(hex $R_1_START)
+     p1.img                           at $(hex $R_2_START)   (rkdeveloptool wl $R_2_START <file>)
+     p2.img                           at $(hex $R_3_START)   (rkdeveloptool wl $R_3_START <file>)
+   p1.img and p2.img first: join each one's pieces in order and decompress them:
+     Linux/macOS:  cat $BK_NAME.2-p1.img.zst.* | zstd -d -o p1.img
+     Windows:      copy /b $BK_NAME.2-p1.img.zst.001 + ...002 + ... p1.img.zst, then zstd -d p1.img.zst
+   (the same for p2). Laid end to end in name order, the four are the whole main area of the
+   built-in storage, byte for byte.
+
+5. The tool resets the device when it's done (rkdeveloptool rd). Unplug USB; it starts.
+
+RKDevTool's addresses here are sectors (512 bytes) from the start of the built-in storage, with
+no offset. The bootloader-only write was tested on a unit (2026-11-20, RKDevTool); rkdeveloptool
+with this loader has not been.
+EOF
 	cat > "$C/RECOVERY.txt" <<EOF
 BasedOS recovery card for one GKD 350H Ultra, made $(date) by basedos-setup.
 
@@ -393,11 +472,12 @@ backup, then puts the built-in storage back as it was when this card was made, b
 tap A, B, X and Y in that order. Tapping power powers off without writing anything. Take the
 card out to start normally.
 
-It needs the device's own bootloader to start. If that's gone, nothing on a card helps: maskrom
-and a PC can restore this same backup (BasedOS's docs/recovery.md).
+It needs the device's own bootloader to start. If that's gone, maskrom and a PC restore it from
+this same card: maskrom/MASKROM.txt.
 
-Keep this card as it is. backup/ holds the backup: the built-in storage's main area, byte for
-byte, in numbered pieces (join them in order, then zstd -d, for a plain image a PC can write).
+Keep this card as it is. backup/ holds the backup, by region: the partition table, the
+bootloader, p1 and p2 (in numbered pieces). Laid end to end in name order, they're the whole
+built-in storage's main area, byte for byte.
 EOF
 	# Its boot script last: until it's there, the card doesn't boot.
 	put "$HERE/recovery.scr" "$C/boot.scr"

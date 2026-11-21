@@ -6,7 +6,8 @@
 # The release is what basedos-setup.sh downloads on the device: the setup script (with <tag>
 # written in, so it fetches the rest from that release), release.info (what setup checks first),
 # the system layer, the initrd, BasedOS's
-# boot script, the recovery card's initrd and boot script, and SHA256SUMS. Nothing of stock's
+# boot script, the recovery card's initrd and boot script, the maskrom USB loader with rkbin's
+# licence (for recovery cards), and SHA256SUMS. Nothing of stock's
 # (BasedOS uses the device's own stock files in place). Refuses a build from a tree with
 # uncommitted changes, so a release is always a commit.
 set -eu
@@ -21,9 +22,10 @@ R=$OUT/release-$TAG
 rm -rf "$R"; mkdir -p "$R"
 sed "s|^RELEASE_TAG=@RELEASE_TAG@\$|RELEASE_TAG=$TAG|" "$REPO/tools/basedos-setup.sh" > "$R/basedos-setup.sh"
 grep -qx "RELEASE_TAG=$TAG" "$R/basedos-setup.sh" || { echo "couldn't write the tag into basedos-setup.sh" >&2; exit 1; }
-for f in release.info rootfs.squashfs initrd.uimg boot.scr recovery-initrd.uimg recovery.scr; do
+FILES="release.info rootfs.squashfs initrd.uimg boot.scr recovery-initrd.uimg recovery.scr rk3576_usb_loader_ddr1.13_usbplug1.04.bin LICENSE.rkbin.txt"
+for f in $FILES; do
 	cp "$OUT/$f" "$R/$f"
 done
-(cd "$R" && sha256sum basedos-setup.sh release.info rootfs.squashfs initrd.uimg boot.scr recovery-initrd.uimg recovery.scr > SHA256SUMS)
+(cd "$R" && sha256sum basedos-setup.sh $FILES > SHA256SUMS)
 echo "release $TAG (build $BUILD) in $R:"
 ls -l "$R"

@@ -48,6 +48,15 @@ offer BusyBox's source (GPL-2.0: Alpine's `busybox` APKBUILD and source), bash's
 Buildroot userland (the sources `make legal-info` collects), and carries the
 licences above (`/usr/share/licenses/`).
 
+## Rockchip's maskrom USB loader
+
+Releases carry, for recovery cards, `rk3576_usb_loader_ddr1.13_usbplug1.04.bin`: Rockchip's rkbin
+`bin/rk35/rk3576_ddr_lp4_2112MHz_lp5_2736MHz_v1.13.bin` and `bin/rk35/rk3576_usbplug_v1.04.bin`
+(https://github.com/rockchip-linux/rkbin, commit `3e288fe8`), unmodified, packed into one maskrom
+loader by `tools/maskrom/mk-usb-loader.py`. Copyright Rockchip Electronics Co., Ltd., under rkbin's
+licence, which allows using, copying and distributing them and travels with them
+(`LICENSE.rkbin.txt`, also on every recovery card). Not in this repository.
+
 ## Tools that use third-party files at run time
 
 - `tools/maskrom/mk-usb-loader.py` builds a maskrom loader from Rockchip's `rkbin` blobs

@@ -75,6 +75,14 @@ mv "$W/boot.scr.new" "$REPO/out/boot.scr"
 	done
 } > "$REPO/out/release.info"
 [ "$(grep -c '^P1 ' "$REPO/out/release.info")" -eq 5 ] || { echo "release.info: stock's file hashes missing" >&2; exit 1; }
+# The RK3576 maskrom USB loader (Rockchip's rkbin DDR init and usbplug, packed by
+# tools/maskrom/mk-usb-loader.py) and rkbin's licence: setup puts them on every recovery card, so a
+# maskrom restore from a PC needs nothing else (docs/recovery.md). Distributable under rkbin's
+# licence, which travels with it. Kept in prepared/maskrom/, checked against its known SHA-256.
+USB_LOADER=rk3576_usb_loader_ddr1.13_usbplug1.04.bin
+[ "$(sha256sum < "$REPO/prepared/maskrom/$USB_LOADER" | cut -c1-64)" = f2bac2f2e82ea0997d096aa7062629a3d1cc2af918d7c304db3610a93a82be97 ] ||
+	{ echo "prepared/maskrom/$USB_LOADER missing or not the known build" >&2; exit 1; }
+cp "$REPO/prepared/maskrom/$USB_LOADER" "$REPO/prepared/maskrom/LICENSE.rkbin.txt" "$REPO/out/"
 sh "$REPO/tools/recovery/build.sh" "$REPO" "$W" "$REPO/prepared/alpine/busybox.static" "$REPO/out"
 cp "$REPO/tools/basedos-setup.sh" "$REPO/out/basedos-setup.sh"
 rm -f "$REPO"/out/baseos-*.bosupd

@@ -5,11 +5,21 @@ set -eu
 REPO=/mnt/e/projects/spruceOS-gkd350hultra/basedos
 W=$HOME/basedos-work
 STOCK=$REPO/prepared/rocknix-20260613-c8ed06c
-mkdir -p "$W"
+mkdir -p "$W" "$REPO/out"
+# A build that stops part-way must not leave a release-able out/: the manifest of a whole build
+# (out/build.sha256, written last) goes first; tools/wsl/release.sh needs it.
+rm -f "$REPO/out/build.sha256"
 # The stock build's name, without the carriage return a Windows-written BUILD file carries.
 tr -d '\r' < "$STOCK/BUILD" > "$W/STOCK_BUILD"
-# Stock's root, unpacked once (the links into /stock are made against it; lib32-gaps reads it).
-[ -d "$W/stock-root/usr/lib" ] || sh "$REPO/tools/wsl/unpack-stock.sh" "$STOCK/SYSTEM" "$W/stock-root"
+# Stock's root, unpacked once per stock build (the links into /stock are made against it, and the
+# BUILD_ID the layer needs comes from it; lib32-gaps reads it). stock-root.build says which build
+# it is, and is written only once an unpack has finished: another STOCK, or an unpack that didn't
+# finish, unpacks again.
+if [ "$(cat "$W/stock-root.build" 2>/dev/null)" != "$(cat "$W/STOCK_BUILD")" ] || [ ! -d "$W/stock-root/usr/lib" ]; then
+	rm -rf "$W/stock-root" "$W/stock-root.build"
+	sh "$REPO/tools/wsl/unpack-stock.sh" "$STOCK/SYSTEM" "$W/stock-root"
+	cp "$W/STOCK_BUILD" "$W/stock-root.build"
+fi
 
 # sdl2_current <prepared dir> <arch>: 0 if that SDL2 build is of the SDL and librga commits and
 # the patches tools/sdl2 has now (its build-info records them), so it needn't be built again.
@@ -46,8 +56,13 @@ sdl2_current "$REPO/prepared/sdl2-armhf" armhf || {
 	rm -rf "$REPO/prepared/sdl2-armhf"
 	SDL2_ARCH=armhf bash "$REPO/tools/sdl2/build.sh" "$STOCK/SYSTEM" "$REPO/prepared/sdl2-armhf" 270
 }
-[ -f "$REPO/prepared/bash/build-info" ] ||
+# bash: built again when tools/bash/build.sh names another version than the one in prepared/.
+BASH_VER=$(sed -n 's/^VER=//p' "$REPO/tools/bash/build.sh")
+grep -q "^bash $BASH_VER," "$REPO/prepared/bash/build-info" 2>/dev/null || {
+	echo "--- bash $BASH_VER: building (missing or another version)"
+	rm -rf "$REPO/prepared/bash"
 	bash "$REPO/tools/bash/build.sh" "$REPO/prepared/bash"
+}
 sh "$REPO/tools/wsl/build-rootfs.sh" "$REPO" "$W" "$REPO/prepared/alpine/busybox.static" "$REPO/prepared/alpine/busybox.list"
 STOCK_BUILD_ID=$(cat "$W/system/usr/share/basedos/needs-stock")
 mkdir -p "$REPO/out"
@@ -55,6 +70,7 @@ cp "$W/rootfs.squashfs" "$REPO/out/rootfs.squashfs"
 # (Older builds' vendor sets and boot.env: BasedOS no longer has either.)
 rm -rf "$REPO"/out/vendor-* "$REPO/out/boot.env"
 # The update payload: the system layer and the initrd, nothing of stock's (publishable).
+rm -f "$W/initrd.uimg.new"
 python3 "$REPO/tools/mkboot.py" initrd "$REPO/prepared/alpine/busybox.static" "$W/initrd.uimg.new" >/dev/null
 mv "$W/initrd.uimg.new" "$REPO/out/initrd.uimg"
 # BasedOS's own boot script (initrd/boot.cmd; setup puts it in place of stock's).
@@ -71,10 +87,15 @@ mv "$W/boot.scr.new" "$REPO/out/boot.scr"
 	echo "STOCK_BUILD=$(cat "$W/STOCK_BUILD")"
 	echo "STOCK_BUILD_ID=$STOCK_BUILD_ID"
 	for f in Image rk3576-gkd-atom.dtb rk3576-gkd-atom-hdmi.dtb rk3576-gkd-atom-usbdp.dtb SYSTEM; do
-		echo "P1 $(sha256sum < "$STOCK/$f" | cut -c1-64) $f"
+		# Checked here: a missing file would give an empty hash inside $(...) without stopping
+		# the build, and a release no device can install.
+		h=$(sha256sum < "$STOCK/$f" | cut -c1-64)
+		case "$h" in *[!0-9a-f]*|"") h="" ;; esac
+		[ ${#h} -eq 64 ] || { echo "release.info: no SHA-256 for stock's $f ($STOCK/$f)" >&2; exit 1; }
+		echo "P1 $h $f"
 	done
 } > "$REPO/out/release.info"
-[ "$(grep -c '^P1 ' "$REPO/out/release.info")" -eq 5 ] || { echo "release.info: stock's file hashes missing" >&2; exit 1; }
+[ "$(grep -c '^P1 [0-9a-f]\{64\} ' "$REPO/out/release.info")" -eq 5 ] || { echo "release.info: stock's file hashes missing" >&2; exit 1; }
 # The RK3576 maskrom USB loader (Rockchip's rkbin DDR init and usbplug, packed by
 # tools/maskrom/mk-usb-loader.py) and rkbin's licence: setup puts them on every recovery card, so a
 # maskrom restore from a PC needs nothing else (docs/recovery.md). Distributable under rkbin's
@@ -90,3 +111,11 @@ python3 "$REPO/tools/mkupdate.py" "$W/rootfs.squashfs" "$REPO/out/initrd.uimg" 	
 for r in harvest-report.txt base32-report.txt lib32-gaps.txt; do
 	cp "$W/$r" "$REPO/out/$r" 2>/dev/null || true
 done
+# The manifest of this whole build, last: its name and every release file's SHA-256. release.sh
+# publishes only files that match it, so files from builds that didn't finish never mix in.
+BUILD_NAME=$(sed -n 's/^BASEOS_BUILD=//p' "$W/system/etc/baseos-release")
+(cd "$REPO/out" && {
+	echo "# build $BUILD_NAME"
+	sha256sum release.info rootfs.squashfs initrd.uimg boot.scr recovery-initrd.uimg recovery.scr basedos-setup.sh \
+		"$USB_LOADER" LICENSE.rkbin.txt baseos-gkd350hultra-*.bosupd
+} > build.sha256.new && mv build.sha256.new build.sha256)

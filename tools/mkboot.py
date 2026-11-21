@@ -128,7 +128,8 @@ def bootscr(stock, out):
     # RAID6 library, whose init benchmarks eight parity routines at every boot (0.51 s on the
     # unit, 2026-11-19; CONFIG_RAID6_PQ_BENCHMARK=y). Its only users are btrfs RAID5/6 and md
     # RAID, which nothing on this device uses; without that init they have no routine, so a btrfs
-    # RAID6 volume must never be mounted under BasedOS. Stock's own boot keeps it (stock_bootargs).
+    # RAID6 volume must never be mounted under BasedOS. This old stock-derived script's own stock
+    # fallback keeps it (stock_bootargs); initrd/boot.cmd's initrd handovers to stock don't.
     # rcupdate.rcu_expedited=1: closing an input device waits for an RCU grace period
     # (input_close_device), 21-40 ms each on this kernel, so anything that scans /dev/input (the
     # boot keys, spruce's key listeners, SDL at every emulator start) paid that per device: 150 ms

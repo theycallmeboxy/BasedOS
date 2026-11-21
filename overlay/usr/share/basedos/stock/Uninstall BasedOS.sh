@@ -19,7 +19,15 @@ fail() {
 	show -e -w -t "Uninstall BasedOS" -m "$* BasedOS is still installed."
 	exit 1
 }
-is_scr() { [ "$(dd if="$1" bs=4 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n')" = 27051956 ]; }
+# scr_ok <file>: a whole U-Boot script image: its magic, the type "script", and the size its header
+# gives (as basedos-boot checks them).
+scr_ok() {
+	[ -s "$1" ] || return 1
+	[ "$(dd if="$1" bs=4 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n')" = 27051956 ] || return 1
+	[ "$(dd if="$1" bs=1 skip=30 count=1 2>/dev/null | od -An -tu1 | tr -d ' \n')" = 6 ] || return 1
+	_len=$(dd if="$1" bs=1 skip=12 count=4 2>/dev/null | od -An -tu1 | awk '{print (($1*256+$2)*256+$3)*256+$4}')
+	[ "$(wc -c < "$1" | tr -d ' ')" = "$((_len + 64))" ]
+}
 is_basedos() { dd if="$1" bs=64 skip=1 2>/dev/null | grep -q "rdinit=/basedos/init"; }
 
 [ -d $B ] || { show -w -t "Uninstall BasedOS" -m "BasedOS isn't installed."; exit 0; }
@@ -28,10 +36,10 @@ rc=$?
 echo "$(date) uninstall: text_viewer answered $rc (yes is $YES)" >> $LOG
 [ "$rc" -eq $YES ] || exit 0
 
-# Stock's boot script, if BasedOS's is the active one: the saved copy must be stock's.
+# Stock's boot script, if BasedOS's is the active one: the saved copy must be a whole stock script.
 if is_basedos $P1/boot.scr; then
 	SAVED=$B/boot.scr.stock
-	is_scr "$SAVED" && ! is_basedos "$SAVED" || fail "BasedOS's saved copy of stock's boot script isn't one."
+	scr_ok "$SAVED" && ! is_basedos "$SAVED" || fail "BasedOS's saved copy of stock's boot script isn't a whole one."
 	mount -o remount,rw $P1 || fail "Can't write $P1."
 	rm -f $P1/boot.scr.new
 	if ! { cp "$SAVED" $P1/boot.scr.new && sync && echo 3 > /proc/sys/vm/drop_caches &&
@@ -42,11 +50,13 @@ if is_basedos $P1/boot.scr; then
 		fail "Couldn't write $P1/boot.scr."
 	fi
 else
-	is_scr $P1/boot.scr || fail "$P1/boot.scr doesn't look like a boot script."
+	scr_ok $P1/boot.scr || fail "$P1/boot.scr doesn't look like a whole boot script."
 	mount -o remount,rw $P1 || fail "Can't write $P1."
 fi
-# Then BasedOS's files: nothing boots them any more.
+# Then BasedOS's files: nothing boots them any more. An older developer update's copy of BasedOS's
+# boot script beside stock's files goes too (the initrd's uninstall removes it the same way).
 rm -rf $B
+is_basedos $P1/boot.scr.prev 2>/dev/null && rm -f $P1/boot.scr.prev
 sync
 mount -o remount,ro $P1
 rm -rf $DATA

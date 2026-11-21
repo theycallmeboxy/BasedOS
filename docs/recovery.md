@@ -99,13 +99,16 @@ maskrom was tested 2026-11-20).
   `MASKROM.txt`, the steps for RKDevTool and `rkdeveloptool` with this device's own sector numbers:
   the bootloader alone (`.1-bootloader.img` at `0x40`, as tested 2026-11-20), or everything.
 - Every backup is checked when it's made: each region read back and compared with the MD5 taken
-  while the eMMC was read.
+  while the eMMC was read, and with its size (a read error on the eMMC ends a piece early without
+  stopping the copy, and the MD5 taken while reading would then be of the short copy too).
 - Booted, the recovery initrd (`tools/recovery/init`: static BusyBox, zstd, BasedOS's boot screen
   and key reader; nothing of stock's) writes nothing until you confirm. It refuses a backup of
-  another unit's eMMC (ID) or a different size, decompresses the backup and checks its MD5, and
-  wants 30 % battery or the charger. Then it shows what it would restore: tap A, B, X, Y in order
-  to restore (a wrong key or a 5 s pause starts over; the keys are read as events, so taps can't
-  be missed), tap power to power off.
+  another unit's eMMC (ID) or a different size, checks where it would write (the partition table
+  at sectors 0..63; p1 and p2 back to back to the end, past the Rockchip loader area, where the
+  backup's own partition table puts them), decompresses the backup and checks each region's MD5
+  and size, and wants 30 % battery or the charger. Then it shows what it would restore: tap A, B,
+  X, Y in order to restore (a wrong key or a 5 s pause starts over; one key reader runs for each
+  screen and reads the keys as events, so taps can't be missed), tap power to power off.
 - The restore writes the partition table, p1 and p2, each at its sector, and leaves the bootloader
   region as it is: it's what started the card, and a restore that never touches it can always be
   tried again from the card. It checks the MD5 of what it decompressed, then reads each region back

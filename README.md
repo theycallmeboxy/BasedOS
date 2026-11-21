@@ -46,8 +46,10 @@ card, Wi-Fi driver) → `frontend-session` finds the frontend on the card (spruc
 and starts it, again if it exits.
 
 Updates: a `baseos-gkd350hultra-<version>.bosupd` at the card root (spruce's firmware updater
-fetches or finds one and reboots) is installed at the next boot by `basedos-update`: the system
-layer to the spare slot, verified, then the slot flips. It carries nothing of stock's; each
+fetches or finds one and reboots) is installed at the next boot by `basedos-update`, once the
+card is mounted and before the frontend starts: the system layer to the spare slot, verified,
+then the slot flips. One it won't install is renamed on the card (`.skipped`, `.refused`,
+`.failed`), so it isn't offered again. It carries nothing of stock's; each
 release is made for one stock build, and one for another stock build is refused
 ([docs/plan.md](docs/plan.md), Architecture).
 

@@ -28,6 +28,23 @@ retry() {
 	return 1
 }
 
+# Swap files and loop devices backed by the card or p2 hold them open for writing, so neither would
+# unmount nor go read-only: spruce's swap file (/mnt/SDCARD/cachefile), a port's runtime loop-mounted
+# outside /mnt/SDCARD (/tmp/weston). Let them go first (spruce's own shutdown does the same; this
+# covers the paths around it: the volume-key combo, poweroff or reboot over SSH).
+for f in $(awk 'NR > 1 && $2 == "file" { print $1 }' /proc/swaps 2>/dev/null); do
+	swapoff "$f" 2>/dev/null || log "swap $f could not be turned off"
+done
+for l in /sys/block/loop*; do
+	b=$(cat "$l/loop/backing_file" 2>/dev/null) || continue
+	case "$b" in /mnt/SDCARD/*|/data/*|/run/p2/*) ;; *) continue ;; esac
+	d=/dev/${l##*/}
+	for mp in $(awk -v d="$d" '$1 == d { print $2 }' /proc/mounts | sort -r); do
+		retry umount "$mp" || log "$mp ($b) could not be unmounted"
+	done
+	retry losetup -d "$d" || log "$d ($b) could not be detached"
+done
+
 for m in /mnt/SDCARD /data /run/p2; do
 	grep -q " $m " /proc/mounts || continue
 	for sub in $(awk -v m="$m/" 'index($2, m) == 1 { print $2 }' /proc/mounts | sort -r); do

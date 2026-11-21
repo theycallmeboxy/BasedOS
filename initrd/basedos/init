@@ -110,7 +110,7 @@ slot=$($bb head -c 2 /p1/basedos/slot 2>/dev/null | $bb tr -d '\n')
 other=b; [ "$slot" = b ] && other=""
 if [ "$attempts" -ge 4 ] && [ -f "/p1/basedos/rootfs${other:+-$other}.squashfs" ]; then
 	log "boot attempt $attempts without reaching rcS: trying the other slot"
-	slot=$other
+	s=$slot; slot=$other; other=$s
 fi
 
 # A slot is BasedOS's system layer (rootfs.squashfs or rootfs-b.squashfs), mounted read-only as
@@ -135,6 +135,14 @@ mount_slot() {
 		$bb umount /newroot/stock /newroot
 		return 1
 	fi
+	# The kernel is stock's /flash/Image and its modules are in stock's SYSTEM: the same build
+	# only if SYSTEM has this kernel's module folder (a kernel swapped on its own doesn't).
+	kver=$($bb uname -r)
+	if [ ! -d "/newroot/stock/usr/lib/kernel-overlays/base/lib/modules/$kver" ]; then
+		log "stock's SYSTEM has no modules for this kernel ($kver)"
+		$bb umount /newroot/stock /newroot
+		return 1
+	fi
 	# /sbin/init is an absolute link to /usr/bin/busybox, which would resolve against this
 	# initramfs (it has a busybox too), so check the real files inside the new root.
 	if [ -x /newroot/usr/bin/busybox ] && [ -e /newroot/usr/lib/ld-linux-aarch64.so.1 ]; then
@@ -145,11 +153,13 @@ mount_slot() {
 	return 1
 }
 
+# root is set only once a slot has mounted: a missing or refused slot must end in stock, never in
+# switch_root on an empty /newroot (PID 1 would exit and the kernel would hang on the panic).
+root=""
 for s in "$slot" "$other"; do
-	root=/p1/basedos/rootfs${s:+-$s}.squashfs
-	[ -f "$root" ] || { log "no $root"; continue; }
-	mount_slot "$root" && break
-	root=""
+	r=/p1/basedos/rootfs${s:+-$s}.squashfs
+	[ -f "$r" ] || { log "no $r"; continue; }
+	mount_slot "$r" && { root=$r; break; }
 done
 [ -n "$root" ] || fallback "no usable rootfs"
 

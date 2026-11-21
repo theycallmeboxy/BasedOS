@@ -35,6 +35,10 @@ downloads and writes. Two choices:
    modified, know the risks and have a backup.
 2. **Make a recovery SD card**: see "Recovery" below. You type `ERASE` to confirm the card.
 
+If setup stops part-way (Ctrl-C, the SSH connection drops), run it again. A card is simply made
+again. An install is finished: BasedOS's boot script goes in last, so until then stock still
+starts, and setup recognises the unfinished install and replaces it.
+
 ## Install (developer install, next to stock)
 
 1. Prepare your stock files from a backup of your eMMC (recovery.md):
@@ -101,10 +105,15 @@ once (or whatever `/data/boot-keys.conf` maps them to), without restarting first
 - Each release on GitHub has its `baseos-gkd350hultra-<version>.bosupd`. Put it at the root of the
   card and restart, or use spruce's
   firmware update app, which finds one there (or downloads one) and restarts for you. BasedOS
-  installs it while starting: the screen says so, and it restarts once more into the new version.
+  installs it while starting, as soon as the card is mounted and before spruce starts: the screen
+  says so, and it restarts once more into the new version.
 - It goes into the copy of BasedOS that isn't running, and is checked before it's used. If the new
-  copy doesn't start, BasedOS goes back to the old one after a few tries, and won't try that
-  update again.
+  copy doesn't start, BasedOS goes back to the old one after a few tries and stays on it, and
+  won't try that update again.
+- An update it won't install is renamed on the card, so neither BasedOS nor spruce's updater keeps
+  offering it: `.bosupd.skipped` (not newer than the running release, or already installed once),
+  `.bosupd.refused` (for another device or stock build), `.bosupd.failed` (it didn't verify, or the
+  new copy didn't start). Rename one back to `.bosupd` to have it looked at again.
 - An update holds only BasedOS's own files, never your device's stock firmware (BasedOS uses
   stock's kernel, its modules, the GPU drivers and the firmware in place). Each BasedOS release is
   made for one stock firmware build; an update for another one is refused. To see what an update
@@ -116,12 +125,18 @@ once (or whatever `/data/boot-keys.conf` maps them to), without restarting first
 
 - **Boot counter**: if BasedOS fails to start three times in a row it boots its other copy (A/B
   slot); after five failures it boots stock. Delete `boot-attempts` in BasedOS's data folder to reset.
+  A start that gets as far as BasedOS's own start-up counts as a good one, even when its data
+  partition needs a check it can't do by itself.
 - **Bad boot files**: if BasedOS's initrd is missing or damaged, the boot script boots stock.
 - **Stock changed**: if stock isn't the build BasedOS was made for (reflashed, say), BasedOS
-  doesn't start and stock boots.
+  doesn't start and stock boots. "Return to BasedOS" in stock's Ports checks this first and says
+  so, instead of switching to a BasedOS that wouldn't start.
 - **Frontend crash loop**: if spruce exits within 15 s five times in a row, BasedOS stops
   restarting it and shows a message, instead of looping.
 - **Card checks**: a card left dirty by a power cut is checked (`fsck`) once before use.
+- **Clean shutdown**: BasedOS's own power-off and restart (the volume-key combo, SSH) turn off a
+  swap file on the card and release anything loop-mounted from it first, as spruce's own power-off
+  does, so the card is left clean.
 
 ## Recovery
 

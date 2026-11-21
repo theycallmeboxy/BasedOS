@@ -76,9 +76,11 @@ run() {
 	esac
 }
 
+# The menu owns the screen from here (udhcpc's script leaves it alone while this file is there).
+touch /run/basedos/menu-running
 draw
 prev=$(held)
-tick=0
+ipdrawn=$(cat /run/basedos/wifi-ip 2>/dev/null)
 while :; do
 	usleep 80000
 	now=$(held)
@@ -91,6 +93,7 @@ while :; do
 		now=$(held)
 	fi
 	prev=$now
-	# The address appears once Wi-Fi is up.
-	tick=$((tick + 1)); [ $((tick % 60)) = 0 ] && draw "$MSG"
+	# The address appears once Wi-Fi is up (udhcpc's script writes it there).
+	ipnow=$(cat /run/basedos/wifi-ip 2>/dev/null)
+	[ "$ipnow" != "$ipdrawn" ] && { ipdrawn=$ipnow; draw "$MSG"; }
 done

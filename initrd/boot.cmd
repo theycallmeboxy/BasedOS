@@ -52,6 +52,11 @@ if test "${loaded}" = "1"; then
 	# rcupdate.rcu_expedited=1: closing an input device waits for an RCU grace period; expedited,
 	# the frontend's input reopens don't stall.
 	# basedos.disk: the initrd's disk (U-Boot's mmc N is the kernel's mmcblkN, by the DT aliases).
+	# The initrd's own handovers to stock (stock once, uninstall, a refused system layer) run stock
+	# on this same command line, the kernel being up already: quieter than stock's own (no
+	# systemd.show_status, loglevel 1) and without RAID6, which stock doesn't use either; its SSH
+	# is its own setting, not the kernel's "ssh". Only boot.scr.stock, below, boots stock with
+	# stock's own.
 	setenv bootargs "fbcon=rotate:${rotate} console=/dev/ttyFIQ0 quiet loglevel=1 consoleblank=0 vt.global_cursor_default=0 rdinit=/basedos/init initcall_blacklist=raid6_select_algo rcupdate.rcu_expedited=1 basedos.disk=mmcblk${devnum}"
 	booti ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r}
 fi

@@ -37,9 +37,26 @@ screen() {
 	printf '%s\n' "$@" > $INFO
 	$R/basedos-splash "$_s" >/dev/null 2>&1
 }
-# key [<ms>]: the code of the next key pressed (read as an event, so a quick tap counts), or
-# nothing if none within <ms>.
-key() { $R/basedos-keys --wait "${1:-0}" 2>/dev/null; }
+# Keys come from one basedos-keys --watch per waiting screen, through a FIFO: every press while the
+# screen is up is read in order, even while the screen is being redrawn between two of them (a
+# fresh reader for each key could miss a tap that fell between two readers).
+# listen: a fresh reader (presses from before this screen don't count).
+KW=""
+listen() {
+	[ -n "$KW" ] && { kill $KW 2>/dev/null; wait $KW 2>/dev/null; }
+	exec 5<&-
+	rm -f /tmp/keys; mkfifo /tmp/keys
+	$R/basedos-keys --watch > /tmp/keys 2>/dev/null & KW=$!
+	exec 5< /tmp/keys
+}
+# key [<ms>]: the code of the next key pressed since listen, or nothing if none within <ms> (whole
+# seconds, rounded up; 0 or none: wait for one).
+key() {
+	_k=""
+	if [ "${1:-0}" -gt 0 ]; then read -r -t $(( ($1 + 999) / 1000 )) _k <&5
+	else read -r _k <&5 || sleep 1; fi
+	echo "$_k"
+}
 off() {
 	sync
 	screen "powering off" "!RECOVERY CARD" "Powering off."
@@ -50,6 +67,7 @@ off() {
 stop() {
 	log "$*"
 	screen "Tap power to power off" "!RECOVERY CARD" "$@"
+	listen
 	while [ "$(key)" != $POWER ]; do :; done
 	off
 }
@@ -58,6 +76,7 @@ stop() {
 sequence() {
 	_t=$1; shift
 	_i=0
+	listen
 	while :; do
 		case $_i in
 		0) _p="_ _ _ _" ;; 1) _p="A _ _ _" ;; 2) _p="A B _ _" ;; 3) _p="A B X _" ;;
@@ -108,18 +127,40 @@ for r in 0 1 2 3; do
 	[ ${#_m} -eq 32 ] || stop "The card's recovery/backup.info is damaged."
 	eval "R${r}_START=$_s R${r}_SECTORS=$_n R${r}_MD5=$_m"
 done
-[ $((R2_START % 8192)) -eq 0 ] && [ $((R3_START % 8192)) -eq 0 ] || stop "The backup's partitions aren't where a restore can write them."
 [ -f "$BK/$NAME.0-partition-table.img" ] && [ -f "$BK/$NAME.2-p1.img.zst.001" ] && [ -f "$BK/$NAME.3-p2.img.zst.001" ] ||
 	stop "The backup's images aren't all in backup/ ($NAME)."
 SECTORS=$(cat /sys/block/$EMMC/size)
 CID=$(cat /sys/block/$EMMC/device/cid)
 [ "$CID" = "$WANT_CID" ] || stop "This backup is of another 350H Ultra's storage" "(ID $WANT_CID; this one is $CID)." "Nothing was written."
 [ "$SECTORS" = "$WANT_SECTORS" ] || stop "The backup is $WANT_SECTORS sectors; this storage is $SECTORS." "Nothing was written."
+# Where it writes: the partition table at sectors 0..63, then the bootloader (never written), p1
+# and p2, back to back to the end of the storage. p1 and p2 start on a 4 MiB boundary (the writes'
+# block), past the Rockchip loader area (sectors 64..32767), and where the backup's own partition
+# table puts them: the restore never writes anywhere else, the bootloader above all.
+mbr() { od -An -tu4 -j "$1" -N4 "$BK/$NAME.0-partition-table.img" | tr -d ' \n'; }  # a little-endian u32
+[ "$R0_START" = 0 ] && [ "$R0_SECTORS" = 64 ] && [ "$R1_START" = 64 ] &&
+	[ $((R1_START + R1_SECTORS)) -eq "$R2_START" ] && [ $((R2_START + R2_SECTORS)) -eq "$R3_START" ] &&
+	[ $((R3_START + R3_SECTORS)) -eq "$SECTORS" ] && [ "$R2_START" -ge 32768 ] &&
+	[ $((R2_START % 8192)) -eq 0 ] && [ $((R3_START % 8192)) -eq 0 ] &&
+	[ "$(mbr 454)" = "$R2_START" ] && [ "$(mbr 458)" = "$R2_SECTORS" ] &&
+	[ "$(mbr 470)" = "$R3_START" ] && [ "$(mbr 474)" = "$R3_SECTORS" ] ||
+	stop "The backup's regions aren't laid out as a restore can write them" "(recovery/backup.info doesn't match the backup's partition table)." "Nothing was written."
 
 screen "checking the backup (a few minutes)" "!RECOVERY CARD" "Backup of $WHEN" "$WHAT" "Checking the backup..."
-[ "$(md5sum < "$BK/$NAME.0-partition-table.img" | cut -c1-32)" = "$R0_MD5" ] &&
-	[ "$(cat "$BK/$NAME.2-p1.img.zst."* | zstd -dcq | md5sum | cut -c1-32)" = "$R2_MD5" ] &&
-	[ "$(cat "$BK/$NAME.3-p2.img.zst."* | zstd -dcq | md5sum | cut -c1-32)" = "$R3_MD5" ] ||
+# Each region it writes: whole (its size in bytes) and as it was made (its MD5). A short region
+# would be written short, the rest of the storage left as it is.
+region_ok() {  # region_ok <n> <file or piece prefix> <raw|zst>
+	eval "_m=\$R${1}_MD5 _b=\$((R${1}_SECTORS * 512))"
+	rm -f /tmp/count; mkfifo /tmp/count
+	wc -c < /tmp/count > /tmp/count.out & _c=$!
+	if [ "$3" = raw ]; then _g=$(tee /tmp/count < "$2" | md5sum | cut -c1-32)
+	else _g=$(cat "$2".* | zstd -dcq | tee /tmp/count | md5sum | cut -c1-32); fi
+	wait $_c
+	[ "$_g" = "$_m" ] && [ "$(tr -d ' \n' < /tmp/count.out)" = "$_b" ]
+}
+region_ok 0 "$BK/$NAME.0-partition-table.img" raw &&
+	region_ok 2 "$BK/$NAME.2-p1.img.zst" zst &&
+	region_ok 3 "$BK/$NAME.3-p2.img.zst" zst ||
 	stop "The backup on this card is damaged or incomplete" "(it doesn't read as it was made)." "Nothing was written."
 log "backup $NAME checks out"
 
@@ -195,6 +236,7 @@ restore() {
 while :; do
 	if ! power_ok; then
 		screen "Tap power to power off" "!RECOVERY CARD" "The battery is low: plug in the charger" "(it carries on once it's charging)."
+		listen
 		until power_ok; do [ "$(key 1000)" = $POWER ] && off; done
 	fi
 	sequence "!RESTORE THE BUILT-IN STORAGE" \
@@ -208,6 +250,7 @@ while :; do
 	if restore; then
 		screen "Tap power to power off" "!DONE" "The built-in storage is back as it was on $WHEN." \
 			"Power off, take this card out, and the device" "starts as it was then."
+		listen
 		while [ "$(key)" != $POWER ]; do :; done
 		off
 	fi

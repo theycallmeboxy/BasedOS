@@ -32,6 +32,14 @@ BR_TARGET=${BR_TARGET:-$HOME/basedos-br/out/target}
 BR32_TARGET=${BR32_TARGET:-$HOME/basedos-br/out-armhf/target}
 VERSION=$(cat "$REPO/VERSION")
 BUILD=$(git -C "$REPO" describe --always --dirty 2>/dev/null || echo unknown)
+# --dirty sees only tracked files. Untracked or ignored files in what the build copies or builds
+# from (the overlay, the initrds, the SDL2 patches...) go into the image too: they make it dirty
+# as well, so a build with them can't carry a clean release name.
+case $BUILD in
+*-dirty) ;;
+*) [ -n "$(git -C "$REPO" status --porcelain --ignored --untracked-files=all -- overlay initrd tools/recovery \
+	tools/boot-ui tools/sdl2 tools/bash buildroot manifest 2>/dev/null | grep -v '__pycache__')" ] && BUILD="$BUILD-dirty" ;;
+esac
 case $BUILD in *dirty) BUILD="$BUILD-$(date -u +%Y%m%d%H%M)" ;; esac
 
 rm -rf "$VEN" "$SYS" "$OUT" "$BASE" "$W"/vendor-* "$W/rootfs.squashfs"

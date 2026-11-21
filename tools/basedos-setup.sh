@@ -57,6 +57,8 @@ die() {
 }
 cleanup() {
 	for m in $(awk -v t="$T/mnt/" 'index($2, t) == 1 { print $2 }' /proc/mounts | sort -r); do umount "$m" 2>/dev/null; done
+	[ -n "${P1_RW:-}" ] && { sync; mount -o remount,ro $STOCK_P1 2>/dev/null; }
+	P1_RW=""
 	[ -n "${CARD_LOCKED:-}" ] && exec 4<&-
 	CARD_LOCKED=""
 	[ -n "${UDEV_HELD:-}" ] && udevadm control --start-exec-queue 2>/dev/null
@@ -65,7 +67,8 @@ cleanup() {
 	ES_STOPPED=""
 }
 # Ctrl-C (or the SSH session going away): clean up and stop. Before phase 2 nothing has been
-# written; during it, a card or an install may be left part-done (run setup again).
+# written; during it, a card or an install may be left part-done: setup run again erases the card
+# again, or replaces the unfinished install's folder (stock's boot script is switched last).
 interrupted() {
 	printf '\n%sSTOPPED%s (interrupted): %s\n' "$C_RED" "$C_0" \
 		"$([ -n "${PHASE2:-}" ] && echo "part-way through; run setup again to finish or redo it" || echo "nothing was written")" >&2
@@ -139,7 +142,8 @@ rm -rf "$T"; mkdir -p "$T" || die "can't make $T"
 # halfway through).
 miss=""
 for c in awk sed tr cut sort grep head dd tee mkfifo md5sum sha256sum zstd parted partprobe blkid flock \
-	mkfs.vfat udevadm systemctl wpa_passphrase mount umount df sync curl; do
+	mkfs.vfat udevadm systemctl wpa_passphrase mount umount df du sync curl cat ls wc sleep cp mv rm mkdir \
+	chmod date id dirname readlink; do
 	command -v $c >/dev/null 2>&1 || miss="$miss $c"
 done
 [ -z "$miss" ] || die "stock is missing tools setup needs:$miss"
@@ -192,19 +196,35 @@ say "    Everything on it is lost."
 say "  - About 5 to 25 minutes. Don't power off or take the card out while it runs."
 [ -n "$CHG" ] || [ -z "$PCT" ] || [ "$PCT" -ge 30 ] || die "the battery is at $PCT %: charge it, or plug the charger in, then run setup again"
 
-INSTALLED=""
-[ -d "$STOCK_P1/basedos" ] && INSTALLED=1
+# What's on the built-in storage now. Installed: BasedOS's boot script is the active one, or it's
+# switched off (its own saved, for "Return to BasedOS"). A BasedOS folder with neither is an install
+# that didn't finish (setup interrupted before it switched the boot script): the install replaces it.
+is_basedos_scr() { dd if="$1" bs=64 skip=1 2>/dev/null | grep -q "rdinit=/basedos/init"; }
+INSTALLED="" PARTIAL="" BROKEN=""
+if is_basedos_scr $STOCK_P1/boot.scr; then
+	INSTALLED=1
+	[ -d "$STOCK_P1/basedos" ] || BROKEN=1
+elif [ -f "$STOCK_P1/basedos/boot.scr.basedos" ]; then
+	INSTALLED=1
+elif [ -d "$STOCK_P1/basedos" ]; then
+	PARTIAL=1
+fi
+UNINSTALL_HOW="'Uninstall BasedOS' in stock's Ports, or BasedOS's maintenance menu (Select held at power-on)"
 say ""
 say "${C_B}What do you want to do?${C_0}"
 if [ -n "$INSTALLED" ]; then
-	say "  1) ${C_DIM}Install BasedOS: it's installed already (to reinstall, uninstall it first: "Uninstall BasedOS" in stock's Ports, or BasedOS's maintenance menu, Select held at power-on)${C_0}"
+	say "  1) ${C_DIM}Install BasedOS: it's installed already (to reinstall, uninstall it first: $UNINSTALL_HOW)${C_0}"
+elif [ -n "$PARTIAL" ]; then
+	say "  1) Install BasedOS on the built-in storage, next to stock (finishes an earlier install that was interrupted)"
 else
 	say "  1) Install BasedOS on the built-in storage, next to stock"
 fi
 say "  2) Make a recovery SD card (it can put the built-in storage back as it is now)"
 ask "Choose 1 or 2:" _a
 case "$_a" in
-1) [ -z "$INSTALLED" ] || die "BasedOS is installed already: uninstall it first (its maintenance menu: hold Select at power-on)"
+1) [ -z "$BROKEN" ] ||
+		die "$STOCK_P1/boot.scr is BasedOS's, but BasedOS's folder is gone: put stock's boot script back first (docs/recovery.md)"
+	[ -z "$INSTALLED" ] || die "BasedOS is installed already: uninstall it first ($UNINSTALL_HOW)"
 	TARGET=install ;;
 2) TARGET=recovery ;;
 *) die "no choice made" ;;
@@ -262,6 +282,7 @@ if [ "$REC" = yes ]; then
 fi
 if [ "$TARGET" = install ]; then
 	item "Install BasedOS $VERSION on the built-in storage, next to stock."
+	[ -n "$PARTIAL" ] && say "     ${C_DIM}(An earlier install didn't finish: its folder, $STOCK_P1/basedos, is replaced.)${C_0}"
 	[ "$REC" = yes ] && say "     ${C_DIM}(Only after the recovery card is made and checked.)${C_0}"
 fi
 say ""
@@ -383,13 +404,26 @@ backup_emmc() {
 	w1=$(awk '{ print $5 }' /sys/block/$EMMC/${EMMC}p2/stat)
 	sync
 	echo 3 > /proc/sys/vm/drop_caches
+	# The read-back: each region whole (its size in bytes) and as it was read (its MD5). The size
+	# matters as much as the MD5: a read error from the eMMC ends that piece's read early without
+	# stopping the pipeline, and the MD5 taken while reading is then of the short stream too.
 	say "checking the backup (reading it back from the card)..."
-	[ "$(md5sum < "$BK_DIR/$BK_NAME.0-partition-table.img" | cut -c1-32)" = "$BK_MD5_0" ] &&
-		[ "$(md5sum < "$BK_DIR/$BK_NAME.1-bootloader.img" | cut -c1-32)" = "$BK_MD5_1" ] &&
-		[ "$(cat "$BK_DIR/$BK_NAME.2-p1.img.zst."* | zstd -dc -q | md5sum | cut -c1-32)" = "$BK_MD5_2" ] &&
-		[ "$(cat "$BK_DIR/$BK_NAME.3-p2.img.zst."* | zstd -dc -q | md5sum | cut -c1-32)" = "$BK_MD5_3" ] &&
-		[ ${#BK_MD5_2} -eq 32 ] && [ ${#BK_MD5_3} -eq 32 ] ||
-		die "the backup on the card doesn't read back as the built-in storage was read"
+	region_ok() {  # region_ok <n> <file or piece prefix> <raw|zst>
+		eval "_want_md5=\$BK_MD5_$1 _want_bytes=\$((R_$1_SECTORS * 512))"
+		[ ${#_want_md5} -eq 32 ] || return 1
+		rm -f "$T/count"; mkfifo "$T/count"
+		wc -c < "$T/count" > "$T/count.out" & _c=$!
+		if [ "$3" = raw ]; then _got=$(tee "$T/count" < "$2" | md5sum | cut -c1-32)
+		else _got=$(cat "$2".* | zstd -dc -q | tee "$T/count" | md5sum | cut -c1-32); fi
+		wait $_c
+		[ "$_got" = "$_want_md5" ] && [ "$(tr -d ' \n' < "$T/count.out")" = "$_want_bytes" ]
+	}
+	region_ok 0 "$BK_DIR/$BK_NAME.0-partition-table.img" raw &&
+		region_ok 1 "$BK_DIR/$BK_NAME.1-bootloader.img" raw &&
+		region_ok 2 "$BK_DIR/$BK_NAME.2-p1.img.zst" zst &&
+		region_ok 3 "$BK_DIR/$BK_NAME.3-p2.img.zst" zst ||
+		die "the backup on the card isn't the whole built-in storage as it was read (a read error on the eMMC, or the card)"
+	rm -f "$T/count" "$T/count.out"
 	[ "$w0" = "$w1" ] || warn "stock wrote to its data while this copied; the backup is the built-in storage as it was read."
 	sync
 	ok "backup made and checked: $(du -sk "$BK_DIR" | awk '{ printf "%.1f", $1 * 1024 / 1e9 }') GB"
@@ -532,17 +566,22 @@ seed_data() {
 
 if [ "$TARGET" = install ]; then
 	step "Installing BasedOS on the built-in storage"
-	mount -o remount,rw $STOCK_P1 || die "can't write $STOCK_P1"
 	B=$STOCK_P1/basedos
-	mkdir -p "$B"
-	dd if=$STOCK_P1/boot.scr bs=64 skip=1 2>/dev/null | grep -q "rdinit=/basedos/init" &&
-		die "$STOCK_P1/boot.scr is BasedOS's, but there's no BasedOS folder: put stock's back first"
+	# Checked again here (phase 1 did): stock's boot script must be stock's before it's saved.
+	is_basedos_scr $STOCK_P1/boot.scr && die "$STOCK_P1/boot.scr is BasedOS's already: nothing was written"
+	mount -o remount,rw $STOCK_P1 || die "can't write $STOCK_P1"
+	P1_RW=1
+	# An earlier install that didn't finish: stock's boot script is still stock's, so nothing boots
+	# its folder; it's replaced.
+	if [ -n "$PARTIAL" ]; then rm -rf "$B" || die "can't remove the unfinished install's $B"; fi
+	mkdir -p "$B" || die "can't make $B"
 	put $STOCK_P1/boot.scr "$B/boot.scr.stock"
 	put "$HERE/rootfs.squashfs" "$B/rootfs.squashfs"
 	put "$HERE/initrd.uimg" "$B/initrd.uimg"
 	# BasedOS's boot script last: it switches the device over.
 	put "$HERE/boot.scr" $STOCK_P1/boot.scr
 	mount -o remount,ro $STOCK_P1
+	P1_RW=""
 	seed_data /storage/basedos-data
 	# "Uninstall BasedOS" in stock's Ports (the folder stock's Ports reads: /storage/roms is a bind
 	# of games-internal/roms), from this release's system layer, so BasedOS can be removed from

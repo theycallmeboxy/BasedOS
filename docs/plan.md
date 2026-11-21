@@ -120,8 +120,8 @@ folders removed).
    uninstall or stock-once there), loop-mounts the chosen slot's system layer as the root and
    stock's `SYSTEM` at its `/stock`, checks that stock is the build the slot was made for (falling
    back to the other slot, then to stock's own `/init`), then `switch_root`s and execs `/sbin/init`.
-3. BusyBox init runs `rcS`: proc/sys/devpts and the `/dev` links, the boot screen, the clock, `/data` (checked, then mounted from p2), the card mount, a pending update (installed, then straight to a reboot), then the Wi-Fi driver and the shutdown-key watcher in the background. Joining Wi-Fi and SSH are the frontend's; BasedOS's own start only in maintenance mode or after a failing frontend.
-4. `frontend-session` (respawned) runs the frontend probe. With no card or frontend, it shows a splash and retries.
+3. BusyBox init runs `rcS`: proc/sys/devpts and the `/dev` links, the boot screen, the clock, `/data` (checked, then mounted from p2), a first try at the card, then the Wi-Fi driver and the shutdown-key watcher in the background. Joining Wi-Fi and SSH are the frontend's; BasedOS's own start only in maintenance mode or after a failing frontend.
+4. `frontend-session` (respawned) mounts the card (retrying until it's probed), settles and installs a pending update once a boot (`basedos-update confirm`, `apply`: installed, then straight to a reboot), then runs the frontend probe. With no card or frontend, it shows a splash and retries.
 
 ## Rootfs
 

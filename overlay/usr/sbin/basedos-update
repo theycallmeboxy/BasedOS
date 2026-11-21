@@ -3,10 +3,11 @@
 # way spruce's firmware updater expects of a BaseOS (baseos-<target>-<version>.bosupd: spruce
 # downloads it or finds it there, then reboots).
 #
-#   apply     rcS, every boot, once the card is mounted: install the first applicable payload
-#             and reboot into it. No payload costs one failed glob.
-#   confirm   rcS, every boot that reaches userspace: settle the last update (remove its payload
-#             once the new slot has booted; note a rollback otherwise).
+#   apply     frontend-session, once a boot, as soon as the card is mounted (before the frontend
+#             starts): install the first applicable payload and reboot into it. No payload costs
+#             one failed glob.
+#   confirm   the same, just before apply: settle the last update (remove its payload once the
+#             new slot has booted; on a rollback, point the slot back at the running one).
 #   status    what is installed, and what each payload on the card would do.
 #
 # A payload carries the system layer and the initrd, never stock's files. It names the stock build
@@ -14,11 +15,14 @@
 # for another stock build is refused. The
 # system layer goes to the slot that isn't running (A/B, as tools/dev/update-basedos.sh), the
 # initrd replaces the old one when it differs (kept as initrd.uimg.prev). Each file is written as
-# <name>.new, synced, re-read from the eMMC against the manifest's SHA-256 and only then renamed,
-# and the slot pointer flips last: a power cut before that leaves the running system as it was.
+# <name>.new, synced, re-read from the eMMC against the manifest's SHA-256 and only then renamed.
+# The update is recorded in /data (history, by SHA-256, and the pending state) before the slot
+# pointer flips, and the flip is last: a power cut before it leaves the running system as it was.
 # A new slot that never reaches userspace is undone by the initrd's boot counter (the 4th failed
-# boot takes the other slot); the payload then stays on the card but is never applied again
-# (history, by SHA-256), so a bad update can't loop.
+# boot takes the other slot), and confirm then points the slot back for good.
+#
+# A payload that won't be applied is set aside on the card (renamed <name>.bosupd.skipped,
+# .refused or .failed), so neither this nor spruce's updater keeps offering or retrying it.
 export PATH=/usr/bin:/usr/sbin
 . /usr/lib/basedos/functions
 
@@ -32,8 +36,9 @@ MANIFEST=/run/basedos/bosupd-manifest
 
 field() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1; }
 
-# 0 if dotted version $1 is newer than $2 (missing fields count as 0; a -suffix is a pre-release
-# of its own version).
+# 0 if dotted version $1 is newer than $2 (missing fields count as 0). A -suffix is a pre-release
+# of its own version, older than the release; two pre-releases of one version compare by their
+# dotted suffixes (pre.9 is newer than pre.8; numbers as numbers, words as words).
 version_newer() {
 	_a=${1%%-*} _b=${2%%-*}
 	while [ -n "$_a$_b" ]; do
@@ -45,10 +50,33 @@ version_newer() {
 		[ "$_x" -gt "$_y" ] && return 0
 		[ "$_x" -lt "$_y" ] && return 1
 	done
-	# Same core version: the release is newer than its pre-releases.
-	case "$1" in *-*) return 1 ;; esac
-	case "$2" in *-*) return 0 ;; esac
+	case "$1" in *-*) ;; *) case "$2" in *-*) return 0 ;; *) return 1 ;; esac ;; esac
+	case "$2" in *-*) ;; *) return 1 ;; esac
+	_a=${1#*-} _b=${2#*-}
+	while [ -n "$_a$_b" ]; do
+		_x=${_a%%.*} _y=${_b%%.*}
+		case "$_a" in *.*) _a=${_a#*.} ;; *) _a="" ;; esac
+		case "$_b" in *.*) _b=${_b#*.} ;; *) _b="" ;; esac
+		[ -z "$_x" ] && return 1
+		[ -z "$_y" ] && return 0
+		[ "$_x" = "$_y" ] && continue
+		case "$_x$_y" in
+		*[!0-9]*) [ "$(printf '%s\n%s\n' "$_x" "$_y" | sort | tail -1)" = "$_x" ]; return ;;
+		*) [ "$_x" -gt "$_y" ]; return ;;
+		esac
+	done
 	return 1
+}
+
+# release_name <build>: a release build's name without its v (v0.0.1-pre.8 -> 0.0.1-pre.8);
+# nothing for a development build (git describe past a tag: v0.0.1-pre.8-3-g1234abc, or -dirty).
+release_name() {
+	_r=${1#v}
+	[ "$_r" != "$1" ] || return 0
+	case "$_r" in ''|*-*-*|*dirty*) return 0 ;; esac
+	case "${_r%%-*}" in ''|*[!0-9.]*) return 0 ;; esac
+	case "$_r" in *-*) case "${_r#*-}" in ''|*[!a-z0-9.]*) return 0 ;; esac ;; esac
+	echo "$_r"
 }
 
 # Judge one payload: 0 = apply, 1 = nothing to do, 2 = refused. Sets EV_VERSION, EV_BUILD,
@@ -68,9 +96,14 @@ evaluate() {
 	[ -n "$EV_STOCK" ] || { EV_REASON="names no stock build (made for an older BasedOS)"; return 2; }
 	[ "$EV_STOCK" = "${BASEOS_STOCK_BUILD_ID:-}" ] ||
 		{ EV_REASON="made for stock build $EV_STOCK; this device's is ${BASEOS_STOCK_BUILD_ID:-unknown}"; return 2; }
-	# Only forward, or a rebuild of the running version: an old payload left on the card must not
-	# downgrade the device once it has moved past it.
-	if version_newer "$EV_VERSION" "${BASEOS_VERSION:-0}"; then :
+	# Only forward: an old payload left on the card must not downgrade the device once it has moved
+	# past it. Two releases compare by their release names (pre-releases of one version included);
+	# otherwise a newer version, or a development rebuild of the running version.
+	_ev_rel=$(release_name "$EV_BUILD") _run_rel=$(release_name "${BASEOS_BUILD:-}")
+	if [ -n "$_ev_rel" ] && [ -n "$_run_rel" ]; then
+		version_newer "$_ev_rel" "$_run_rel" ||
+			{ EV_REASON="not newer than the running $BASEOS_VERSION ($BASEOS_BUILD)"; return 1; }
+	elif version_newer "$EV_VERSION" "${BASEOS_VERSION:-0}"; then :
 	elif [ "$EV_VERSION" = "$BASEOS_VERSION" ] && [ "$EV_BUILD" != "$BASEOS_BUILD" ]; then :
 	else EV_REASON="not newer than the running $BASEOS_VERSION ($BASEOS_BUILD)"; return 1
 	fi
@@ -90,17 +123,32 @@ member() {
 
 running_slot() { boot_slot; }
 
+# set_aside <payload> <skipped|refused|failed> <why>: rename it out of the *.bosupd glob, so it isn't
+# looked at (or offered by spruce) again.
+set_aside() {
+	if mv -f "$1" "$1.$2" 2>/dev/null; then log "$1 $2 ($3); renamed to ${1##*/}.$2"
+	else log "$1 $2 ($3); couldn't rename it"; fi
+}
+
+# point_slot <a|b>: the slot the initrd boots from now on.
+point_slot() {
+	if [ "$1" = b ]; then echo b > "$B/slot.new" && sync && mv "$B/slot.new" "$B/slot"; else rm -f "$B/slot"; fi && sync
+}
+
 apply() {
 	_found=""
 	for _p in "$CARD"/*.bosupd; do [ -f "$_p" ] && _found=1 && break; done
 	[ -n "$_found" ] || return 0
-	mkdir -p "$STATE_DIR"
+	mkdir -p "$STATE_DIR" || { log "can't write $STATE_DIR; not updating"; return 1; }
 	_chosen=""
 	for _p in "$CARD"/*.bosupd; do
 		[ -f "$_p" ] || continue
 		evaluate "$_p"; _r=$?
-		[ $_r -eq 0 ] && { _chosen=$_p; break; }
-		[ $_r -eq 2 ] && log "$_p refused: $EV_REASON"
+		case $_r in
+		0) _chosen=$_p; break ;;
+		1) set_aside "$_p" skipped "$EV_REASON" ;;
+		*) set_aside "$_p" refused "$EV_REASON" ;;
+		esac
 	done
 	[ -n "$_chosen" ] || return 0
 
@@ -114,40 +162,67 @@ apply() {
 	mount -o remount,rw /boot || { log "can't write p1; not updating"; return 1; }
 	if ! member "$_chosen" rootfs.squashfs "$B/$_file" "$EV_SHA"; then
 		mount -o remount,ro /boot
+		set_aside "$_chosen" failed "the system image didn't verify, or didn't fit"
 		say "BasedOS update failed: the system image didn't verify; still on $BASEOS_VERSION"
 		return 1
 	fi
+	# The initrd, when it differs. member writes <name>.new and renames it only once it verifies,
+	# so a failure leaves the running initrd as it was. The old one is kept as .prev.
 	_isha=$(field "$MANIFEST" initrd-sha256)
 	if [ -n "$_isha" ] && [ "$(sha256sum < "$B/initrd.uimg" | cut -d' ' -f1)" != "$_isha" ]; then
-		cp "$B/initrd.uimg" "$B/initrd.uimg.prev" && sync
-		if ! member "$_chosen" initrd.uimg "$B/initrd.uimg" "$_isha"; then
-			cp "$B/initrd.uimg.prev" "$B/initrd.uimg"; sync
+		if ! { cp "$B/initrd.uimg" "$B/initrd.uimg.prev" && sync &&
+			cmp -s "$B/initrd.uimg" "$B/initrd.uimg.prev" &&
+			member "$_chosen" initrd.uimg "$B/initrd.uimg" "$_isha"; }; then
 			mount -o remount,ro /boot
+			set_aside "$_chosen" failed "the initrd didn't verify, or didn't fit"
 			say "BasedOS update failed: the initrd didn't verify; still on $BASEOS_VERSION"
 			return 1
 		fi
 	fi
+	# Recorded before the flip: a new slot that never boots is then known (history) and confirm
+	# can undo the flip; with /data unwritable the flip doesn't happen.
+	if ! { printf 'slot=%s\nversion=%s\nbuild=%s\npayload=%s\nfrom=%s\n' "$_new" "$EV_VERSION" "$EV_BUILD" \
+			"$_chosen" "$BASEOS_VERSION ($BASEOS_BUILD)" > "$STATE.new" &&
+		echo "$EV_SHA $EV_VERSION $EV_BUILD" >> "$HISTORY" && sync && mv "$STATE.new" "$STATE" && sync; }; then
+		rm -f "$STATE.new"
+		mount -o remount,ro /boot
+		say "BasedOS update stopped: can't write /data; still on $BASEOS_VERSION"
+		return 1
+	fi
 	# The commit.
-	if [ "$_new" = b ]; then echo b > "$B/slot.new" && sync && mv "$B/slot.new" "$B/slot"; else rm -f "$B/slot"; fi
-	sync
+	if ! point_slot "$_new"; then
+		rm -f "$STATE"; sed -i '$d' "$HISTORY"; sync
+		mount -o remount,ro /boot
+		say "BasedOS update stopped: can't switch the slot; still on $BASEOS_VERSION"
+		return 1
+	fi
 	mount -o remount,ro /boot
-	echo "$EV_SHA $EV_VERSION $EV_BUILD" >> "$HISTORY"
-	printf 'slot=%s\nversion=%s\nbuild=%s\npayload=%s\nfrom=%s\n' "$_new" "$EV_VERSION" "$EV_BUILD" "$_chosen" "$BASEOS_VERSION ($BASEOS_BUILD)" > "$STATE"
-	sync
 	say "BasedOS $EV_VERSION installed in slot $_new; restarting"
 	reboot
-	# BusyBox init acts on the reboot only once rcS (its sysinit) returns: 10 tells rcS to return now.
+	# 10: installed and the reboot asked for (init acts on it); the caller waits for it.
 	return 10
 }
 
 confirm() {
 	[ -f "$STATE" ] || return 0
 	_want=$(field "$STATE" slot)
-	if [ "$(running_slot)" = "$_want" ]; then
+	_run=$(running_slot)
+	if [ "$_run" = "$_want" ]; then
 		_p=$(field "$STATE" payload)
 		rm -f "$_p" && log "update to $(field "$STATE" version) ($(field "$STATE" build)) confirmed; removed $_p"
 	else
-		log "update to $(field "$STATE" version) didn't boot; back on $BASEOS_VERSION ($BASEOS_BUILD). Its payload stays on the card and won't be applied again"
+		# The initrd's counter took the other slot for this boot only: point the slot back at the
+		# running one for good, so later boots don't try the bad one again first.
+		case "$_run" in
+		a|b) if mount -o remount,rw /boot; then
+				point_slot "$_run" || log "couldn't point the slot back at $_run"
+				mount -o remount,ro /boot
+			else log "couldn't point the slot back at $_run (p1 not writable)"; fi ;;
+		*) log "can't tell which slot is running; the slot pointer stays" ;;
+		esac
+		_p=$(field "$STATE" payload)
+		[ -f "$_p" ] && set_aside "$_p" failed "it didn't boot"
+		log "update to $(field "$STATE" version) didn't boot; back on $BASEOS_VERSION ($BASEOS_BUILD), slot $_run"
 	fi
 	rm -f "$STATE"
 	sync

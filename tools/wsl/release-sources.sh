@@ -12,7 +12,13 @@ set -eu
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 TAG=${1:?usage: release-sources.sh <tag>}
 BRW=${BR_WORK:-$HOME/basedos-br}
-BRVER=2025.02.20
+# The versions built, from the build scripts (not repeated here, so they can't drift apart).
+BRVER=$(sed -n 's/^VER=//p' "$REPO/tools/buildroot/build.sh")
+BASHVER=$(sed -n 's/^VER=//p' "$REPO/tools/bash/build.sh")
+[ -n "$BRVER" ] && [ -n "$BASHVER" ] || { echo "can't read the Buildroot or bash version from their build scripts" >&2; exit 1; }
+# The bash shipped must be that version (prepared/bash is what the image carries).
+grep -q "^bash $BASHVER," "$REPO/prepared/bash/build-info" ||
+	{ echo "prepared/bash isn't bash $BASHVER: build again first" >&2; exit 1; }
 BB=$HOME/basedos-src-dl/busybox
 R=$REPO/out/release-$TAG
 [ -d "$R" ] || { echo "no $R: run release.sh $TAG first" >&2; exit 1; }
@@ -44,7 +50,7 @@ cp "$BB/busybox-$1.tar.bz2" "$S/busybox/"
 cp -r "$A" "$S/busybox/alpine-aports-main-busybox"
 
 # bash: GNU's release tarball, unmodified.
-cp "$HOME/basedos-bash/bash-5.2.37.tar.gz" "$S/bash/"
+cp "${BASH_WORK:-$HOME/basedos-bash}/bash-$BASHVER.tar.gz" "$S/bash/"
 
 cat > "$S/README.txt" <<EOF
 Sources for BasedOS $TAG (GKD 350H Ultra), as its NOTICE.md requires of a release.
@@ -61,7 +67,7 @@ buildroot/    The userland in rootfs.squashfs, built by Buildroot $BRVER (buildr
 busybox/      BusyBox $1, Alpine Linux's busybox-static $1-r$2 (in rootfs.squashfs, initrd.uimg and
               recovery-initrd.uimg): busybox.net's tarball, and Alpine's aports main/busybox
               (APKBUILD, patches, configs) it's built with.
-bash/         bash 5.2.37, GNU's release tarball, unmodified (built by tools/bash/build.sh).
+bash/         bash $BASHVER, GNU's release tarball, unmodified (built by tools/bash/build.sh).
 
 Also in the release, not copyleft (licences in the image under /usr/share/licenses): SDL2 with
 ArkOS's patches (zlib; patches in tools/sdl2/patches/), librga (Apache-2.0), zstd (BSD; its source

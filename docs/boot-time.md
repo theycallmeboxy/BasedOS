@@ -56,9 +56,12 @@ Also since 2026-11-19:
   before rebooting. `rcK` already stopped everything and unmounted the card, so it finishes the
   job itself when it knows which was asked for (`/usr/sbin/poweroff`, which `reboot` and `halt`
   link to, notes it). BusyBox's own `reboot` without the note takes the old path.
-- **An update restarts at once**: the reboot `basedos-update` asks for waits for `rcS` to return,
-  so `rcS` now returns as soon as one is installed (installed at 1.52 s, `rcK` at 1.55 s; before,
-  10 s later).
+- **An update restarts at once**: when `rcS` installed updates, the reboot `basedos-update` asks
+  for waited for `rcS` to return, so `rcS` returned as soon as one was installed (installed at
+  1.52 s, `rcK` at 1.55 s; before, 10 s later). Since 2026-11-21 `frontend-session` installs them,
+  once the card is mounted (`rcS`'s single early try usually came before the card was probed, so
+  an update waited for a boot where it wasn't); init acts on the reboot at once there too. Not
+  measured again.
 - The card is polled every 50 ms for the first 2 s (was 0.5 s), and the clock is set from the RTC
   before `e2fsck` checks `/data`.
 

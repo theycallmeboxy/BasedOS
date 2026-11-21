@@ -65,14 +65,16 @@ script is back.
 | You do | BasedOS does |
 |---|---|
 | Power on | boots in about 4 s to spruce's menu |
-| Power on **holding Select** | **maintenance mode**: no spruce; Wi-Fi and SSH, and a menu (Up/Down, A): **Start stock once**; **Switch to stock** (stock boots from then on, and a "Return to BasedOS" entry in stock's Ports puts BasedOS back); **Uninstall BasedOS** (removes its files and settings from the device while it restarts, then starts stock; stock is as before the install); Restart; Power off. Switching and uninstalling want A held 3 s; B goes back. The screen shows the address to SSH to once Wi-Fi is up |
+| Power on **holding Select** | **maintenance mode**: no spruce; Wi-Fi and SSH, and a menu (Up/Down, A): **Start stock once**; **Switch to stock** (stock boots from then on, and a "Return to BasedOS" entry in stock's Tools puts BasedOS back); **Uninstall BasedOS** (removes its files and settings from the device while it restarts, then starts stock; stock is as before the install); Restart; Power off. Switching and uninstalling want A held 3 s; B goes back. The screen shows the address to SSH to once Wi-Fi is up |
 | Power on **holding Start** | **stock, for this boot**: BasedOS restarts into stock once; the next power-on is BasedOS again |
 | Power on **holding another button** | whatever `/data/boot-keys.conf` maps it to (none by default): maintenance mode, stock once, or a frontend on the card other than the first one found. The format and the button names are in `/usr/share/basedos/boot-keys.conf`; copy it to `/data/` to change it. The boot screen lists the mapped buttons |
 | Hold **Volume Up + Volume Down** together **3 s** | clean shutdown with any frontend, also a hung one: programs get 3 s to save and quit, then the card is synced and unmounted (`basedos-shutdown-keys`). Holding power is the frontend's (spruce: Button Settings > Power button hold time) |
 | Tap power (in spruce) | sleep; tap again to wake. spruce's "Shutdown after sleeping" works |
 | Pull and reinsert the card | the card is found again; a card that wasn't unmounted cleanly is checked first |
 
-Without a card, BasedOS waits for one and says so once on screen.
+Without a card, BasedOS waits for one and says so on screen. While it waits, the buttons the
+boot-key map uses work there too, held for a second: Select for maintenance mode, Start for stock
+once (or whatever `/data/boot-keys.conf` maps them to), without restarting first.
 
 ## Wi-Fi and SSH
 
@@ -80,8 +82,10 @@ Without a card, BasedOS waits for one and says so once on screen.
   The networks are saved on the card, so they go wherever the card goes. BasedOS only loads the
   Wi-Fi driver at boot.
 - BasedOS's own Wi-Fi is for maintenance mode, and for when the frontend keeps failing: then it
-  joins the networks in `/data/wpa_supplicant.conf` on the eMMC (the installer fills it from
-  stock's saved networks; edit it over SSH).
+  joins the networks in `/data/wpa_supplicant.conf` on the eMMC. Each time it starts, it first
+  adds any network stock has saved that it doesn't have yet (stock's own files are only read): to
+  add a network, join it once in stock's Wi-Fi menu (start stock once), and maintenance mode
+  knows it from then on. The file can also be edited over SSH.
 - SSH: with spruce's "Enable SSH" on, spruce's own SSH answers: user `spruce`, password
   `happygaming`. With it off there is no SSH. In maintenance mode, or when the frontend keeps
   failing, BasedOS's own SSH answers as `root` with **no password**. Use only on a network you

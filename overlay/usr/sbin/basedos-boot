@@ -4,7 +4,7 @@
 #   basedos-boot stock-once     reboot into stock once; the boot after is BasedOS again
 #   basedos-boot switch-to-stock
 #                               stock's boot script back, and a "Return to BasedOS" script in
-#                               stock's Ports, which puts BasedOS's back and reboots into it.
+#                               stock's Tools, which puts BasedOS's back and reboots into it.
 #                               BasedOS's files stay, for that.
 #   basedos-boot uninstall      stock's boot script back and BasedOS removed: its folder on p1
 #                               (basedos/) and its data on p2 (basedos-data/, with the return
@@ -83,11 +83,12 @@ check_places() {
 	grep -q "^$BOOT_P2 $P2 " /proc/mounts || die "the boot disk's p2 ($BOOT_P2) isn't mounted at $P2"
 }
 
-# The folders stock's Ports system reads, on this device's p2 (stock's /storage). Stock reads them
-# from the eMMC also with a spruce card in (it mounts the card apart, at games-external).
-stock_ports_dirs() { echo "$P2/roms/ports"; }
+# The folder stock's Tools menu lists (EmulationStation's "tools" system: /storage/.config/modules,
+# .sh files run in a terminal), on this device's p2 (stock's /storage). Stock always shows Tools
+# (its own tools are there); Ports shows only once it's been set up.
+stock_tools_dirs() { echo "$P2/.config/modules"; }
 
-# The script stock runs from its Ports menu to come back. Written by switch-to-stock; it removes
+# The script stock runs from its Tools menu to come back. Written by switch-to-stock; it removes
 # every copy of itself once it has put BasedOS's boot script back. It runs on stock (bash and
 # BusyBox; no cmp), so it checks with md5sum and od.
 return_script() {
@@ -113,7 +114,7 @@ if cp "$SAVED" $P1/boot.scr.new && sync && echo 3 > /proc/sys/vm/drop_caches &&
 	[ "$(md5sum < "$SAVED")" = "$(md5sum < $P1/boot.scr)" ]; then
 	rm -f "$SAVED"
 	mount -o remount,ro $P1
-	for d in /storage/roms/ports /roms/ports; do rm -f "$d/Return to BasedOS.sh"; done
+	for d in /storage/.config/modules /storage/roms/ports /roms/ports; do rm -f "$d/Return to BasedOS.sh"; done
 	sync
 	echo "Back to BasedOS: restarting."
 	sleep 2
@@ -140,14 +141,14 @@ switch_to_stock() {
 	check_stock $B/boot.scr.stock || die "$B/boot.scr.stock isn't a stock boot script; not switching"
 	# 1. The way back, written and read back before anything that boots changes.
 	_n=0
-	for _d in $(stock_ports_dirs); do
+	for _d in $(stock_tools_dirs); do
 		mkdir -p "$_d" && return_script > "$_d/$RETURN_NAME.new" && chmod 755 "$_d/$RETURN_NAME.new" &&
 			sync && return_script | cmp -s - "$_d/$RETURN_NAME.new" &&
 			mv "$_d/$RETURN_NAME.new" "$_d/$RETURN_NAME" && sync && _n=$((_n + 1)) ||
 			rm -f "$_d/$RETURN_NAME.new"
 	done
-	[ $_n -gt 0 ] || die "couldn't write '$RETURN_NAME' in stock's Ports; not switching"
-	undo_return() { for _d in $(stock_ports_dirs); do rm -f "$_d/$RETURN_NAME"; done; sync; }
+	[ $_n -gt 0 ] || die "couldn't write '$RETURN_NAME' in stock's Tools; not switching"
+	undo_return() { for _d in $(stock_tools_dirs); do rm -f "$_d/$RETURN_NAME"; done; sync; }
 	rw
 	put /boot/boot.scr $B/boot.scr.basedos && [ "$(scr_kind $B/boot.scr.basedos)" = basedos ] ||
 		{ ro; undo_return; die "couldn't save BasedOS's boot script; not switching"; }
@@ -159,7 +160,7 @@ switch_to_stock() {
 		die "couldn't write stock's boot script; still BasedOS"
 	}
 	ro
-	log "boot: switched to stock (BasedOS's files stay; '$RETURN_NAME' in stock's Ports comes back)"
+	log "boot: switched to stock (BasedOS's files stay; '$RETURN_NAME' in stock's Tools comes back)"
 }
 
 uninstall() {
@@ -183,7 +184,7 @@ status() {
 	basedos)
 		if [ -f /data/uninstall ]; then echo "next boot: BasedOS UNINSTALLS itself, then stock"
 		else echo "next boot: BasedOS$( [ -f /data/boot-stock-once ] && echo ", except: stock once")"; fi ;;
-	stock) echo "next boot: stock (BasedOS switched off; '$RETURN_NAME' in stock's Ports comes back)" ;;
+	stock) echo "next boot: stock (BasedOS switched off; '$RETURN_NAME' in stock's Tools comes back)" ;;
 	*) echo "next boot: /boot/boot.scr DOESN'T LOOK LIKE A BOOT SCRIPT" ;;
 	esac
 	if check_stock $B/boot.scr.stock; then echo "stock's boot script: saved"; else echo "stock's boot script: NOT saved or not valid"; fi

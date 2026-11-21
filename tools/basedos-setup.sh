@@ -62,7 +62,16 @@ cleanup() {
 	[ -n "${ES_STOPPED:-}" ] && systemctl start essway 2>/dev/null
 	ES_STOPPED=""
 }
-trap 'cleanup' INT TERM
+# Ctrl-C (or the SSH session going away): clean up and stop. Before phase 2 nothing has been
+# written; during it, a card or an install may be left part-done (run setup again).
+interrupted() {
+	printf '\n%sSTOPPED%s (interrupted): %s\n' "$C_RED" "$C_0" \
+		"$([ -n "${PHASE2:-}" ] && echo "part-way through; run setup again to finish or redo it" || echo "nothing was written")" >&2
+	cleanup
+	grep -q " $T/" /proc/mounts || rm -rf "$T"
+	exit 130
+}
+trap interrupted INT TERM HUP
 ask() {  # ask <prompt> <var>
 	printf '%s%s%s ' "$C_B" "$1" "$C_0"
 	read -r "$2" || die "no answer (run it from an SSH terminal: ssh -t)"
@@ -269,6 +278,7 @@ fi
 
 # ---------------------------------------------------------------------------------------------
 # Phase 2: no more questions.
+PHASE2=1
 
 # The rest of the release, now.
 step "Getting BasedOS $VERSION"

@@ -3,7 +3,10 @@
 # frontend's own wpa_supplicant and DHCP client (spruce runs them from the card's saved networks).
 #   network          load bcmdhd and wait for wlan0 (rcS, every boot)
 #   network up       also join a network from /data/wpa_supplicant.conf and get an address:
-#                    BasedOS's own Wi-Fi, for maintenance mode or when no frontend can run
+#                    BasedOS's own Wi-Fi, for maintenance mode or when no frontend can run. First,
+#                    any network stock has saved that BasedOS doesn't have yet is added to it
+#                    (stock's ConnMan store on its data partition, read only): join a new network
+#                    once in stock's Wi-Fi menu, and maintenance mode knows it.
 . /usr/lib/basedos/functions
 
 if [ ! -e /sys/class/net/wlan0 ]; then
@@ -16,7 +19,32 @@ fi
 [ "$1" = up ] || exit 0
 
 conf=/data/wpa_supplicant.conf
-[ -f "$conf" ] || { log "no $conf; BasedOS has no network to join"; exit 0; }
+# Stock's saved networks: /storage/.cache/connman/wifi_*/settings on stock's data partition (at
+# /run/p2 here), each with Name=, SSID= (hex) and Passphrase=. Written the way setup writes them:
+# the SSID as hex, the key as wpa_passphrase's PSK, so nothing in either can break the file.
+stock_networks() {
+	_n=0
+	for _s in /run/p2/.cache/connman/wifi_*/settings; do
+		[ -f "$_s" ] || continue
+		_name=$(sed -n 's/^Name=//p' "$_s" | head -1)
+		_ssid=$(sed -n 's/^SSID=//p' "$_s" | head -1)
+		_pass=$(sed -n 's/^Passphrase=//p' "$_s" | head -1)
+		case "$_ssid" in ''|*[!0-9a-fA-F]*) continue ;; esac
+		grep -q "^[[:space:]]*ssid=$_ssid\$" "$conf" 2>/dev/null && continue
+		[ -f "$conf" ] || printf 'ctrl_interface=/run/wpa_supplicant\nupdate_config=0\n' > "$conf"
+		if [ -n "$_pass" ]; then
+			_psk=$(wpa_passphrase "$_name" "$_pass" 2>/dev/null | sed -n 's/^[[:space:]]*psk=\([0-9a-f]\{64\}\)$/\1/p')
+			[ -n "$_psk" ] || continue
+			printf 'network={\n\tssid=%s\n\tpsk=%s\n}\n' "$_ssid" "$_psk" >> "$conf"
+		else
+			printf 'network={\n\tssid=%s\n\tkey_mgmt=NONE\n}\n' "$_ssid" >> "$conf"
+		fi
+		_n=$((_n + 1))
+	done
+	[ $_n -eq 0 ] || { chmod 600 "$conf"; sync; log "BasedOS Wi-Fi: $_n network(s) added from stock's saved networks"; }
+}
+(umask 077; stock_networks)
+[ -f "$conf" ] || { log "no $conf; BasedOS has no network to join (join one in stock's Wi-Fi menu)"; exit 0; }
 # A frontend's supplicant and DHCP client may still hold wlan0; one of each on it.
 killall wpa_supplicant udhcpc 2>/dev/null
 sleep 0.5

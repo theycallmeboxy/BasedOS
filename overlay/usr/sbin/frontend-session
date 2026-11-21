@@ -13,6 +13,9 @@
 #   maintenance        no frontend; SSH and Wi-Fi only (default: Select)
 #   frontend <entry>   start <entry> on the card instead of the first match above
 #
+# With no card, the waiting screen watches the same map: a mapped button held for a second there
+# does its maintenance or stock action, without a restart.
+#
 # Safeguards:
 #   - A frontend that exits within 15 s, five times in a row, is not restarted again until
 #     the next boot (no hot loop draining the battery and writing to the card). BasedOS's own
@@ -103,16 +106,63 @@ if [ -f $STATE/session-start ]; then
 		stay_down "the frontend keeps exiting (5 times within 15 s); not restarting it. Logs: /data/basedos.log and the card. Reboot to try again."
 fi
 
-# Quiet retries; one message per session, and only after 15 s without a card. At boot the card
-# is usually a few tens of ms from being probed, so the first 2 s are polled every 50 ms.
+# now_cs: the uptime in hundredths of a second.
+now_cs() { read -r _u _ < /proc/uptime; _s=${_u%.*} _f=${_u#*.}; echo $(( _s * 100 + 1$_f - 100 )); }
+
+# waiting_screen: no card: what to do, and the buttons that work here.
+waiting_screen() {
+	{
+		echo "!NO CARD"
+		echo "Insert your frontend card."
+		grep -v '^[[:space:]]*\(#\|$\)' "$(boot_keys_conf)" 2>/dev/null | while read -r _b _a _arg; do
+			button_code "$_b" >/dev/null || continue
+			case "$_a" in
+			maintenance) echo "!Hold $(button_label "$_b"): maintenance mode" ;;
+			stock) echo "!Hold $(button_label "$_b"): start stock once" ;;
+			esac
+		done | head -3
+	} > "$SPLASH_INFO"
+	say "no card in the slot (waiting for one)"
+}
+
+# key_watch: about a second of watching the boot-key map; a mapped button held for a second does
+# its maintenance or stock action (the frontend action needs a card: not here).
+_kw="" _kw_t=0
+key_watch() {
+	_end=$(( $(now_cs) + 100 ))
+	while [ "$(now_cs)" -lt $_end ]; do
+		set -- $(boot_key_action)
+		if [ -z "${1:-}" ] || [ "$1 $2" != "$_kw" ]; then
+			_kw=${1:+$1 $2} _kw_t=$(now_cs)
+		elif [ $(( $(now_cs) - _kw_t )) -ge 100 ]; then
+			case "$2" in
+			maintenance)
+				touch $STATE/maintenance
+				log "$(button_label "$1") held with no card: maintenance mode"
+				exit 1 ;;
+			stock)
+				log "$(button_label "$1") held with no card: stock for this boot"
+				basedos-boot stock-once --reboot
+				stay_down "couldn't hand over to stock (basedos-boot stock-once failed; see /data/basedos.log)" ;;
+			esac
+		fi
+		usleep 100000
+	done
+}
+
+# Quiet retries; one message per session, and only after 15 s without a card (at boot the card is
+# usually a few tens of ms from being probed, so the first 2 s are polled every 50 ms). From then
+# on the waiting screen stays up and the boot-key map is watched while the card is polled.
 i=0
+waiting=""
+[ -f /run/basedos/said-nocard ] && waiting=1
 until QUIET=1 /usr/sbin/mount-frontend 2>/dev/null; do
 	i=$((i + 1))
-	if [ $i -ge 66 ]; then
-		[ -f /run/basedos/said-nocard ] || say "no card in the slot (waiting for one)"
-		touch /run/basedos/said-nocard
-		sleep 5
-		exit 1
+	if [ -n "$waiting" ] || [ $i -ge 66 ]; then
+		[ -f /run/basedos/said-nocard ] || { waiting_screen; touch /run/basedos/said-nocard; }
+		waiting=1
+		key_watch
+		continue
 	fi
 	if [ $i -le 40 ]; then sleep 0.05; else sleep 0.5; fi
 done

@@ -69,10 +69,15 @@ mkdir -p "$REPO/out"
 cp "$W/rootfs.squashfs" "$REPO/out/rootfs.squashfs"
 # (Older builds' vendor sets and boot.env: BasedOS no longer has either.)
 rm -rf "$REPO"/out/vendor-* "$REPO/out/boot.env"
-# The update payload: the system layer and the initrd, nothing of stock's (publishable).
+# BasedOS's boot files: the initrd and the boot script (setup installs them; updates don't carry
+# them). The system layer must not need a newer initrd interface than this one gives.
 rm -f "$W/initrd.uimg.new"
 python3 "$REPO/tools/mkboot.py" initrd "$REPO/prepared/alpine/busybox.static" "$W/initrd.uimg.new" >/dev/null
 mv "$W/initrd.uimg.new" "$REPO/out/initrd.uimg"
+INITRD_ABI=$(sed -n 's/^ABI=\([0-9][0-9]*\)$/\1/p' "$REPO/initrd/basedos/init")
+NEEDS_INITRD=$(cat "$W/system/usr/share/basedos/needs-initrd")
+case "$INITRD_ABI:$NEEDS_INITRD" in *[!0-9:]*|:*|*:) echo "initrd ABI '$INITRD_ABI' or needs-initrd '$NEEDS_INITRD' isn't a number" >&2; exit 1 ;; esac
+[ "$NEEDS_INITRD" -le "$INITRD_ABI" ] || { echo "the system layer needs initrd interface $NEEDS_INITRD; initrd/basedos/init gives $INITRD_ABI" >&2; exit 1; }
 # BasedOS's own boot script (initrd/boot.cmd; setup puts it in place of stock's).
 rm -f "$W/boot.scr.new"
 python3 "$REPO/tools/mkboot.py" script "$REPO/initrd/boot.cmd" "$W/boot.scr.new"
@@ -107,7 +112,8 @@ cp "$REPO/prepared/maskrom/$USB_LOADER" "$REPO/prepared/maskrom/LICENSE.rkbin.tx
 sh "$REPO/tools/recovery/build.sh" "$REPO" "$W" "$REPO/prepared/alpine/busybox.static" "$REPO/out"
 cp "$REPO/tools/basedos-setup.sh" "$REPO/out/basedos-setup.sh"
 rm -f "$REPO"/out/baseos-*.bosupd
-python3 "$REPO/tools/mkupdate.py" "$W/rootfs.squashfs" "$REPO/out/initrd.uimg" 	"$STOCK_BUILD_ID" "$(cat "$REPO/VERSION")" 	"$(sed -n 's/^BASEOS_BUILD=//p' "$W/system/etc/baseos-release")" "$REPO/out"
+# The update payload: the system layer, nothing of stock's (publishable).
+python3 "$REPO/tools/mkupdate.py" "$W/rootfs.squashfs" "$NEEDS_INITRD" 	"$STOCK_BUILD_ID" "$(cat "$REPO/VERSION")" 	"$(sed -n 's/^BASEOS_BUILD=//p' "$W/system/etc/baseos-release")" "$REPO/out"
 for r in harvest-report.txt base32-report.txt lib32-gaps.txt; do
 	cp "$W/$r" "$REPO/out/$r" 2>/dev/null || true
 done

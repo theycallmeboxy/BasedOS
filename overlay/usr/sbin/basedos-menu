@@ -1,12 +1,19 @@
 #!/bin/sh
-# basedos-menu: maintenance mode's menu on the boot screen (frontend-session runs it). Up and
-# Down choose, A runs; the two that change what boots (switch to stock, uninstall) want A held
-# 3 s, and B goes back. Wi-Fi and SSH run beside it as before. Each choice is basedos-boot's
-# (or reboot, poweroff), so the same can be done over SSH.
+# basedos-menu: maintenance mode's menu on the boot screen (frontend-session runs it). It shows
+# what's in each system slot (A/B). Up and Down choose, A runs; the ones that change what boots
+# (the other slot, switch to stock, uninstall) want A held 3 s, and B goes back. Wi-Fi and SSH
+# run beside it as before. Each choice is basedos-boot's (or reboot, poweroff), so the same can
+# be done over SSH.
 . /usr/lib/basedos/functions
 
 UP=$(button_code up) DOWN=$(button_code down) A=$(button_code a) B=$(button_code b)
+# The slots, read once: nothing here changes them without restarting.
+SLOTS="$(slot_line a)
+$(slot_line b)"
+OTHER=b; [ "$(next_slot)" = b ] && OTHER=a
+OTHER_S=$(echo "$OTHER" | tr ab AB)
 ITEMS="stock-once|Start stock once (BasedOS again after)
+slot|Boot slot $OTHER_S from now on
 switch|Switch to stock (back from stock's Ports)
 uninstall|Uninstall BasedOS
 reboot|Restart
@@ -23,6 +30,7 @@ draw() {
 	{
 		echo "!MAINTENANCE MODE"
 		echo "ssh root@${_ip:-(waiting for Wi-Fi)}   no password"
+		echo "$SLOTS"
 		_i=0
 		echo "$ITEMS" | while IFS='|' read -r _k _label; do
 			_i=$((_i + 1))
@@ -61,6 +69,11 @@ run() {
 	stock-once)
 		draw "starting stock once"
 		basedos-boot stock-once --reboot || MSG="couldn't set up stock once: see /data/basedos.log" ;;
+	slot)
+		# basedos-boot refuses an empty slot or one that wouldn't start, and says why.
+		confirm "Boot slot $OTHER_S from now on? The device restarts into it." || return
+		draw "switching to slot $OTHER_S"
+		_e=$(basedos-boot slot "$OTHER" --reboot 2>&1 >/dev/null) || MSG=${_e#basedos-boot: } ;;
 	switch)
 		confirm "Switch to stock? BasedOS stays installed; 'Return to BasedOS' in stock's Ports brings it back." || return
 		draw "switching to stock"

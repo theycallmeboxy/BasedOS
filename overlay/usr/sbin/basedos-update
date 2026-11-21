@@ -10,12 +10,14 @@
 #             new slot has booted; on a rollback, point the slot back at the running one).
 #   status    what is installed, and what each payload on the card would do.
 #
-# A payload carries the system layer and the initrd, never stock's files. It names the stock build
-# its links into /stock are made against (its BUILD_ID; docs/plan.md, Architecture), and a payload
-# for another stock build is refused. The
-# system layer goes to the slot that isn't running (A/B, as tools/dev/update-basedos.sh), the
-# initrd replaces the old one when it differs (kept as initrd.uimg.prev). Each file is written as
-# <name>.new, synced, re-read from the eMMC against the manifest's SHA-256 and only then renamed.
+# A payload carries the system layer, never stock's files, and not BasedOS's boot files either
+# (boot.scr and the initrd: they pick the slot and count failed boots, so the slot fallback
+# couldn't undo a bad one; setup installs them). It names the stock build its links into /stock
+# are made against (its BUILD_ID; docs/plan.md, Architecture) and the initrd interface it needs
+# (needs-initrd); a payload for another stock build, or one this device's initrd is too old for,
+# is refused. (An initrd in an older payload is left out.) The system layer goes to the slot that
+# isn't running (A/B, as tools/dev/update-basedos.sh): written as <name>.new, synced, re-read
+# from the eMMC against the manifest's SHA-256 and only then renamed.
 # The update is recorded in /data (history, by SHA-256, and the pending state) before the slot
 # pointer flips, and the flip is last: a power cut before it leaves the running system as it was.
 # A new slot that never reaches userspace is undone by the initrd's boot counter (the 4th failed
@@ -96,6 +98,10 @@ evaluate() {
 	[ -n "$EV_STOCK" ] || { EV_REASON="names no stock build (made for an older BasedOS)"; return 2; }
 	[ "$EV_STOCK" = "${BASEOS_STOCK_BUILD_ID:-}" ] ||
 		{ EV_REASON="made for stock build $EV_STOCK; this device's is ${BASEOS_STOCK_BUILD_ID:-unknown}"; return 2; }
+	_need=$(field "$MANIFEST" needs-initrd)
+	case "$_need" in ''|*[!0-9]*) _need=1 ;; esac
+	[ "$_need" -le "$(initrd_abi)" ] ||
+		{ EV_REASON="needs a newer BasedOS initrd (interface $_need; this device's has $(initrd_abi)), which comes with setup"; return 2; }
 	# Only forward: an old payload left on the card must not downgrade the device once it has moved
 	# past it. Two releases compare by their release names (pre-releases of one version included);
 	# otherwise a newer version, or a development rebuild of the running version.
@@ -130,11 +136,6 @@ set_aside() {
 	else log "$1 $2 ($3); couldn't rename it"; fi
 }
 
-# point_slot <a|b>: the slot the initrd boots from now on.
-point_slot() {
-	if [ "$1" = b ]; then echo b > "$B/slot.new" && sync && mv "$B/slot.new" "$B/slot"; else rm -f "$B/slot"; fi && sync
-}
-
 apply() {
 	_found=""
 	for _p in "$CARD"/*.bosupd; do [ -f "$_p" ] && _found=1 && break; done
@@ -165,19 +166,6 @@ apply() {
 		set_aside "$_chosen" failed "the system image didn't verify, or didn't fit"
 		say "BasedOS update failed: the system image didn't verify; still on $BASEOS_VERSION"
 		return 1
-	fi
-	# The initrd, when it differs. member writes <name>.new and renames it only once it verifies,
-	# so a failure leaves the running initrd as it was. The old one is kept as .prev.
-	_isha=$(field "$MANIFEST" initrd-sha256)
-	if [ -n "$_isha" ] && [ "$(sha256sum < "$B/initrd.uimg" | cut -d' ' -f1)" != "$_isha" ]; then
-		if ! { cp "$B/initrd.uimg" "$B/initrd.uimg.prev" && sync &&
-			cmp -s "$B/initrd.uimg" "$B/initrd.uimg.prev" &&
-			member "$_chosen" initrd.uimg "$B/initrd.uimg" "$_isha"; }; then
-			mount -o remount,ro /boot
-			set_aside "$_chosen" failed "the initrd didn't verify, or didn't fit"
-			say "BasedOS update failed: the initrd didn't verify; still on $BASEOS_VERSION"
-			return 1
-		fi
 	fi
 	# Recorded before the flip: a new slot that never boots is then known (history) and confirm
 	# can undo the flip; with /data unwritable the flip doesn't happen.

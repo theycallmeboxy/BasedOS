@@ -40,14 +40,27 @@ put() {
 	sync
 }
 
-# The stock build an image is made for (empty for an older BasedOS, made for a vendor set).
-needs_stock() {
-	mkdir -p /tmp/.needs-stock
-	mount -t squashfs -o ro,loop "$1" /tmp/.needs-stock || die "$1 does not mount"
-	cat /tmp/.needs-stock/usr/share/basedos/needs-stock 2>/dev/null || true
-	umount /tmp/.needs-stock
+# needs <image> <what>: its usr/share/basedos/needs-<what>: the stock build it's made for (empty
+# for an older BasedOS, made for a vendor set), the initrd interface it needs (empty: 1).
+needs() {
+	mkdir -p /tmp/.needs
+	mount -t squashfs -o ro,loop "$1" /tmp/.needs || die "$1 does not mount"
+	cat "/tmp/.needs/usr/share/basedos/needs-$2" 2>/dev/null || true
+	umount /tmp/.needs
 }
-new_stock=$(needs_stock "$SRC/rootfs.squashfs")
+new_stock=$(needs "$SRC/rootfs.squashfs" stock)
+new_initrd=$(needs "$SRC/rootfs.squashfs" initrd)
+case "$new_initrd" in ''|*[!0-9]*) new_initrd=1 ;; esac
+# The interface an initrd gives (its image name, "BasedOS initrd abi N"; plain "BasedOS initrd": 1),
+# for the initrd this leaves in place.
+abi_of() {
+	n=$(dd if="$1" bs=32 skip=1 count=1 2>/dev/null | tr -d '\000')
+	case "$n" in "BasedOS initrd abi "*) n=${n#BasedOS initrd abi }; case "$n" in ''|*[!0-9]*) echo 0 ;; *) echo "$n" ;; esac ;;
+	"BasedOS initrd") echo 1 ;; *) echo 0 ;; esac
+}
+if [ -s "$SRC/initrd.uimg" ]; then have_initrd=$(abi_of "$SRC/initrd.uimg"); else have_initrd=$(abi_of "$B/initrd.uimg"); fi
+[ "$new_initrd" -le "$have_initrd" ] ||
+	die "the new rootfs needs initrd interface $new_initrd; the initrd would be $have_initrd (add the new initrd.uimg)"
 
 mount -o remount,rw /boot
 trap 'sync; mount -o remount,ro /boot || echo "WARNING: /boot stayed read-write" >&2' EXIT

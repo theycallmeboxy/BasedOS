@@ -50,8 +50,12 @@ BasedOS is installed **next to stock on the eMMC**, and uses **stock's own files
   takes a BasedOS release made for it.
 - **BasedOS's own** (published): its boot script (written by BasedOS, not derived from stock's;
   it sets the panel to 60 Hz with `fdt set` on the loaded device tree, never changing stock's
-  file), its initrd, the A/B system slots, its tools. A `.bosupd` carries the system layer and the
-  initrd and names the stock build it's made for.
+  file), its initrd, the A/B system slots, its tools. The boot script and the initrd are its
+  **boot files**: they pick the slot and count failed boots, so the A/B fallback couldn't undo a
+  bad one, and only setup (or a developer update) installs them. A `.bosupd` carries the system
+  layer only, and names the stock build it's made for and the initrd interface it needs (the
+  initrd's `ABI`, in its image name; a system layer's `usr/share/basedos/needs-initrd`): a
+  device whose initrd is older refuses it, and the initrd itself won't use such a slot.
 - **No SD-card install, and no vendor copies.** Both were tried and dropped (2026-11-20): the
   boot ROM only ever starts the bootloader from the eMMC (a card's copy is never used: tested,
   recovery.md), so no install path is independent of the eMMC, and with stock static, copies of
@@ -88,7 +92,7 @@ BasedOS is installed **next to stock on the eMMC**, and uses **stock's own files
 | `/etc/os-release` | `ID=basedos`, `NAME="BasedOS"` | both |
 | Init | BusyBox init: `rcS` sysinit, `frontend-session` respawn, `rcK` shutdown. No udev at boot; devtmpfs only (`basedos-udev` runs eudev's udevd for the length of a PortMaster Weston port, whose libinput needs its database). | both |
 | Writable state | `/data` on p2 (ext4): keys, logs, machine-id, update state. tmpfs `/run`, `/tmp`, `/var`. Root is read-only. | my355 |
-| Updates | `baseos-gkd350hultra-<ver>.bosupd` at the card root, `format=basedos-update/1`: a tar of `manifest`, the system layer and the initrd (`tools/mkupdate.py`; `basedos-update` installs it at boot into the spare slot) | my355's name and manifest style (spruce looks for `baseos-<target>-*.bosupd`); the format is BasedOS's own, as its slots are files |
+| Updates | `baseos-gkd350hultra-<ver>.bosupd` at the card root, `format=basedos-update/1`: a tar of `manifest` and the system layer (`tools/mkupdate.py`; `basedos-update` installs it at boot into the spare slot) | my355's name and manifest style (spruce looks for `baseos-<target>-*.bosupd`); the format is BasedOS's own, as its slots are files |
 | Logs | `/data/basedos.log` (mirroring to the card is not done yet) | both |
 
 ## eMMC layout

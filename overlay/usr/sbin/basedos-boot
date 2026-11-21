@@ -12,7 +12,9 @@
 #                               script if there is one). Stock is as it was before the install.
 #                               Done at the next start, by BasedOS's initrd, when none of these
 #                               files are in use; --reboot starts it.
-#   basedos-boot status         what boots next
+#   basedos-boot slot a|b       boot that system slot from now on (A/B: rootfs.squashfs,
+#                               rootfs-b.squashfs), if it's there and would start on this device
+#   basedos-boot status         what boots next, and what's in each slot
 #   ... --reboot                restart once it has worked
 #
 # The maintenance menu (basedos-menu) and the Start boot key call these.
@@ -155,6 +157,28 @@ uninstall() {
 	log "boot: uninstall at the next start (stock's boot script back, then basedos/ and basedos-data/ removed)"
 }
 
+# set_slot <a|b>: the slot pointer, by hand. Refused for an empty slot or one the initrd wouldn't
+# use (another stock build, a newer initrd interface): it would only fall back again.
+set_slot() {
+	case "${1:-}" in a|b) ;; *) die "which slot? a or b" ;; esac
+	_S=$(echo "$1" | tr ab AB)
+	grep -q "^$BOOT_P1 /boot " /proc/mounts || die "/boot isn't the boot disk's p1 ($BOOT_P1)"
+	slot_info "$1"
+	case "$SI_FIT" in
+	"") ;;
+	empty) die "slot $_S is empty" ;;
+	*) die "slot $_S won't start: $SI_FIT" ;;
+	esac
+	if [ "$(next_slot)" = "$1" ]; then log "boot: slot $_S boots next already"; return 0; fi
+	rw
+	point_slot "$1" || { ro; die "couldn't write the slot file"; }
+	ro
+	# Picked by hand: an update waiting to be confirmed is settled, so the next boot's confirm
+	# doesn't set its payload aside as failed (it was installed once and won't be offered again).
+	rm -f /data/update/state && sync
+	log "boot: slot $_S (${SI_BUILD:-unknown build}) boots from now on"
+}
+
 status() {
 	case "$(scr_kind /boot/boot.scr)" in
 	basedos)
@@ -164,14 +188,18 @@ status() {
 	*) echo "next boot: /boot/boot.scr DOESN'T LOOK LIKE A BOOT SCRIPT" ;;
 	esac
 	if check_stock $B/boot.scr.stock; then echo "stock's boot script: saved"; else echo "stock's boot script: NOT saved or not valid"; fi
+	slot_line a
+	slot_line b
+	echo "initrd interface: $(initrd_abi)"
 }
 
 case "${1:-}" in
 stock-once) stock_once ;;
 switch-to-stock) switch_to_stock ;;
 uninstall) uninstall ;;
+slot) set_slot "${2:-}"; shift ;;
 status) status; exit 0 ;;
-*) echo "usage: basedos-boot stock-once|switch-to-stock|uninstall|status [--reboot]" >&2; exit 2 ;;
+*) echo "usage: basedos-boot stock-once|switch-to-stock|uninstall|slot a|b|status [--reboot]" >&2; exit 2 ;;
 esac
 if [ "${2:-}" = --reboot ]; then
 	say "restarting"

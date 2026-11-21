@@ -14,6 +14,14 @@
 # stock boots. The count stays until rcS (or you) deletes it. basedos-data/boot-stock-once,
 # if there, is removed and stock boots once.
 bb=/basedos/busybox
+
+# This initrd's interface to the system layers: what it sets up for them before switch_root. A
+# system layer names the one it needs (usr/share/basedos/needs-initrd) and isn't used with an
+# older initrd. Raise it when a system layer starts relying on something new here. tools/mkboot.py
+# puts it in the image's name ("BasedOS initrd abi N"), where basedos-update reads it. The initrd
+# is one of BasedOS's boot files with boot.scr: setup installs it, updates don't carry it (the
+# slot fallback below couldn't undo a bad one).
+ABI=1
 log() { echo "basedos-init: $*" > /dev/kmsg; }
 
 $bb mkdir -p /proc /sys /dev /newroot /p1 /p2
@@ -115,12 +123,20 @@ fi
 
 # A slot is BasedOS's system layer (rootfs.squashfs or rootfs-b.squashfs), mounted read-only as
 # the root, with stock's SYSTEM mounted read-only at its /stock. It's used only if stock is the
-# build it was made against (its needs-stock against stock's own BUILD_ID) and it has its tools.
+# build it was made against (its needs-stock against stock's own BUILD_ID), this initrd is new
+# enough for it (its needs-initrd) and it has its tools.
 mount_slot() {
 	$bb mount -t squashfs -o ro,loop "$1" /newroot || { log "$1 does not mount"; return 1; }
 	want=$($bb cat /newroot/usr/share/basedos/needs-stock 2>/dev/null)
 	if [ -z "$want" ]; then
 		log "$1 names no stock build (an older BasedOS, made for its own vendor set)"
+		$bb umount /newroot
+		return 1
+	fi
+	need=$($bb cat /newroot/usr/share/basedos/needs-initrd 2>/dev/null)
+	case "$need" in ''|*[!0-9]*) need=1 ;; esac
+	if [ "$need" -gt "$ABI" ]; then
+		log "$1 needs initrd interface $need; this initrd has $ABI"
 		$bb umount /newroot
 		return 1
 	fi

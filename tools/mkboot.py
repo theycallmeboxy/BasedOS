@@ -11,7 +11,8 @@ recovery-initrd: the same, holding every file in <dir> as /recovery/<name> (tool
 build.sh assembles it: init, busybox, zstd, the boot screen and keys, their licences).
 
 initrd: a gzip cpio (newc) holding /basedos/init and /basedos/busybox, wrapped
-as a legacy U-Boot ramdisk image. The kernel unpacks it over its built-in
+as a legacy U-Boot ramdisk image named "BasedOS initrd abi N" (init's ABI=N, its
+interface to the system layers). The kernel unpacks it over its built-in
 initramfs; rdinit=/basedos/init runs ours and leaves stock's /init intact.
 
 bootscr: stock's script (loads Image and the DTB from mmc 0:1, picks the DTB by
@@ -25,6 +26,7 @@ dtb: stock's built-in-panel DTB with the panel at 60 Hz instead of 59.11 Hz
 import gzip
 import io
 import os
+import re
 import struct
 import sys
 import zlib
@@ -54,13 +56,16 @@ def cpio_newc(entries):
 
 def initrd(busybox, out):
     init = open(os.path.join(HERE, "..", "initrd", "basedos", "init"), "rb").read().replace(b"\r\n", b"\n")
+    abi = re.search(rb"^ABI=([0-9]+)$", init, re.M)
+    if not abi:
+        sys.exit("initrd/basedos/init has no ABI=<n> line")
     bb = open(busybox, "rb").read()
     cpio = cpio_newc([("basedos", 0o40755, b""), ("basedos/init", 0o100755, init),
                       ("basedos/busybox", 0o100755, bb)])
     gz = gzip.compress(cpio, 9, mtime=0)
     with open(out, "xb") as f:
-        f.write(uimage(gz, typ=3, name=b"BasedOS initrd"))  # IH_TYPE_RAMDISK, uncompressed wrapper
-    print(f"{out}: cpio {len(cpio)} B, gzip {len(gz)} B")
+        f.write(uimage(gz, typ=3, name=b"BasedOS initrd abi " + abi.group(1)))  # IH_TYPE_RAMDISK
+    print(f"{out}: abi {abi.group(1).decode()}, cpio {len(cpio)} B, gzip {len(gz)} B")
 
 
 def recovery_initrd(src, out):

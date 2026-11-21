@@ -103,8 +103,9 @@ once (or whatever `/data/boot-keys.conf` maps them to), without restarting first
 ## Updates
 
 - Each release on GitHub has its `baseos-gkd350hultra-<version>.bosupd`. Put it at the root of the
-  card and restart, or use spruce's
-  firmware update app, which finds one there (or downloads one) and restarts for you. BasedOS
+  card and restart, or use spruce's firmware update app, which finds one there and restarts for
+  you. (The app's download only sees GitHub's latest full release, so while BasedOS has only
+  pre-releases, download the `.bosupd` from the release page yourself.) BasedOS
   installs it while starting, as soon as the card is mounted and before spruce starts: the screen
   says so, and it restarts once more into the new version.
 - It goes into the copy of BasedOS that isn't running, and is checked before it's used. If the new

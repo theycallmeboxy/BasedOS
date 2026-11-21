@@ -1,12 +1,14 @@
 #!/bin/sh
 # basedos-menu: maintenance mode's menu on the boot screen (frontend-session runs it). It shows
 # what's in each system slot (A/B). Up and Down choose, A runs; the ones that change what boots
-# (the other slot, switch to stock, uninstall) want A held 3 s, and B goes back. Wi-Fi and SSH
+# (the other slot, switch to stock, uninstall) want A, B, X, Y tapped in that order, as the
+# recovery card does, and any other button goes back. Wi-Fi and SSH
 # run beside it as before. Each choice is basedos-boot's (or reboot, poweroff), so the same can
 # be done over SSH.
 . /usr/lib/basedos/functions
 
 UP=$(button_code up) DOWN=$(button_code down) A=$(button_code a) B=$(button_code b)
+X=$(button_code x) Y=$(button_code y)
 # The slots, read once: nothing here changes them without restarting.
 SLOTS="$(slot_line a)
 $(slot_line b)"
@@ -41,22 +43,41 @@ draw() {
 	splash "${1:-}"
 }
 
-# confirm <what>: 0 once A has been held 3 s, 1 if B is pressed first.
+# A confirmation's keys come from one basedos-keys --watch through a FIFO, as on the recovery
+# card: every tap is read in order, a quick one too, and presses from before it don't count.
+KW="" KEYS=/run/basedos/menu-keys
+listen() {
+	rm -f $KEYS; mkfifo $KEYS
+	/usr/bin/basedos-keys --watch > $KEYS 2>/dev/null & KW=$!
+	exec 5< $KEYS
+}
+unlisten() {
+	kill $KW 2>/dev/null; wait $KW 2>/dev/null
+	exec 5<&-
+	rm -f $KEYS
+	KW=""
+}
+
+# confirm <what>: 0 once A, B, X, Y are tapped in that order; 1 on any other button, or 10 s
+# without one. The screen shows how far it's got.
 confirm() {
-	{
-		echo "!$1"
-		echo "Hold A for 3 seconds to go ahead."
-		echo "Press B to go back."
-	} > "$SPLASH_INFO"
-	splash ""
-	# Let go of the A that chose this first.
-	while is_held "$(held)" "$A"; do usleep 50000; done
-	_t=0
+	_i=0
+	listen
 	while :; do
-		_h=$(held)
-		is_held "$_h" "$B" && return 1
-		if is_held "$_h" "$A"; then _t=$((_t + 1)); [ $_t -ge 30 ] && return 0; else _t=0; fi
-		usleep 100000
+		case $_i in 0) _p="_ _ _ _" ;; 1) _p="A _ _ _" ;; 2) _p="A B _ _" ;; *) _p="A B X _" ;; esac
+		{
+			echo "!$1"
+			echo "Tap A, B, X, Y in that order to go ahead ($_p)."
+			echo "Any other button goes back."
+		} > "$SPLASH_INFO"
+		splash ""
+		_k=""
+		read -r -t 10 _k <&5
+		case "$_i:$_k" in
+		0:$A|1:$B|2:$X) _i=$((_i + 1)) ;;
+		3:$Y) unlisten; return 0 ;;
+		*) unlisten; return 1 ;;
+		esac
 	done
 }
 

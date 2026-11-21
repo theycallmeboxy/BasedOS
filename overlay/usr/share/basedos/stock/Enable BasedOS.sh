@@ -13,8 +13,8 @@ SAVED=$P1/basedos/boot.scr.basedos
 NAME="Enable BasedOS.sh"
 show() { /usr/bin/text_viewer "$@" >/dev/null 2>&1; }
 fail() {
-	echo "Enable BasedOS: $*" >&2
-	show -e -w -t "Enable BasedOS" -m "$* BasedOS is still disabled; nothing changed."
+	echo "Enable BasedOS: ${2:-$1}" >&2
+	show -e -w -t "Enable BasedOS" -m "$1 Nothing was changed."
 	exit 1
 }
 # scr_ok <file>: a whole U-Boot script image: its magic, the type "script", and the size its header
@@ -38,13 +38,13 @@ layer_fits() {
 	[ "$_want" = "$STOCK_ID" ]
 }
 
-[ -f "$SAVED" ] || fail "BasedOS's boot script isn't there ($SAVED)."
-scr_ok "$SAVED" || fail "$SAVED isn't a whole boot script."
-dd if="$SAVED" bs=64 skip=1 2>/dev/null | grep -q "rdinit=/basedos/init" || fail "$SAVED isn't BasedOS's."
-[ -f $P1/basedos/initrd.uimg ] || fail "BasedOS's files are gone ($P1/basedos/initrd.uimg)."
+[ -f "$SAVED" ] || fail "BasedOS's files are missing or damaged." "BasedOS's boot script isn't there ($SAVED)"
+scr_ok "$SAVED" || fail "BasedOS's files are missing or damaged." "$SAVED isn't a whole boot script"
+dd if="$SAVED" bs=64 skip=1 2>/dev/null | grep -q "rdinit=/basedos/init" || fail "BasedOS's files are missing or damaged." "$SAVED isn't BasedOS's"
+[ -f $P1/basedos/initrd.uimg ] || fail "BasedOS's files are missing or damaged." "no $P1/basedos/initrd.uimg"
 layer_fits $P1/basedos/rootfs.squashfs || layer_fits $P1/basedos/rootfs-b.squashfs ||
-	fail "BasedOS isn't made for this stock build (${STOCK_ID:-unknown}): stock has changed since BasedOS was installed, and BasedOS wouldn't start on it."
-mount -o remount,rw $P1 || fail "Can't write $P1."
+	fail "BasedOS doesn't support this stock version. Install a BasedOS release made for it." "no system layer made for stock build ${STOCK_ID:-unknown}"
+mount -o remount,rw $P1 || fail "Couldn't enable BasedOS." "can't write $P1"
 rm -f $P1/boot.scr.new
 if cp "$SAVED" $P1/boot.scr.new && sync && echo 3 > /proc/sys/vm/drop_caches &&
 	[ "$(md5sum < "$SAVED")" = "$(md5sum < $P1/boot.scr.new)" ] &&
@@ -64,5 +64,5 @@ else
 	rm -f $P1/boot.scr.new
 	sync
 	mount -o remount,ro $P1
-	fail "Couldn't write $P1/boot.scr."
+	fail "Couldn't enable BasedOS." "couldn't write $P1/boot.scr"
 fi

@@ -60,14 +60,14 @@ key() {
 }
 off() {
 	sync
-	screen "powering off" "!RECOVERY CARD" "Powering off."
+	screen "Powering off..." "!RECOVERY CARD"
 	sleep 1
 	poweroff -f
 }
-# stop <line>...: a screen that only offers power off.
+# stop <what's wrong> [<details for the log>]: a screen that only offers power off.
 stop() {
-	log "$*"
-	screen "Tap power to power off" "!RECOVERY CARD" "$@"
+	log "${2:-$1}"
+	screen "Tap power to turn off." "!RECOVERY CARD" "$1" "Nothing was changed."
 	listen
 	while [ "$(key)" != $POWER ]; do :; done
 	off
@@ -101,39 +101,39 @@ disk_of() {
 	done
 }
 
-screen "starting" "!RECOVERY CARD" "Checking the card and the backup..."
+screen "Starting..." "!RECOVERY CARD"
 i=0
 while { [ -z "$(disk_of 2a310000.mmc)" ] || [ -z "$(disk_of 2a330000.mmc)" ]; } && [ $i -lt 100 ]; do
 	usleep 100000; i=$((i + 1))
 done
 CARD=$(disk_of 2a310000.mmc)
 EMMC=$(disk_of 2a330000.mmc)
-[ -n "$CARD" ] || stop "The card isn't there any more."
-[ -n "$EMMC" ] || stop "This device's built-in storage isn't there: nothing to restore to."
+[ -n "$CARD" ] || stop "The card was removed."
+[ -n "$EMMC" ] || stop "The built-in storage wasn't found."
 [ -b /dev/${CARD}p1 ] || usleep 500000
-mount -t vfat -o ro /dev/${CARD}p1 /card || stop "The card's partition doesn't mount."
+mount -t vfat -o ro /dev/${CARD}p1 /card || stop "This recovery card is damaged. Make a new one." "the card's partition doesn't mount"
 
 # The backup this card was made with: by region in backup/, described in recovery/backup.info
 # (each region's start, sectors and MD5: R0 the partition table, R1 the bootloader, R2 p1, R3 p2).
 BK=/card/backup
-[ -f /card/recovery/backup.info ] || stop "This card has no recovery/backup.info."
+[ -f /card/recovery/backup.info ] || stop "This recovery card is damaged. Make a new one." "no recovery/backup.info"
 info() { sed -n "s/^$1=//p" /card/recovery/backup.info | head -1; }
 NAME=$(info NAME) WANT_CID=$(info EMMC_CID) WANT_SECTORS=$(info EMMC_SECTORS) WHEN=$(info DATE) WHAT=$(info STOCK)
-[ -n "$NAME" ] && [ -n "$WANT_SECTORS" ] || stop "The card's recovery/backup.info is incomplete."
-[ -n "$(info R3_START)" ] || stop "This card was made by an older BasedOS setup." "Make a new recovery card."
+[ -n "$NAME" ] && [ -n "$WANT_SECTORS" ] || stop "This recovery card is damaged. Make a new one." "recovery/backup.info is incomplete"
+[ -n "$(info R3_START)" ] || stop "This card is from an older setup. Make a new one." "recovery/backup.info has no R3 (an older setup)"
 for r in 0 1 2 3; do
 	_s=$(info R${r}_START) _n=$(info R${r}_SECTORS) _m=$(info R${r}_MD5)
-	case "$_s:$_n" in *[!0-9:]*|:*|*:) stop "The card's recovery/backup.info is damaged." ;; esac
+	case "$_s:$_n" in *[!0-9:]*|:*|*:) stop "This recovery card is damaged. Make a new one." "recovery/backup.info R$r is damaged" ;; esac
 	case "$_m" in *[!0-9a-f]*) _m="" ;; esac
-	[ ${#_m} -eq 32 ] || stop "The card's recovery/backup.info is damaged."
+	[ ${#_m} -eq 32 ] || stop "This recovery card is damaged. Make a new one." "recovery/backup.info R$r has no MD5"
 	eval "R${r}_START=$_s R${r}_SECTORS=$_n R${r}_MD5=$_m"
 done
 [ -f "$BK/$NAME.0-partition-table.img" ] && [ -f "$BK/$NAME.2-p1.img.zst.001" ] && [ -f "$BK/$NAME.3-p2.img.zst.001" ] ||
-	stop "The backup's images aren't all in backup/ ($NAME)."
+	stop "This recovery card is damaged. Make a new one." "the backup's images aren't all in backup/ ($NAME)"
 SECTORS=$(cat /sys/block/$EMMC/size)
 CID=$(cat /sys/block/$EMMC/device/cid)
-[ "$CID" = "$WANT_CID" ] || stop "This backup is of another 350H Ultra's storage" "(ID $WANT_CID; this one is $CID)." "Nothing was written."
-[ "$SECTORS" = "$WANT_SECTORS" ] || stop "The backup is $WANT_SECTORS sectors; this storage is $SECTORS." "Nothing was written."
+[ "$CID" = "$WANT_CID" ] || stop "This backup is from another device." "backup of eMMC $WANT_CID; this one is $CID"
+[ "$SECTORS" = "$WANT_SECTORS" ] || stop "This backup doesn't match this device." "backup of $WANT_SECTORS sectors; this storage is $SECTORS"
 # Where it writes: the partition table at sectors 0..63, then the bootloader (never written), p1
 # and p2, back to back to the end of the storage. p1 and p2 start on a 4 MiB boundary (the writes'
 # block), past the Rockchip loader area (sectors 64..32767), and where the backup's own partition
@@ -145,9 +145,9 @@ mbr() { od -An -tu4 -j "$1" -N4 "$BK/$NAME.0-partition-table.img" | tr -d ' \n';
 	[ $((R2_START % 8192)) -eq 0 ] && [ $((R3_START % 8192)) -eq 0 ] &&
 	[ "$(mbr 454)" = "$R2_START" ] && [ "$(mbr 458)" = "$R2_SECTORS" ] &&
 	[ "$(mbr 470)" = "$R3_START" ] && [ "$(mbr 474)" = "$R3_SECTORS" ] ||
-	stop "The backup's regions aren't laid out as a restore can write them" "(recovery/backup.info doesn't match the backup's partition table)." "Nothing was written."
+	stop "This backup doesn't match this device." "the backup's regions aren't laid out as a restore can write them (backup.info against its partition table)"
 
-screen "checking the backup (a few minutes)" "!RECOVERY CARD" "Backup made:$TAB$WHEN" "Holds:$TAB$WHAT" "" "Checking the backup..."
+screen "Checking the backup (a few minutes)..." "!RECOVERY CARD" "Backup:$TAB$WHEN" "Contains:$TAB$WHAT"
 # Each region it writes: whole (its size in bytes) and as it was made (its MD5). A short region
 # would be written short, the rest of the storage left as it is.
 region_ok() {  # region_ok <n> <file or piece prefix> <raw|zst>
@@ -162,7 +162,7 @@ region_ok() {  # region_ok <n> <file or piece prefix> <raw|zst>
 region_ok 0 "$BK/$NAME.0-partition-table.img" raw &&
 	region_ok 2 "$BK/$NAME.2-p1.img.zst" zst &&
 	region_ok 3 "$BK/$NAME.3-p2.img.zst" zst ||
-	stop "The backup on this card is damaged or incomplete" "(it doesn't read as it was made)." "Nothing was written."
+	stop "The backup on this card is damaged. Make a new card." "the backup doesn't read as it was made (MD5 or size)"
 log "backup $NAME checks out"
 
 # Enough charge for a write of about 15 GB: 30 %, or the charger in.
@@ -186,7 +186,7 @@ progress() {
 	_all=$((R2_SECTORS + R3_SECTORS))
 	while sleep 2; do
 		_now=$(awk -v f=$1 '{ print $f }' /sys/block/$EMMC/stat)
-		screen "$2: $(( (_now - _base) * 100 / _all )) %  (don't power off)" "!RESTORING" "Backup made:$TAB$WHEN" "Holds:$TAB$WHAT"
+		screen "Restoring: $(( (_now - _base) * 100 / _all )) %. Don't turn off." "!RESTORING" "Backup:$TAB$WHEN" "Contains:$TAB$WHAT"
 	done
 }
 
@@ -205,14 +205,14 @@ write_region() {
 	cat $2 | zstd -dcq | tee /tmp/fifo | dd of=/dev/$EMMC bs=4M seek=$((_s / 8192)) conv=fsync 2>/tmp/dd.err
 	_rc=$?
 	wait $M
-	[ $_rc -eq 0 ] || { FAIL="the write stopped ($(tail -1 /tmp/dd.err 2>/dev/null))"; return 1; }
-	[ "$(cat /tmp/w.md5)" = "$_m" ] || { FAIL="the backup didn't decompress as it was made (MD5)"; return 1; }
+	[ $_rc -eq 0 ] || { FAIL="Writing stopped."; log "the write stopped ($(tail -1 /tmp/dd.err 2>/dev/null))"; return 1; }
+	[ "$(cat /tmp/w.md5)" = "$_m" ] || { FAIL="The backup is damaged."; log "the backup didn't decompress as it was made (MD5)"; return 1; }
 }
 
 restore() {
 	# The partition table, then p1 and p2. Never the bootloader (R1).
 	dd if="$BK/$NAME.0-partition-table.img" of=/dev/$EMMC bs=512 seek=$R0_START count=$R0_SECTORS conv=fsync 2>/dev/null ||
-		{ FAIL="the partition table didn't write"; return 1; }
+		{ FAIL="Writing stopped."; log "the partition table didn't write"; return 1; }
 	progress 7 writing & P=$!
 	write_region 2 "$BK/$NAME.2-p1.img.zst.*" && write_region 3 "$BK/$NAME.3-p2.img.zst.*"
 	_rc=$?
@@ -227,7 +227,7 @@ restore() {
 	_g3=$(region_md5 $R3_START $R3_SECTORS)
 	kill $P 2>/dev/null; wait $P 2>/dev/null
 	[ "$_g0" = "$R0_MD5" ] && [ "$_g2" = "$R2_MD5" ] && [ "$_g3" = "$R3_MD5" ] ||
-		{ FAIL="the storage doesn't read back as the backup (MD5)"; return 1; }
+		{ FAIL="The storage didn't check out after writing."; log "the storage doesn't read back as the backup (MD5)"; return 1; }
 	log "eMMC restored and read back"
 	# The bootloader, for the record only: it isn't written.
 	_l=$(dd if=/dev/$EMMC bs=512 skip=$R1_START count=$R1_SECTORS 2>/dev/null | md5sum | cut -c1-32)
@@ -236,27 +236,25 @@ restore() {
 
 while :; do
 	if ! power_ok; then
-		screen "Tap power to power off" "!RECOVERY CARD" "The battery is low: plug in the charger" "(it carries on once it's charging)."
+		screen "Tap power to turn off." "!BATTERY LOW" "Plug in the charger to continue."
 		listen
 		until power_ok; do [ "$(key 1000)" = $POWER ] && off; done
 	fi
-	sequence "!RESTORE THE BUILT-IN STORAGE" \
-		"Backup made:$TAB$WHEN" "Holds:$TAB$WHAT" "" \
-		"This puts the built-in storage back as it was then:" \
-		"!EVERYTHING ON IT NOW IS REPLACED." \
-		"Tap A, B, X, Y in that order to restore." \
-		"Tap power to power off (nothing is written)."
+	sequence "!RESTORE BUILT-IN STORAGE?" \
+		"Backup:$TAB$WHEN" "Contains:$TAB$WHAT" "" \
+		"!Everything on it now will be replaced." \
+		"Tap A, B, X, Y to restore." \
+		"Tap power to turn off."
 	FAIL=""
 	log "restoring $NAME to $EMMC"
 	if restore; then
-		screen "Tap power to power off" "!DONE" "The built-in storage is back as it was on $WHEN." \
-			"Power off, take this card out, and the device" "starts as it was then."
+		screen "Tap power to turn off." "!DONE" "Restored to the backup of $WHEN." \
+			"Turn off, remove this card, and turn on."
 		listen
 		while [ "$(key)" != $POWER ]; do :; done
 		off
 	fi
 	log "restore failed: $FAIL"
-	sequence "!RESTORE FAILED" "$FAIL" \
-		"The storage may be incomplete: try again." \
-		"Tap A, B, X, Y in that order to try again." "Tap power to power off."
+	sequence "!RESTORE FAILED" "$FAIL Try again before turning off." "" \
+		"Tap A, B, X, Y to try again." "Tap power to turn off."
 done

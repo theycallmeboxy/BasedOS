@@ -15,8 +15,8 @@ LOG=/storage/basedos-uninstall.log
 YES=21
 show() { /usr/bin/text_viewer "$@" >/dev/null 2>&1; }
 fail() {
-	echo "$(date) uninstall: $*" >> $LOG
-	show -e -w -t "Uninstall BasedOS" -m "$* BasedOS is still installed."
+	echo "$(date) uninstall: ${2:-$1}" >> $LOG
+	show -e -w -t "Uninstall BasedOS" -m "$1 BasedOS is still installed."
 	exit 1
 }
 # scr_ok <file>: a whole U-Boot script image: its magic, the type "script", and the size its header
@@ -31,7 +31,7 @@ scr_ok() {
 is_basedos() { dd if="$1" bs=64 skip=1 2>/dev/null | grep -q "rdinit=/basedos/init"; }
 
 [ -d $B ] || { show -w -t "Uninstall BasedOS" -m "BasedOS isn't installed."; exit 0; }
-show -y -t "Uninstall BasedOS?" -m "This removes BasedOS and its settings from the device. Stock stays as it is, and the frontend card isn't touched. There's no undo."
+show -y -t "Uninstall BasedOS?" -m "Removes BasedOS and its settings. Stock and your SD card aren't touched. This can't be undone."
 rc=$?
 echo "$(date) uninstall: text_viewer answered $rc (yes is $YES)" >> $LOG
 [ "$rc" -eq $YES ] || exit 0
@@ -39,19 +39,19 @@ echo "$(date) uninstall: text_viewer answered $rc (yes is $YES)" >> $LOG
 # Stock's boot script, if BasedOS's is the active one: the saved copy must be a whole stock script.
 if is_basedos $P1/boot.scr; then
 	SAVED=$B/boot.scr.stock
-	scr_ok "$SAVED" && ! is_basedos "$SAVED" || fail "BasedOS's saved copy of stock's boot script isn't a whole one."
-	mount -o remount,rw $P1 || fail "Can't write $P1."
+	scr_ok "$SAVED" && ! is_basedos "$SAVED" || fail "Couldn't uninstall BasedOS." "BasedOS's saved copy of stock's boot script isn't a whole one"
+	mount -o remount,rw $P1 || fail "Couldn't uninstall BasedOS." "can't write $P1"
 	rm -f $P1/boot.scr.new
 	if ! { cp "$SAVED" $P1/boot.scr.new && sync && echo 3 > /proc/sys/vm/drop_caches &&
 		[ "$(md5sum < "$SAVED")" = "$(md5sum < $P1/boot.scr.new)" ] &&
 		mv $P1/boot.scr.new $P1/boot.scr && sync &&
 		[ "$(md5sum < "$SAVED")" = "$(md5sum < $P1/boot.scr)" ]; }; then
 		rm -f $P1/boot.scr.new; sync; mount -o remount,ro $P1
-		fail "Couldn't write $P1/boot.scr."
+		fail "Couldn't uninstall BasedOS." "couldn't write $P1/boot.scr"
 	fi
 else
-	scr_ok $P1/boot.scr || fail "$P1/boot.scr doesn't look like a whole boot script."
-	mount -o remount,rw $P1 || fail "Can't write $P1."
+	scr_ok $P1/boot.scr || fail "Couldn't uninstall BasedOS." "$P1/boot.scr doesn't look like a whole boot script"
+	mount -o remount,rw $P1 || fail "Couldn't uninstall BasedOS." "can't write $P1"
 fi
 # Then BasedOS's files: nothing boots them any more. An older developer update's copy of BasedOS's
 # boot script beside stock's files goes too (the initrd's uninstall removes it the same way).
@@ -65,5 +65,5 @@ for d in /storage/games-internal/roms/ports /storage/roms/ports /storage/.config
 done
 sync
 echo "$(date) uninstall: done" >> $LOG
-show -t "Uninstall BasedOS" -m "BasedOS is uninstalled. Stock is as it was before BasedOS."
+show -t "Uninstall BasedOS" -m "BasedOS is uninstalled."
 exit 0

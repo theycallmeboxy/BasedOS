@@ -159,12 +159,12 @@ apply() {
 	b) _new=a _file=rootfs.squashfs ;;
 	*) log "can't tell which slot is running; not updating"; return 1 ;;
 	esac
-	say "updating BasedOS to $EV_VERSION ($EV_BUILD)"
+	say "Updating BasedOS to $EV_BUILD..." "updating BasedOS to $EV_VERSION ($EV_BUILD)"
 	mount -o remount,rw /boot || { log "can't write p1; not updating"; return 1; }
 	if ! member "$_chosen" rootfs.squashfs "$B/$_file" "$EV_SHA"; then
 		mount -o remount,ro /boot
 		set_aside "$_chosen" failed "the system image didn't verify, or didn't fit"
-		say "BasedOS update failed: the system image didn't verify; still on $BASEOS_VERSION"
+		say "Update failed. BasedOS is unchanged." "update failed: the system image didn't verify; still on $BASEOS_VERSION"
 		return 1
 	fi
 	# Recorded before the flip: a new slot that never boots is then known (history) and confirm
@@ -174,18 +174,18 @@ apply() {
 		echo "$EV_SHA $EV_VERSION $EV_BUILD" >> "$HISTORY" && sync && mv "$STATE.new" "$STATE" && sync; }; then
 		rm -f "$STATE.new"
 		mount -o remount,ro /boot
-		say "BasedOS update stopped: can't write /data; still on $BASEOS_VERSION"
+		say "Update failed. BasedOS is unchanged." "update stopped: can't write /data; still on $BASEOS_VERSION"
 		return 1
 	fi
 	# The commit.
 	if ! point_slot "$_new"; then
 		rm -f "$STATE"; sed -i '$d' "$HISTORY"; sync
 		mount -o remount,ro /boot
-		say "BasedOS update stopped: can't switch the slot; still on $BASEOS_VERSION"
+		say "Update failed. BasedOS is unchanged." "update stopped: can't switch the slot; still on $BASEOS_VERSION"
 		return 1
 	fi
 	mount -o remount,ro /boot
-	say "BasedOS $EV_VERSION installed in slot $_new; restarting"
+	say "Update installed. Restarting..." "BasedOS $EV_VERSION ($EV_BUILD) installed in slot $_new; restarting"
 	reboot
 	# 10: installed and the reboot asked for (init acts on it); the caller waits for it.
 	return 10

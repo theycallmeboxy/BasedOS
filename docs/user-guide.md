@@ -56,7 +56,7 @@ starts, and setup recognises the unfinished install and replaces it.
 From stock, while BasedOS is installed, stock's **Ports** has **Uninstall BasedOS** (it asks
 first, then removes BasedOS and its settings and leaves stock as it was), and one of:
 
-- **Disable BasedOS**, while BasedOS is on (in stock after "Start stock once", or after setup):
+- **Disable BasedOS**, while BasedOS is on (in stock after "Boot Stock OS once", or after setup):
   stock starts from then on, without a restart; BasedOS's files stay. The same as "Disable
   BasedOS" in BasedOS's maintenance menu.
 - **Enable BasedOS**, while it's disabled: BasedOS's boot script goes back and the device restarts
@@ -80,7 +80,7 @@ script is back.
 | You do | BasedOS does |
 |---|---|
 | Power on | boots in about 4 s to spruce's menu |
-| Power on **holding Select** | **maintenance mode**: no spruce; Wi-Fi and SSH, what's in BasedOS's two copies (slots A and B: which build, which runs, which boots next), and a menu (Up/Down, A): **Start stock once**; **Boot slot A/B from now on** (the other copy, if it's there and would start; it restarts into it); **Disable BasedOS** (stock boots from then on, and an "Enable BasedOS" entry in stock's Ports turns BasedOS back on); **Uninstall BasedOS** (removes its files and settings from the device while it restarts, then starts stock; stock is as before the install); Restart; Power off. Changing slots, disabling and uninstalling want A, B, X, Y tapped in that order (as the recovery card); any other button goes back. The screen shows the address to SSH to once Wi-Fi is up |
+| Power on **holding Select** | **maintenance mode**: no spruce; Wi-Fi and SSH, what's in BasedOS's two copies (slots A and B: which build, which runs, which boots next), and a menu (Up/Down, A): **Boot Stock OS once**; **Switch to slot A/B** (the other copy, if it's there and would start; it restarts into it); **Disable BasedOS** (stock boots from then on, and an "Enable BasedOS" entry in stock's Ports turns BasedOS back on); **Uninstall BasedOS** (removes its files and settings from the device while it restarts, then starts stock; stock is as before the install); Restart; Power off. Changing slots, disabling and uninstalling want A, B, X, Y tapped in that order (as the recovery card); any other button goes back. The screen shows the address to SSH to once Wi-Fi is up |
 | Power on **holding Start** | **stock, for this boot**: BasedOS restarts into stock once; the next power-on is BasedOS again |
 | Power on **holding another button** | whatever `/data/boot-keys.conf` maps it to (none by default): maintenance mode, stock once, or a frontend on the card other than the first one found. The format and the button names are in `/usr/share/basedos/boot-keys.conf`; copy it to `/data/` to change it. The boot screen labels the mapped buttons: Select's and Start's beside the buttons themselves ("Maintenance", "Boot Stock OS" by default), any other in a list |
 | Hold **Volume Up + Volume Down** together **3 s** | clean shutdown with any frontend, also a hung one: programs get 3 s to save and quit, then the card is synced and unmounted (`basedos-shutdown-keys`). Holding power is the frontend's (spruce: Button Settings > Power button hold time) |

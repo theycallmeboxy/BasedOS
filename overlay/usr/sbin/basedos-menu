@@ -15,9 +15,9 @@ SLOTS="$(slot_line a ":$TAB")
 $(slot_line b ":$TAB")"
 OTHER=b; [ "$(next_slot)" = b ] && OTHER=a
 OTHER_S=$(echo "$OTHER" | tr ab AB)
-ITEMS="stock-once|Start stock once (BasedOS again after)
-slot|Boot slot $OTHER_S from now on
-disable|Disable BasedOS (stock starts from now on)
+ITEMS="stock-once|Boot Stock OS once
+slot|Switch to slot $OTHER_S
+disable|Disable BasedOS
 uninstall|Uninstall BasedOS
 reboot|Restart
 poweroff|Power off"
@@ -30,7 +30,7 @@ draw() {
 	_ip=$(ip -4 addr show wlan0 2>/dev/null | sed -n 's/.*inet \([0-9.]*\).*/\1/p' | head -1)
 	{
 		echo "!MAINTENANCE MODE"
-		echo "SSH:${TAB}root@${_ip:-(waiting for Wi-Fi)} (no password)"
+		if [ -n "$_ip" ]; then echo "SSH:${TAB}root@$_ip (no password)"; else echo "SSH:${TAB}waiting for Wi-Fi"; fi
 		echo "$SLOTS"
 		echo ""
 		_i=0
@@ -39,7 +39,7 @@ draw() {
 			if [ $_i = $sel ]; then echo "!> $_label"; else echo "   $_label"; fi
 		done
 	} > "$SPLASH_INFO"
-	splash "${1:-Up/Down to choose, A to select}"
+	splash "${1:-Up/Down: choose    A: select}"
 }
 
 # Keys come from one basedos-keys --watch through a FIFO, as on the recovery card: every tap is
@@ -60,8 +60,8 @@ unlisten() {
 	KW=""
 }
 
-# confirm <what>: 0 once A, B, X, Y are tapped in that order; 1 on any other button, or 10 s
-# without one. The screen shows how far it's got.
+# confirm <question> <what happens>: 0 once A, B, X, Y are tapped in that order; 1 on any other
+# button, or 10 s without one. The status line shows how far it's got.
 confirm() {
 	_i=0
 	listen
@@ -69,9 +69,10 @@ confirm() {
 		case $_i in 0) _p="_ _ _ _" ;; 1) _p="A _ _ _" ;; 2) _p="A B _ _" ;; *) _p="A B X _" ;; esac
 		{
 			echo "!$1"
+			echo "$2"
 			echo ""
-			echo "Tap A, B, X, Y in that order to go ahead."
-			echo "Any other button goes back."
+			echo "Tap A, B, X, Y to confirm."
+			echo "Any other button cancels."
 		} > "$SPLASH_INFO"
 		splash "Tapped: $_p"
 		_k=""
@@ -91,25 +92,31 @@ run() {
 	MSG=""
 	case "$1" in
 	stock-once)
-		draw "starting stock once"
-		basedos-boot stock-once --reboot || MSG="couldn't set up stock once: see /data/basedos.log" ;;
+		draw "Starting stock..."
+		basedos-boot stock-once --reboot || MSG="Couldn't start stock." ;;
 	slot)
-		# basedos-boot refuses an empty slot or one that wouldn't start, and says why.
-		confirm "Boot slot $OTHER_S from now on? The device restarts into it." || return
-		draw "switching to slot $OTHER_S"
-		_e=$(basedos-boot slot "$OTHER" --reboot 2>&1 >/dev/null) || MSG=${_e#basedos-boot: } ;;
+		# One that can't start isn't offered (basedos-boot would refuse it too).
+		slot_info "$OTHER"
+		case "$SI_FIT" in
+		"") ;;
+		empty) MSG="Slot $OTHER_S is empty."; return ;;
+		*) MSG="Slot $OTHER_S can't start: $SI_FIT."; return ;;
+		esac
+		confirm "Switch to slot $OTHER_S?" "The device restarts into ${SI_BUILD:-it}." || return
+		draw "Switching to slot $OTHER_S..."
+		basedos-boot slot "$OTHER" --reboot 2>/dev/null || MSG="Couldn't switch slots." ;;
 	disable)
-		confirm "Disable BasedOS? Stock starts from now on. BasedOS stays installed: 'Enable BasedOS' in stock's Ports turns it back on." || return
-		draw "disabling BasedOS"
-		basedos-boot disable --reboot || MSG="couldn't disable BasedOS (still on): see /data/basedos.log" ;;
+		confirm "Disable BasedOS?" "Stock boots from now on. Enable BasedOS again from stock's Ports." || return
+		draw "Disabling BasedOS..."
+		basedos-boot disable --reboot || MSG="Couldn't disable BasedOS." ;;
 	uninstall)
-		confirm "Uninstall BasedOS? Its files and settings on this device are removed; stock is as before." || return
-		draw "uninstalling BasedOS"
-		basedos-boot uninstall --reboot || MSG="couldn't uninstall (still BasedOS): see /data/basedos.log" ;;
+		confirm "Uninstall BasedOS?" "Removes BasedOS and its settings. Stock stays as it is." || return
+		draw "Uninstalling BasedOS..."
+		basedos-boot uninstall --reboot || MSG="Couldn't uninstall BasedOS." ;;
 	reboot)
-		draw "restarting"; reboot ;;
+		draw "Restarting..."; reboot ;;
 	poweroff)
-		draw "powering off"; poweroff ;;
+		draw "Powering off..."; poweroff ;;
 	esac
 }
 

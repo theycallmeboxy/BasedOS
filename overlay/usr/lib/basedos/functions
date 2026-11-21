@@ -19,8 +19,9 @@ log() {
 SPLASH_INFO=/run/basedos/splash
 splash() { [ -x /usr/bin/basedos-splash ] && /usr/bin/basedos-splash "$@" >/dev/null 2>&1; }
 
-# say "message": log it, and show it as the boot screen's status line.
-say() { log "$*"; splash "$*"; }
+# say <screen text> [<log text>]: show a short message as the boot screen's status line, and log
+# it (or the details, if given: paths and codes are for the log, not the screen).
+say() { log "${2:-$1}"; splash "$1"; }
 
 # The disk BasedOS booted from (boot.scr passes basedos.disk=mmcblkN; the eMMC is mmcblk0): stock's
 # boot partition, with BasedOS's folder, is its p1 (/boot); stock's data partition, with /data
@@ -86,7 +87,7 @@ slot_info() {
 	mkdir -p "$_m"
 	if ! mount -t squashfs -o ro,loop "$_img" "$_m" 2>/dev/null; then
 		rmdir "$_m" 2>/dev/null
-		SI_FIT="it doesn't mount"
+		SI_FIT="damaged"
 		return 0
 	fi
 	SI_BUILD=$(sed -n 's/^BASEOS_BUILD=//p' "$_m/etc/baseos-release" 2>/dev/null)
@@ -96,9 +97,9 @@ slot_info() {
 	rmdir "$_m" 2>/dev/null
 	case "$_need" in ''|*[!0-9]*) _need=1 ;; esac
 	if [ -z "$_stock" ] || [ "$_stock" != "${BASEOS_STOCK_BUILD_ID:-}" ]; then
-		SI_FIT="made for another stock build"
+		SI_FIT="made for another stock version"
 	elif [ "$_need" -gt "$(initrd_abi)" ]; then
-		SI_FIT="needs a newer initrd (setup)"
+		SI_FIT="needs a newer BasedOS install"
 	fi
 	return 0
 }
@@ -134,12 +135,7 @@ maintenance_screen() {
 	_ip=$(ip -4 addr show wlan0 2>/dev/null | sed -n 's/.*inet \([0-9.]*\).*/\1/p' | head -1)
 	{
 		echo "!MAINTENANCE MODE"
-		echo "No frontend this boot: Wi-Fi and SSH only."
-		echo ""
-		printf 'SSH:\troot@%s (no password)\n' "${_ip:-(waiting for Wi-Fi)}"
-		printf 'Build:\t%s\n' "$BASEOS_BUILD"
-		printf 'Active Slot:\t%s\n' "$(boot_slot | tr ab AB)"
-		printf 'To leave:\thold Volume Up + Volume Down 3 s, then power on.\n'
+		if [ -n "$_ip" ]; then printf 'SSH:\troot@%s (no password)\n' "$_ip"; else printf 'SSH:\twaiting for Wi-Fi\n'; fi
 	} > "$SPLASH_INFO"
 	splash "$@"
 }

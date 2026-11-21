@@ -209,6 +209,6 @@ status) status; exit 0 ;;
 *) echo "usage: basedos-boot stock-once|disable|uninstall|slot a|b|status [--reboot]" >&2; exit 2 ;;
 esac
 if [ "${2:-}" = --reboot ]; then
-	say "restarting"
+	say "Restarting..." "restarting"
 	reboot
 fi

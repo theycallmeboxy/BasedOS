@@ -47,8 +47,8 @@ repair() {
 	[ -e "$checked" ] && return 1
 	touch "$checked"
 	case "$type" in
-		vfat) say "checking the card ($1)"; fsck.fat -a "$dev" > "$checked" 2>&1 ;;
-		exfat) say "checking the card ($1)"; fsck.exfat -y "$dev" > "$checked" 2>&1 ;;
+		vfat) say "Checking the SD card..." "checking the card ($1)"; fsck.fat -a "$dev" > "$checked" 2>&1 ;;
+		exfat) say "Checking the SD card..." "checking the card ($1)"; fsck.exfat -y "$dev" > "$checked" 2>&1 ;;
 		*) log "card $dev is ${type:-unformatted}: not vfat or exFAT"; return 1 ;;
 	esac
 	log "card check ($type) exit $?: $(tail -1 "$checked")"
@@ -66,6 +66,6 @@ try() {
 if ! try; then
 	repair "it would not mount" && try || { log "can't mount $dev (${type:-no filesystem})"; exit 1; }
 fi
-say "card $dev on $SD ($type)"
+say "SD card ready" "card $dev on $SD ($type)"
 mark card
 exit 0

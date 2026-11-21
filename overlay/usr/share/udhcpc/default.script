@@ -23,7 +23,7 @@ bound|renew)
 	# a confirmation it's waiting on).
 	if [ -f /run/basedos/maintenance ] && [ ! -f /run/basedos/menu-running ]; then
 		. /usr/lib/basedos/functions
-		maintenance_screen "Wi-Fi up: $ip"
+		maintenance_screen "Wi-Fi connected"
 	fi
 	;;
 esac

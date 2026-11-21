@@ -17,8 +17,8 @@ NAME="Disable BasedOS.sh"
 ENABLE="Enable BasedOS.sh"
 show() { /usr/bin/text_viewer "$@" >/dev/null 2>&1; }
 fail() {
-	echo "Disable BasedOS: $*" >&2
-	show -e -w -t "Disable BasedOS" -m "$* BasedOS is still on; nothing changed."
+	echo "Disable BasedOS: ${2:-$1}" >&2
+	show -e -w -t "Disable BasedOS" -m "$1 Nothing was changed."
 	exit 1
 }
 # scr_ok <file>: a whole U-Boot script image: its magic, the type "script", and the size its header
@@ -43,14 +43,14 @@ put() {
 }
 
 scr_ok $P1/boot.scr && is_basedos $P1/boot.scr ||
-	fail "BasedOS is already disabled (stock's boot script is the one in use)."
+	fail "BasedOS is already disabled."
 scr_ok $B/boot.scr.stock && ! is_basedos $B/boot.scr.stock ||
-	fail "Stock's saved boot script ($B/boot.scr.stock) isn't there or isn't whole."
+	fail "BasedOS's files are damaged." "stock's saved boot script ($B/boot.scr.stock) isn't there or isn't whole"
 
 # 1. "Enable BasedOS" in Ports, from BasedOS's system layer (the slot that boots next first).
 case "$(head -c 2 $B/slot 2>/dev/null)" in b*) slots="rootfs-b rootfs" ;; *) slots="rootfs rootfs-b" ;; esac
 m=/tmp/basedos-disable.$$
-mkdir -p "$m" "$PORTS" || fail "Can't make $m or $PORTS."
+mkdir -p "$m" "$PORTS" || fail "Couldn't disable BasedOS." "can't make $m or $PORTS"
 got=""
 for s in $slots; do
 	[ -f "$B/$s.squashfs" ] || continue
@@ -62,21 +62,21 @@ for s in $slots; do
 	[ -n "$got" ] && break
 done
 rmdir "$m"
-[ -n "$got" ] || fail "Couldn't put 'Enable BasedOS' in stock's Ports (it's how BasedOS comes back)."
+[ -n "$got" ] || fail "Couldn't disable BasedOS." "couldn't put 'Enable BasedOS' in stock's Ports"
 chmod 755 "$PORTS/$ENABLE"
 undo() { rm -f "$PORTS/$ENABLE"; sync; }
 
 # 2. BasedOS's boot script saved, then stock's in its place.
-mount -o remount,rw $P1 || { undo; fail "Can't write $P1."; }
+mount -o remount,rw $P1 || { undo; fail "Couldn't disable BasedOS." "can't write $P1"; }
 if ! put $P1/boot.scr $B/boot.scr.basedos; then
 	rm -f $B/boot.scr.basedos; sync; mount -o remount,ro $P1; undo
-	fail "Couldn't save BasedOS's boot script."
+	fail "Couldn't disable BasedOS." "couldn't save BasedOS's boot script"
 fi
 if ! put $B/boot.scr.stock $P1/boot.scr; then
 	# boot.scr is one whole file or the other (put renames only once the copy reads back).
 	[ "$(md5sum < $B/boot.scr.basedos)" = "$(md5sum < $P1/boot.scr)" ] || put $B/boot.scr.basedos $P1/boot.scr
 	rm -f $B/boot.scr.basedos; sync; mount -o remount,ro $P1; undo
-	fail "Couldn't write stock's boot script."
+	fail "Couldn't disable BasedOS." "couldn't write stock's boot script"
 fi
 sync
 mount -o remount,ro $P1
@@ -84,5 +84,5 @@ mount -o remount,ro $P1
 for d in $PORTS /storage/roms/ports /storage/.config/modules; do rm -f "$d/$NAME" "$d/Return to BasedOS.sh"; done
 sync
 echo "$(date) disable: stock's boot script in place" >> /storage/basedos-data/basedos.log 2>/dev/null
-show -t "Disable BasedOS" -m "BasedOS is disabled: stock starts from now on. BasedOS stays installed; 'Enable BasedOS' in Ports turns it back on."
+show -t "Disable BasedOS" -m "BasedOS is disabled. Stock boots from now on. Use Enable BasedOS to turn it back on."
 exit 0

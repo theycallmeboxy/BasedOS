@@ -29,7 +29,7 @@ for v in /sys/class/vtconsole/vtcon*; do
 	grep -q "frame buffer" "$v/name" 2>/dev/null && echo 0 > "$v/bind" 2>/dev/null
 done
 splash_boot_info
-splash "starting"
+splash "Starting..."
 
 # /data: v0 lives in a folder on eMMC p2, next to stock's /storage, so stock
 # still boots unchanged. (A dedicated p2 comes with the installer.) Checked first, as stock
@@ -63,7 +63,8 @@ fi
 cat /run/basedos/early.log >> /data/basedos.log 2>/dev/null && rm -f /run/basedos/early.log
 [ -n "${early_rtc:-}" ] && log "no RTC time"
 log "boot $(cut -c1-8 /proc/sys/kernel/random/boot_id): BasedOS $BASEOS_VERSION ($BASEOS_BUILD)"
-[ $data_ok = 1 ] || say "$BOOT_DISK p2 unusable (e2fsck exit $fsck_rc): /data is in RAM this boot; settings and logs won't persist"
+[ $data_ok = 1 ] || say "Settings can't be saved this boot." \
+	"$BOOT_DISK p2 unusable (e2fsck exit $fsck_rc): /data is in RAM this boot; settings and logs won't persist"
 
 # Accounts live on /data so a frontend can add its own (spruce's SSH/Samba user); the read-only
 # root links /etc/passwd, group and shadow there. Seeded from the defaults on first boot.

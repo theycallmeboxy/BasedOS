@@ -23,9 +23,6 @@ poweroff|Power off"
 N=$(echo "$ITEMS" | wc -l)
 sel=1
 
-held() { echo " $(/usr/bin/basedos-keys 2>/dev/null | tr '\n' ' ') "; }
-is_held() { case "$1" in *" $2 "*) return 0 ;; esac; return 1; }
-
 # draw [status]: the menu, the selected line highlighted.
 draw() {
 	_ip=$(ip -4 addr show wlan0 2>/dev/null | sed -n 's/.*inet \([0-9.]*\).*/\1/p' | head -1)
@@ -43,10 +40,13 @@ draw() {
 	splash "${1:-}"
 }
 
-# A confirmation's keys come from one basedos-keys --watch through a FIFO, as on the recovery
-# card: every tap is read in order, a quick one too, and presses from before it don't count.
+# Keys come from one basedos-keys --watch through a FIFO, as on the recovery card: every tap is
+# read in order as an event, a quick one too (polling what's held missed taps shorter than its
+# interval). listen starts a fresh reader, for the menu and for each confirmation, so presses
+# from before it don't count.
 KW="" KEYS=/run/basedos/menu-keys
 listen() {
+	[ -n "$KW" ] && unlisten
 	rm -f $KEYS; mkfifo $KEYS
 	/usr/bin/basedos-keys --watch > $KEYS 2>/dev/null & KW=$!
 	exec 5< $KEYS
@@ -113,20 +113,22 @@ run() {
 # The menu owns the screen from here (udhcpc's script leaves it alone while this file is there).
 touch /run/basedos/menu-running
 draw
-prev=$(held)
+listen
 ipdrawn=$(cat /run/basedos/wifi-ip 2>/dev/null)
 while :; do
-	usleep 80000
-	now=$(held)
-	# A press is a key down now that wasn't before.
-	if is_held "$now" "$UP" && ! is_held "$prev" "$UP"; then sel=$((sel > 1 ? sel - 1 : N)); draw "$MSG"
-	elif is_held "$now" "$DOWN" && ! is_held "$prev" "$DOWN"; then sel=$((sel < N ? sel + 1 : 1)); draw "$MSG"
-	elif is_held "$now" "$A" && ! is_held "$prev" "$A"; then
+	_k=""
+	if ! read -r -t 1 _k <&5; then
+		# A timeout, or the reader is gone (no input device left): a new one after a pause.
+		kill -0 "$KW" 2>/dev/null || { sleep 1; listen; }
+	fi
+	case "$_k" in
+	"$UP") sel=$((sel > 1 ? sel - 1 : N)); draw "$MSG" ;;
+	"$DOWN") sel=$((sel < N ? sel + 1 : 1)); draw "$MSG" ;;
+	"$A")
 		run "$(echo "$ITEMS" | sed -n "${sel}p" | cut -d'|' -f1)"
 		draw "$MSG"
-		now=$(held)
-	fi
-	prev=$now
+		listen ;;
+	esac
 	# The address appears once Wi-Fi is up (udhcpc's script writes it there).
 	ipnow=$(cat /run/basedos/wifi-ip 2>/dev/null)
 	[ "$ipnow" != "$ipdrawn" ] && { ipdrawn=$ipnow; draw "$MSG"; }

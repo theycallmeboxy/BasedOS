@@ -10,8 +10,9 @@
 UP=$(button_code up) DOWN=$(button_code down) A=$(button_code a) B=$(button_code b)
 X=$(button_code x) Y=$(button_code y)
 # The slots, read once: nothing here changes them without restarting.
-SLOTS="$(slot_line a)
-$(slot_line b)"
+TAB=$(printf '\t')
+SLOTS="$(slot_line a ":$TAB")
+$(slot_line b ":$TAB")"
 OTHER=b; [ "$(next_slot)" = b ] && OTHER=a
 OTHER_S=$(echo "$OTHER" | tr ab AB)
 ITEMS="stock-once|Start stock once (BasedOS again after)
@@ -23,21 +24,22 @@ poweroff|Power off"
 N=$(echo "$ITEMS" | wc -l)
 sel=1
 
-# draw [status]: the menu, the selected line highlighted.
+# draw [status]: the menu, the selected line highlighted; the status line says how to use it
+# unless there's something else to say.
 draw() {
 	_ip=$(ip -4 addr show wlan0 2>/dev/null | sed -n 's/.*inet \([0-9.]*\).*/\1/p' | head -1)
 	{
 		echo "!MAINTENANCE MODE"
-		echo "ssh root@${_ip:-(waiting for Wi-Fi)}   no password"
+		echo "SSH:${TAB}root@${_ip:-(waiting for Wi-Fi)} (no password)"
 		echo "$SLOTS"
+		echo ""
 		_i=0
 		echo "$ITEMS" | while IFS='|' read -r _k _label; do
 			_i=$((_i + 1))
 			if [ $_i = $sel ]; then echo "!> $_label"; else echo "   $_label"; fi
 		done
-		echo "Up/Down choose, A select.  BasedOS $BASEOS_VERSION ($BASEOS_BUILD)"
 	} > "$SPLASH_INFO"
-	splash "${1:-}"
+	splash "${1:-Up/Down to choose, A to select}"
 }
 
 # Keys come from one basedos-keys --watch through a FIFO, as on the recovery card: every tap is
@@ -67,10 +69,11 @@ confirm() {
 		case $_i in 0) _p="_ _ _ _" ;; 1) _p="A _ _ _" ;; 2) _p="A B _ _" ;; *) _p="A B X _" ;; esac
 		{
 			echo "!$1"
-			echo "Tap A, B, X, Y in that order to go ahead ($_p)."
+			echo ""
+			echo "Tap A, B, X, Y in that order to go ahead."
 			echo "Any other button goes back."
 		} > "$SPLASH_INFO"
-		splash ""
+		splash "Tapped: $_p"
 		_k=""
 		read -r -t 10 _k <&5
 		case "$_i:$_k" in

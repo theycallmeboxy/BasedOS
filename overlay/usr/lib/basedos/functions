@@ -103,24 +103,27 @@ slot_info() {
 	return 0
 }
 
-# slot_line <a|b>: one line on a slot, for basedos-boot status and the maintenance menu.
+# slot_line <a|b> [<separator>]: one line on a slot, for basedos-boot status and the maintenance
+# menu ("Slot A: ..."; the menu passes ":<TAB>", the boot screen's key-value form).
 slot_line() {
 	slot_info "$1"
-	_what=""
+	_sep=${2:-: } _what=""
 	[ "$1" = "$(boot_slot)" ] && _what="running"
 	[ "$1" = "$(next_slot)" ] && _what="${_what:+$_what, }boots next"
 	case "$SI_FIT" in
-	empty) echo "Slot $(echo "$1" | tr ab AB): empty" ;;
-	"") echo "Slot $(echo "$1" | tr ab AB): ${SI_BUILD:-unknown build}${_what:+  ($_what)}" ;;
-	*) echo "Slot $(echo "$1" | tr ab AB): ${SI_BUILD:+$SI_BUILD, }won't start: $SI_FIT${_what:+  ($_what)}" ;;
+	empty) echo "Slot $(echo "$1" | tr ab AB)${_sep}empty" ;;
+	"") echo "Slot $(echo "$1" | tr ab AB)${_sep}${SI_BUILD:-unknown build}${_what:+  ($_what)}" ;;
+	*) echo "Slot $(echo "$1" | tr ab AB)${_sep}${SI_BUILD:+$SI_BUILD, }won't start: $SI_FIT${_what:+  ($_what)}" ;;
 	esac
 }
 
-# The boot screen's info lines for a normal boot.
+# The boot screen's info lines for a normal boot (basedos-splash's line kinds: key<TAB>value,
+# @button label).
 splash_boot_info() {
 	{
-		echo "BasedOS $BASEOS_VERSION  build $BASEOS_BUILD  slot $(boot_slot)"
-		echo "$(cat /proc/device-tree/model 2>/dev/null | tr -d '\0')  kernel $(uname -r)"
+		printf 'Version:\t%s\n' "$BASEOS_VERSION"
+		printf 'Build:\t%s\n' "$BASEOS_BUILD"
+		printf 'Active Slot:\t%s\n' "$(boot_slot | tr ab AB)"
 		boot_key_hints
 	} > "$SPLASH_INFO"
 }
@@ -132,9 +135,11 @@ maintenance_screen() {
 	{
 		echo "!MAINTENANCE MODE"
 		echo "No frontend this boot: Wi-Fi and SSH only."
-		echo "ssh root@${_ip:-(waiting for Wi-Fi)}   no password"
-		echo "To leave: hold Volume Up + Volume Down 3 s, then power on."
-		echo "BasedOS $BASEOS_VERSION  build $BASEOS_BUILD  slot $(boot_slot)"
+		echo ""
+		printf 'SSH:\troot@%s (no password)\n' "${_ip:-(waiting for Wi-Fi)}"
+		printf 'Build:\t%s\n' "$BASEOS_BUILD"
+		printf 'Active Slot:\t%s\n' "$(boot_slot | tr ab AB)"
+		printf 'To leave:\thold Volume Up + Volume Down 3 s, then power on.\n'
 	} > "$SPLASH_INFO"
 	splash "$@"
 }
@@ -179,17 +184,20 @@ boot_key_action() {
 	done
 }
 
-# boot_key_hints: one line for each mapped button, for the boot screen ("!" = highlighted).
+# boot_key_hints [maintenance stock ...]: a button label for each mapped button (those actions
+# only, if given), for the boot screen: "@<button> <what it does>", which basedos-splash puts
+# beside the button itself (Select, Start) or lists.
 boot_key_hints() {
 	grep -v '^[[:space:]]*\(#\|$\)' "$(boot_keys_conf)" 2>/dev/null | while read -r _b _a _arg; do
 		button_code "$_b" >/dev/null || continue
+		[ $# -eq 0 ] || case " $* " in *" $_a "*) ;; *) continue ;; esac
 		case "$_a" in
-		maintenance) _what="maintenance mode" ;;
-		stock) _what="start stock instead, once" ;;
-		frontend) _what="start $_arg" ;;
+		maintenance) _what="Maintenance" ;;
+		stock) _what="Boot Stock OS" ;;
+		frontend) _what="Start ${_arg##*/}" ;;
 		*) _what="$_a" ;;
 		esac
-		echo "!Hold $(button_label "$_b") at power-on: $_what"
+		echo "@$_b $_what"
 	done | head -3
 }
 

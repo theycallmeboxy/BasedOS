@@ -113,16 +113,12 @@ now_cs() { read -r _u _ < /proc/uptime; _s=${_u%.*} _f=${_u#*.}; echo $(( _s * 1
 
 # waiting_screen: no card: what to do, and the buttons that work here.
 waiting_screen() {
+	_hints=$(boot_key_hints maintenance stock)
 	{
 		echo "!NO CARD"
 		echo "Insert your frontend card."
-		grep -v '^[[:space:]]*\(#\|$\)' "$(boot_keys_conf)" 2>/dev/null | while read -r _b _a _arg; do
-			button_code "$_b" >/dev/null || continue
-			case "$_a" in
-			maintenance) echo "!Hold $(button_label "$_b"): maintenance mode" ;;
-			stock) echo "!Hold $(button_label "$_b"): start stock once" ;;
-			esac
-		done | head -3
+		[ -n "$_hints" ] && echo "Or hold a labelled button for a second."
+		[ -n "$_hints" ] && echo "$_hints"
 	} > "$SPLASH_INFO"
 	say "no card in the slot (waiting for one)"
 }

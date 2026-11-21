@@ -31,6 +31,7 @@ log() { echo "recovery: $*" > /dev/kmsg; }
 # Linux key codes: the pad's A, B, X, Y (as BasedOS's button_code has them) and the power key.
 A=305 B=304 X=307 Y=308 POWER=116
 INFO=/run/basedos/splash
+TAB=$(printf '\t')
 # screen <status> <line>...: the boot screen, its lines ('!' first: highlighted) and status.
 screen() {
 	_s=$1; shift
@@ -81,7 +82,7 @@ sequence() {
 		case $_i in
 		0) _p="_ _ _ _" ;; 1) _p="A _ _ _" ;; 2) _p="A B _ _" ;; 3) _p="A B X _" ;;
 		esac
-		screen "Tap A B X Y to go on ($_p)   Tap power to power off" "$_t" "$@"
+		screen "Tapped: $_p" "$_t" "$@"
 		_k=$(key 5000)
 		[ "$_k" = $POWER ] && off
 		case "$_i:$_k" in
@@ -146,7 +147,7 @@ mbr() { od -An -tu4 -j "$1" -N4 "$BK/$NAME.0-partition-table.img" | tr -d ' \n';
 	[ "$(mbr 470)" = "$R3_START" ] && [ "$(mbr 474)" = "$R3_SECTORS" ] ||
 	stop "The backup's regions aren't laid out as a restore can write them" "(recovery/backup.info doesn't match the backup's partition table)." "Nothing was written."
 
-screen "checking the backup (a few minutes)" "!RECOVERY CARD" "Backup of $WHEN" "$WHAT" "Checking the backup..."
+screen "checking the backup (a few minutes)" "!RECOVERY CARD" "Backup made:$TAB$WHEN" "Holds:$TAB$WHAT" "" "Checking the backup..."
 # Each region it writes: whole (its size in bytes) and as it was made (its MD5). A short region
 # would be written short, the rest of the storage left as it is.
 region_ok() {  # region_ok <n> <file or piece prefix> <raw|zst>
@@ -185,7 +186,7 @@ progress() {
 	_all=$((R2_SECTORS + R3_SECTORS))
 	while sleep 2; do
 		_now=$(awk -v f=$1 '{ print $f }' /sys/block/$EMMC/stat)
-		screen "$2: $(( (_now - _base) * 100 / _all )) %  (don't power off)" "!RESTORING" "Backup of $WHEN" "$WHAT"
+		screen "$2: $(( (_now - _base) * 100 / _all )) %  (don't power off)" "!RESTORING" "Backup made:$TAB$WHEN" "Holds:$TAB$WHAT"
 	done
 }
 
@@ -240,9 +241,9 @@ while :; do
 		until power_ok; do [ "$(key 1000)" = $POWER ] && off; done
 	fi
 	sequence "!RESTORE THE BUILT-IN STORAGE" \
-		"Backup of $WHEN" "$WHAT" \
+		"Backup made:$TAB$WHEN" "Holds:$TAB$WHAT" "" \
 		"This puts the built-in storage back as it was then:" \
-		"EVERYTHING ON IT NOW IS REPLACED." \
+		"!EVERYTHING ON IT NOW IS REPLACED." \
 		"Tap A, B, X, Y in that order to restore." \
 		"Tap power to power off (nothing is written)."
 	FAIL=""

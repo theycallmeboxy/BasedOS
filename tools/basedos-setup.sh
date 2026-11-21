@@ -57,6 +57,8 @@ die() {
 }
 cleanup() {
 	for m in $(awk -v t="$T/mnt/" 'index($2, t) == 1 { print $2 }' /proc/mounts | sort -r); do umount "$m" 2>/dev/null; done
+	[ -n "${CARD_LOCKED:-}" ] && exec 4<&-
+	CARD_LOCKED=""
 	[ -n "${UDEV_HELD:-}" ] && udevadm control --start-exec-queue 2>/dev/null
 	UDEV_HELD=""
 	[ -n "${ES_STOPPED:-}" ] && systemctl start essway 2>/dev/null
@@ -140,7 +142,7 @@ rm -rf "$T"; mkdir -p "$T" || die "can't make $T"
 # Every tool setup uses, before anything else (stock's own: a missing one stops it here, not
 # halfway through).
 miss=""
-for c in awk sed tr cut sort grep head dd tee mkfifo md5sum sha256sum zstd parted partprobe blkid \
+for c in awk sed tr cut sort grep head dd tee mkfifo md5sum sha256sum zstd parted partprobe blkid flock \
 	mkfs.vfat udevadm systemctl wpa_passphrase mount umount df sync; do
 	command -v $c >/dev/null 2>&1 || miss="$miss $c"
 done
@@ -200,7 +202,7 @@ INSTALLED=""
 say ""
 say "${C_B}What do you want to do?${C_0}"
 if [ -n "$INSTALLED" ]; then
-	say "  1) ${C_DIM}Install BasedOS: it's installed already (to reinstall, uninstall it first: its maintenance menu, hold Select at power-on)${C_0}"
+	say "  1) ${C_DIM}Install BasedOS: it's installed already (to reinstall, uninstall it first: "Uninstall BasedOS" in stock's Ports, or BasedOS's maintenance menu, Select held at power-on)${C_0}"
 else
 	say "  1) Install BasedOS on the built-in storage, next to stock"
 fi
@@ -401,6 +403,12 @@ backup_emmc() {
 # The recovery card: MBR, one FAT32 partition (U-Boot reads FAT, not exFAT), bootable.
 if [ "$REC" = yes ]; then
 	step "Making the recovery card"
+	# The card held locked (BSD flock on the whole disk) while it's rebuilt: udevd re-reads a
+	# disk's partition table on its own whenever a writer closes it (stock's 60-block.rules
+	# "watch"), which removes and re-adds the partition under us; it leaves a locked disk alone
+	# and holds its events back until the lock goes (systemd's block device locking).
+	exec 4< "$D" && flock -x 4 || die "can't lock the card"
+	CARD_LOCKED=1
 	dd if=/dev/zero of="$D" bs=1M count=8 conv=fsync 2>/dev/null
 	parted -s "$D" mklabel msdos mkpart primary fat32 1MiB 100% set 1 boot on || die "parted failed"
 	partprobe "$D" 2>/dev/null
@@ -493,6 +501,7 @@ EOF
 	put "$HERE/recovery.scr" "$C/boot.scr"
 	sync
 	umount "$C" || die "can't unmount the recovery card"
+	exec 4<&-; CARD_LOCKED=""
 	ok "recovery card ready"
 fi
 

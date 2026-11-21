@@ -93,7 +93,7 @@ BasedOS is installed **next to stock on the eMMC**, and uses **stock's own files
 | `/etc/os-release` | `ID=basedos`, `NAME="BasedOS"` | both |
 | Init | BusyBox init: `rcS` sysinit, `frontend-session` respawn, `rcK` shutdown. No udev at boot; devtmpfs only (`basedos-udev` runs eudev's udevd for the length of a PortMaster Weston port, whose libinput needs its database). | both |
 | Writable state | `/data` on p2 (ext4): keys, logs, machine-id, update state. tmpfs `/run`, `/tmp`, `/var`. Root is read-only. | my355 |
-| Updates | `baseos-gkd350hultra-<ver>.bosupd` at the card root, `format=basedos-update/1`: a tar of `manifest` and the system layer (`tools/mkupdate.py`; `basedos-update` installs it at boot into the spare slot) | my355's name and manifest style (spruce looks for `baseos-<target>-*.bosupd`); the format is BasedOS's own, as its slots are files |
+| Updates | `baseos-gkd350hultra-<ver>.bosupd` at the card root, `format=basedos-update/1`: a tar of `manifest` and the system layer (`tools/mkupdate.py`; `basedos-update` installs it into the spare slot when asked: at boot after spruce's updater requests it, or from the maintenance menu) | my355's name and manifest style (spruce looks for `baseos-<target>-*.bosupd`); the format is BasedOS's own, as its slots are files |
 | Logs | `/data/basedos.log` (mirroring to the card is not done yet) | both |
 
 ## eMMC layout

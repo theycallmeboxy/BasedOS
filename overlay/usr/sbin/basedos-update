@@ -1,13 +1,17 @@
 #!/bin/sh
-# BasedOS system update from a .bosupd at the root of the frontend card (tools/mkupdate.py), the
-# way spruce's firmware updater expects of a BaseOS (baseos-<target>-<version>.bosupd: spruce
-# downloads it or finds it there, then reboots).
+# BasedOS system update from a .bosupd at the root of the frontend card (tools/mkupdate.py), named
+# as spruce's firmware updater expects of a BaseOS (baseos-<target>-<version>.bosupd).
 #
-#   apply     frontend-session, once a boot, as soon as the card is mounted (before the frontend
-#             starts): install the first applicable payload and reboot into it. No payload costs
-#             one failed glob.
-#   confirm   the same, just before apply: settle the last update (remove its payload once the
+# An update is installed only when asked for: from the frontend (spruce's firmware update app on
+# BasedOS runs `basedos-update request`, then reboots) or from the maintenance menu ("Update").
+# A .bosupd that's just on the card is left alone.
+#
+#   request   the frontend: install at the next boot (a mark in /data/update, used once).
+#   apply     install the first applicable payload and reboot into it (frontend-session at boot,
+#             when requested; the maintenance menu). Returns 10 once the reboot is under way.
+#   confirm   frontend-session, every boot: settle the last update (remove its payload once the
 #             new slot has booted; on a rollback, point the slot back at the running one).
+#   check     one line for the maintenance menu: "ready <build>", "none", or "skip <why>".
 #   status    what is installed, and what each payload on the card would do.
 #
 # A payload carries the system layer, never stock's files, and not BasedOS's boot files either
@@ -35,6 +39,7 @@ STATE_DIR=/data/update
 STATE=$STATE_DIR/state
 HISTORY=$STATE_DIR/history
 MANIFEST=/run/basedos/bosupd-manifest
+REQUEST=$STATE_DIR/requested
 
 field() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1; }
 
@@ -216,6 +221,28 @@ confirm() {
 	sync
 }
 
+# request: the next boot installs the update (once). The frontend calls this before rebooting.
+request() {
+	mkdir -p "$STATE_DIR" && date > "$REQUEST" && sync && [ -f "$REQUEST" ] ||
+		{ log "couldn't leave the update request in $STATE_DIR"; return 1; }
+	log "update requested for the next boot"
+}
+
+# check: what the maintenance menu offers, without changing anything on the card.
+check() {
+	_skip=""
+	for _p in "$CARD"/*.bosupd; do
+		[ -f "$_p" ] || continue
+		evaluate "$_p"; _r=$?
+		case $_r in
+		0) echo "ready $EV_BUILD"; return 0 ;;
+		1) _skip=${_skip:-"skip already installed or older"} ;;
+		*) _skip="skip made for another device or stock version" ;;
+		esac
+	done
+	echo "${_skip:-none}"
+}
+
 status() {
 	echo "running: BasedOS $BASEOS_VERSION ($BASEOS_BUILD), slot $(running_slot), on stock ${BASEOS_STOCK:-?} (${BASEOS_STOCK_BUILD_ID:-?})"
 	[ -f "$STATE" ] && echo "pending: $(field "$STATE" version) in slot $(field "$STATE" slot)"
@@ -234,8 +261,10 @@ status() {
 }
 
 case "${1:-}" in
+request) request ;;
 apply) apply ;;
+check) check ;;
 confirm) confirm ;;
 status) status ;;
-*) echo "usage: basedos-update apply|confirm|status" >&2; exit 2 ;;
+*) echo "usage: basedos-update request|apply|confirm|check|status" >&2; exit 2 ;;
 esac

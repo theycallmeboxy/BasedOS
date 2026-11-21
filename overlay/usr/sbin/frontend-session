@@ -168,13 +168,17 @@ done
 rm -f /run/basedos/said-nocard
 
 # System updates, once a boot, now that the card is here (.bosupd at its root, as spruce's updater
-# leaves them): settle the last one, then install a new one and reboot into it. Only with /data on
-# p2 (the update's record lives there).
+# leaves them): settle the last one, then, only if the frontend asked for it (basedos-update
+# request), install a new one and reboot into it. The request is used up first, so a failing
+# update isn't retried at every boot. Only with /data on p2 (the update's record lives there).
 if [ ! -f $STATE/updates-checked ]; then
 	touch $STATE/updates-checked
 	if [ -f $STATE/data-ok ]; then
 		/usr/sbin/basedos-update confirm
-		/usr/sbin/basedos-update apply
+		if [ -f /data/update/requested ]; then
+			rm -f /data/update/requested; sync
+			/usr/sbin/basedos-update apply
+		else false; fi
 		# 10: installed, and the reboot is under way (init stops this session).
 		[ $? -eq 10 ] && while :; do sleep 3600; done
 	fi

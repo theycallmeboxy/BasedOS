@@ -45,9 +45,10 @@ after failed boots, then to stock) → BusyBox init → `rcS` (`/data`,
 card, Wi-Fi driver) → `frontend-session` finds the frontend on the card (spruce's `runtime.sh`)
 and starts it, again if it exits.
 
-Updates: a `baseos-gkd350hultra-<version>.bosupd` at the card root (spruce's firmware updater
-fetches or finds one and reboots) is installed at the next boot by `basedos-update`, once the
-card is mounted and before the frontend starts: the system layer to the spare slot, verified,
+Updates: a `baseos-gkd350hultra-<version>.bosupd` at the card root is installed by
+`basedos-update` only when asked for: by spruce's firmware updater (BasedOS's own copy fetches or
+finds one, runs `basedos-update request` and reboots; installed at the next boot, once the card
+is mounted and before the frontend starts) or from the maintenance menu ("Update to ..."): the system layer to the spare slot, verified,
 then the slot flips. One it won't install is renamed on the card (`.skipped`, `.refused`,
 `.failed`), so it isn't offered again. It carries nothing of stock's; each
 release is made for one stock build, and one for another stock build is refused

@@ -54,12 +54,18 @@ starts, and setup recognises the unfinished install and replaces it.
 4. Reboot. BasedOS starts, then spruce from the card.
 
 From stock, while BasedOS is installed, stock's **Ports** has **Uninstall BasedOS** (it asks
-first, then removes BasedOS and its settings and leaves stock as it was), and after "Switch to
-stock" also **Return to BasedOS**. (Stock's Ports shows only what's in it; these entries are what
-make it appear.)
+first, then removes BasedOS and its settings and leaves stock as it was), and one of:
+
+- **Disable BasedOS**, while BasedOS is on (in stock after "Start stock once", or after setup):
+  stock starts from then on, without a restart; BasedOS's files stay. The same as "Disable
+  BasedOS" in BasedOS's maintenance menu.
+- **Enable BasedOS**, while it's disabled: BasedOS's boot script goes back and the device restarts
+  into BasedOS.
+
+(Stock's Ports shows only what's in it; these entries are what make it appear.)
 
 To go back to stock: the maintenance menu (above), or from SSH `basedos-boot stock-once`,
-`switch-to-stock` or `uninstall` (add `--reboot`); `basedos-boot status` says what boots next.
+`disable` or `uninstall` (add `--reboot`); `basedos-boot status` says what boots next.
 `install-dev.sh revert` (from stock or BasedOS) still puts stock's boot script back and leaves
 BasedOS's files.
 
@@ -74,7 +80,7 @@ script is back.
 | You do | BasedOS does |
 |---|---|
 | Power on | boots in about 4 s to spruce's menu |
-| Power on **holding Select** | **maintenance mode**: no spruce; Wi-Fi and SSH, what's in BasedOS's two copies (slots A and B: which build, which runs, which boots next), and a menu (Up/Down, A): **Start stock once**; **Boot slot A/B from now on** (the other copy, if it's there and would start; it restarts into it); **Switch to stock** (stock boots from then on, and a "Return to BasedOS" entry in stock's Ports puts BasedOS back); **Uninstall BasedOS** (removes its files and settings from the device while it restarts, then starts stock; stock is as before the install); Restart; Power off. Changing slots, switching and uninstalling want A, B, X, Y tapped in that order (as the recovery card); any other button goes back. The screen shows the address to SSH to once Wi-Fi is up |
+| Power on **holding Select** | **maintenance mode**: no spruce; Wi-Fi and SSH, what's in BasedOS's two copies (slots A and B: which build, which runs, which boots next), and a menu (Up/Down, A): **Start stock once**; **Boot slot A/B from now on** (the other copy, if it's there and would start; it restarts into it); **Disable BasedOS** (stock boots from then on, and an "Enable BasedOS" entry in stock's Ports turns BasedOS back on); **Uninstall BasedOS** (removes its files and settings from the device while it restarts, then starts stock; stock is as before the install); Restart; Power off. Changing slots, disabling and uninstalling want A, B, X, Y tapped in that order (as the recovery card); any other button goes back. The screen shows the address to SSH to once Wi-Fi is up |
 | Power on **holding Start** | **stock, for this boot**: BasedOS restarts into stock once; the next power-on is BasedOS again |
 | Power on **holding another button** | whatever `/data/boot-keys.conf` maps it to (none by default): maintenance mode, stock once, or a frontend on the card other than the first one found. The format and the button names are in `/usr/share/basedos/boot-keys.conf`; copy it to `/data/` to change it. The boot screen labels the mapped buttons: Select's and Start's beside the buttons themselves ("Maintenance", "Boot Stock OS" by default), any other in a list |
 | Hold **Volume Up + Volume Down** together **3 s** | clean shutdown with any frontend, also a hung one: programs get 3 s to save and quit, then the card is synced and unmounted (`basedos-shutdown-keys`). Holding power is the frontend's (spruce: Button Settings > Power button hold time) |
@@ -135,8 +141,8 @@ once (or whatever `/data/boot-keys.conf` maps them to), without restarting first
 - **Bad boot files**: if BasedOS's initrd is missing or damaged, the boot script boots stock.
   Updates never change the boot files, so a bad update can always be undone by the other copy.
 - **Stock changed**: if stock isn't the build BasedOS was made for (reflashed, say), BasedOS
-  doesn't start and stock boots. "Return to BasedOS" in stock's Ports checks this first and says
-  so, instead of switching to a BasedOS that wouldn't start.
+  doesn't start and stock boots. "Enable BasedOS" in stock's Ports checks this first and says
+  so, instead of enabling a BasedOS that wouldn't start.
 - **Frontend crash loop**: if spruce exits within 15 s five times in a row, BasedOS stops
   restarting it and shows a message, instead of looping.
 - **Card checks**: a card left dirty by a power cut is checked (`fsck`) once before use.

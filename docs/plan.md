@@ -13,7 +13,8 @@ vendor-set design. Checked on the unit, and carried over:
   next boot into the spare slot and confirmed once it boots (`basedos-update`). The boot script
   is not in a payload.
 - Leaving BasedOS (`basedos-boot`, the maintenance menu, Start held at power-on): stock once,
-  switch to stock with "Return to BasedOS" in stock's Ports, uninstall (done by the initrd at the
+  disable BasedOS (stock boots; "Enable BasedOS" in stock's Ports turns it back on, and stock's
+  Ports has "Disable BasedOS" too), uninstall (done by the initrd at the
   restart). Each boot script written is checked and read back.
 - spruce: menu, emulators (RetroArch, DSperate, DraStic, PPSSPP, Mupen64Plus, Flycast,
   YabaSanshiro), E-Reader, Gallery, sleep and wake, clean shutdown, Wi-Fi and SSH (spruce's own,
@@ -107,8 +108,8 @@ complete and bootable.
 | p2 ext4, 11.6 GB (stock's `/storage`) | stock's data; `basedos-data/`, BasedOS's `/data` (logs, update state, accounts, Wi-Fi, SSH keys) |
 | `boot0`, `boot1` | an old Amlogic loader the RK3576 never reads; left alone |
 
-Leaving it: `basedos-boot` (maintenance menu, Start at power-on) boots stock once, switches to
-stock with a "Return to BasedOS" in stock's Ports, or uninstalls (stock's `boot.scr` back and both
+Leaving it: `basedos-boot` (maintenance menu, Start at power-on) boots stock once, disables
+BasedOS (stock boots; "Enable BasedOS" in stock's Ports turns it back on), or uninstalls (stock's `boot.scr` back and both
 folders removed).
 
 ## Boot flow

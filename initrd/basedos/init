@@ -68,7 +68,8 @@ if $bb mount -t ext4 -o noatime $P2 /p2 2>/dev/null; then
 				$bb mv /p1/boot.scr.new /p1/boot.scr && $bb sync &&
 				[ "$($bb sha256sum < /p1/boot.scr | $bb cut -c1-64)" = "$want" ]; then
 				for d in /p2/games-internal/roms/ports /p2/roms/ports /p2/.config/modules; do
-					$bb rm -f "$d/Return to BasedOS.sh" "$d/Uninstall BasedOS.sh"
+					$bb rm -f "$d/Enable BasedOS.sh" "$d/Disable BasedOS.sh" "$d/Return to BasedOS.sh" \
+						"$d/Uninstall BasedOS.sh"
 				done
 				$bb rm -rf /p2/basedos-data
 				$bb rm -rf /p1/basedos

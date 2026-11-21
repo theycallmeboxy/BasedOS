@@ -197,7 +197,7 @@ say "  - About 5 to 25 minutes. Don't power off or take the card out while it ru
 [ -n "$CHG" ] || [ -z "$PCT" ] || [ "$PCT" -ge 30 ] || die "the battery is at $PCT %: charge it, or plug the charger in, then run setup again"
 
 # What's on the built-in storage now. Installed: BasedOS's boot script is the active one, or it's
-# switched off (its own saved, for "Return to BasedOS"). A BasedOS folder with neither is an install
+# disabled (its own saved, for "Enable BasedOS"). A BasedOS folder with neither is an install
 # that didn't finish (setup interrupted before it switched the boot script): the install replaces it.
 is_basedos_scr() { dd if="$1" bs=64 skip=1 2>/dev/null | grep -q "rdinit=/basedos/init"; }
 INSTALLED="" PARTIAL="" BROKEN=""
@@ -583,14 +583,16 @@ if [ "$TARGET" = install ]; then
 	mount -o remount,ro $STOCK_P1
 	P1_RW=""
 	seed_data /storage/basedos-data
-	# "Uninstall BasedOS" in stock's Ports (the folder stock's Ports reads: /storage/roms is a bind
-	# of games-internal/roms), from this release's system layer, so BasedOS can be removed from
-	# stock too.
+	# "Disable BasedOS" and "Uninstall BasedOS" in stock's Ports (the folder stock's Ports reads:
+	# /storage/roms is a bind of games-internal/roms), from this release's system layer, so BasedOS
+	# can be disabled or removed from stock too.
 	mkdir -p "$T/mnt/rootfs" /storage/games-internal/roms/ports
 	if mount -t squashfs -o ro,loop "$HERE/rootfs.squashfs" "$T/mnt/rootfs"; then
-		cp "$T/mnt/rootfs/usr/share/basedos/stock/Uninstall BasedOS.sh" "/storage/games-internal/roms/ports/" &&
-			chmod 755 "/storage/games-internal/roms/ports/Uninstall BasedOS.sh" ||
-			warn "couldn't put 'Uninstall BasedOS' in stock's Ports (BasedOS's maintenance menu can uninstall it)"
+		for e in "Disable BasedOS.sh" "Uninstall BasedOS.sh"; do
+			cp "$T/mnt/rootfs/usr/share/basedos/stock/$e" "/storage/games-internal/roms/ports/" &&
+				chmod 755 "/storage/games-internal/roms/ports/$e" ||
+				warn "couldn't put '${e%.sh}' in stock's Ports (BasedOS's maintenance menu has it too)"
+		done
 		umount "$T/mnt/rootfs"
 	fi
 	sync

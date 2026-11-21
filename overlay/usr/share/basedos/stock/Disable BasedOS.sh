@@ -1,0 +1,88 @@
+#!/bin/bash
+# Disable BasedOS: in stock's Ports while BasedOS is on (stock started once from it, or just after
+# setup). The same as "Disable BasedOS" in BasedOS's maintenance menu (basedos-boot disable): stock's
+# own boot script goes back in place, so stock starts from now on; BasedOS's files stay, and an
+# "Enable BasedOS" entry in stock's Ports turns it back on. Stock is running already, so nothing
+# restarts. Runs on stock (bash and BusyBox; no cmp, so it checks with md5sum and od). Stock runs a
+# Ports script with its output going to a log, so what it has to say goes on screen through stock's
+# own text_viewer.
+#
+# As careful as basedos-boot: both boot scripts are checked first (whole script images, BasedOS's
+# and stock's as expected), "Enable BasedOS" is in place and BasedOS's script saved and read back
+# before boot.scr changes, and boot.scr is written as boot.scr.new, read back, then renamed.
+P1=/flash
+B=$P1/basedos
+PORTS=/storage/games-internal/roms/ports
+NAME="Disable BasedOS.sh"
+ENABLE="Enable BasedOS.sh"
+show() { /usr/bin/text_viewer "$@" >/dev/null 2>&1; }
+fail() {
+	echo "Disable BasedOS: $*" >&2
+	show -e -w -t "Disable BasedOS" -m "$* BasedOS is still on; nothing changed."
+	exit 1
+}
+# scr_ok <file>: a whole U-Boot script image: its magic, the type "script", and the size its header
+# gives (as basedos-boot checks them).
+scr_ok() {
+	[ -s "$1" ] || return 1
+	[ "$(dd if="$1" bs=4 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n')" = 27051956 ] || return 1
+	[ "$(dd if="$1" bs=1 skip=30 count=1 2>/dev/null | od -An -tu1 | tr -d ' \n')" = 6 ] || return 1
+	_len=$(dd if="$1" bs=1 skip=12 count=4 2>/dev/null | od -An -tu1 | awk '{print (($1*256+$2)*256+$3)*256+$4}')
+	[ "$(wc -c < "$1" | tr -d ' ')" = "$((_len + 64))" ]
+}
+is_basedos() { dd if="$1" bs=64 skip=1 2>/dev/null | grep -q "rdinit=/basedos/init"; }
+# put <src> <dst>: written as <dst>.new, read back, renamed, read back.
+put() {
+	rm -f "$2.new"
+	cp "$1" "$2.new" && sync && echo 3 > /proc/sys/vm/drop_caches &&
+		[ "$(md5sum < "$1")" = "$(md5sum < "$2.new")" ] &&
+		mv "$2.new" "$2" && sync &&
+		[ "$(md5sum < "$1")" = "$(md5sum < "$2")" ] && return 0
+	rm -f "$2.new"
+	return 1
+}
+
+scr_ok $P1/boot.scr && is_basedos $P1/boot.scr ||
+	fail "BasedOS is already disabled (stock's boot script is the one in use)."
+scr_ok $B/boot.scr.stock && ! is_basedos $B/boot.scr.stock ||
+	fail "Stock's saved boot script ($B/boot.scr.stock) isn't there or isn't whole."
+
+# 1. "Enable BasedOS" in Ports, from BasedOS's system layer (the slot that boots next first).
+case "$(head -c 2 $B/slot 2>/dev/null)" in b*) slots="rootfs-b rootfs" ;; *) slots="rootfs rootfs-b" ;; esac
+m=/tmp/basedos-disable.$$
+mkdir -p "$m" "$PORTS" || fail "Can't make $m or $PORTS."
+got=""
+for s in $slots; do
+	[ -f "$B/$s.squashfs" ] || continue
+	mount -t squashfs -o ro,loop "$B/$s.squashfs" "$m" 2>/dev/null || continue
+	if [ -f "$m/usr/share/basedos/stock/$ENABLE" ] && put "$m/usr/share/basedos/stock/$ENABLE" "$PORTS/$ENABLE"; then
+		got=1
+	fi
+	umount "$m"
+	[ -n "$got" ] && break
+done
+rmdir "$m"
+[ -n "$got" ] || fail "Couldn't put 'Enable BasedOS' in stock's Ports (it's how BasedOS comes back)."
+chmod 755 "$PORTS/$ENABLE"
+undo() { rm -f "$PORTS/$ENABLE"; sync; }
+
+# 2. BasedOS's boot script saved, then stock's in its place.
+mount -o remount,rw $P1 || { undo; fail "Can't write $P1."; }
+if ! put $P1/boot.scr $B/boot.scr.basedos; then
+	rm -f $B/boot.scr.basedos; sync; mount -o remount,ro $P1; undo
+	fail "Couldn't save BasedOS's boot script."
+fi
+if ! put $B/boot.scr.stock $P1/boot.scr; then
+	# boot.scr is one whole file or the other (put renames only once the copy reads back).
+	[ "$(md5sum < $B/boot.scr.basedos)" = "$(md5sum < $P1/boot.scr)" ] || put $B/boot.scr.basedos $P1/boot.scr
+	rm -f $B/boot.scr.basedos; sync; mount -o remount,ro $P1; undo
+	fail "Couldn't write stock's boot script."
+fi
+sync
+mount -o remount,ro $P1
+# Itself, and the older name of the way back.
+for d in $PORTS /storage/roms/ports /storage/.config/modules; do rm -f "$d/$NAME" "$d/Return to BasedOS.sh"; done
+sync
+echo "$(date) disable: stock's boot script in place" >> /storage/basedos-data/basedos.log 2>/dev/null
+show -t "Disable BasedOS" -m "BasedOS is disabled: stock starts from now on. BasedOS stays installed; 'Enable BasedOS' in Ports turns it back on."
+exit 0

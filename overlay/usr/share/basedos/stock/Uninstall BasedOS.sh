@@ -61,7 +61,7 @@ sync
 mount -o remount,ro $P1
 rm -rf $DATA
 for d in /storage/games-internal/roms/ports /storage/roms/ports /storage/.config/modules; do
-	rm -f "$d/Return to BasedOS.sh" "$d/Uninstall BasedOS.sh"
+	rm -f "$d/Enable BasedOS.sh" "$d/Disable BasedOS.sh" "$d/Return to BasedOS.sh" "$d/Uninstall BasedOS.sh"
 done
 sync
 echo "$(date) uninstall: done" >> $LOG

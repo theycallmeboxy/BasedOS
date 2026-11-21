@@ -1,7 +1,7 @@
 #!/bin/sh
 # basedos-menu: maintenance mode's menu on the boot screen (frontend-session runs it). It shows
 # what's in each system slot (A/B). Up and Down choose, A runs; the ones that change what boots
-# (the other slot, switch to stock, uninstall) want A, B, X, Y tapped in that order, as the
+# (the other slot, disable BasedOS, uninstall) want A, B, X, Y tapped in that order, as the
 # recovery card does, and any other button goes back. Wi-Fi and SSH
 # run beside it as before. Each choice is basedos-boot's (or reboot, poweroff), so the same can
 # be done over SSH.
@@ -17,7 +17,7 @@ OTHER=b; [ "$(next_slot)" = b ] && OTHER=a
 OTHER_S=$(echo "$OTHER" | tr ab AB)
 ITEMS="stock-once|Start stock once (BasedOS again after)
 slot|Boot slot $OTHER_S from now on
-switch|Switch to stock (back from stock's Ports)
+disable|Disable BasedOS (stock starts from now on)
 uninstall|Uninstall BasedOS
 reboot|Restart
 poweroff|Power off"
@@ -98,10 +98,10 @@ run() {
 		confirm "Boot slot $OTHER_S from now on? The device restarts into it." || return
 		draw "switching to slot $OTHER_S"
 		_e=$(basedos-boot slot "$OTHER" --reboot 2>&1 >/dev/null) || MSG=${_e#basedos-boot: } ;;
-	switch)
-		confirm "Switch to stock? BasedOS stays installed; 'Return to BasedOS' in stock's Ports brings it back." || return
-		draw "switching to stock"
-		basedos-boot switch-to-stock --reboot || MSG="couldn't switch to stock (still BasedOS): see /data/basedos.log" ;;
+	disable)
+		confirm "Disable BasedOS? Stock starts from now on. BasedOS stays installed: 'Enable BasedOS' in stock's Ports turns it back on." || return
+		draw "disabling BasedOS"
+		basedos-boot disable --reboot || MSG="couldn't disable BasedOS (still on): see /data/basedos.log" ;;
 	uninstall)
 		confirm "Uninstall BasedOS? Its files and settings on this device are removed; stock is as before." || return
 		draw "uninstalling BasedOS"

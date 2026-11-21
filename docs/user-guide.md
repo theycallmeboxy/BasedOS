@@ -23,7 +23,7 @@ between the 350H Ultra and your other spruce devices.
 GitHub. From a PC, in one go (press Enter at the password prompt: stock's root has none; the
 release page has the exact line for each release):
 
-    ssh -t root@<device> 'U=<release URL>/basedos-setup.sh; (curl -fsSL -o /tmp/basedos-setup.sh "$U" || wget -O /tmp/basedos-setup.sh "$U") && sh /tmp/basedos-setup.sh'
+    ssh -t root@<device> "curl -fsSL -o /tmp/basedos-setup.sh <release URL>/basedos-setup.sh && sh /tmp/basedos-setup.sh"
 
 It checks stock's build and files first, states its requirements, asks everything, shows a
 numbered summary, asks you to type the confirmations (capitals don't matter), and only then

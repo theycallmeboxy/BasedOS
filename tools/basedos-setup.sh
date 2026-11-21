@@ -4,7 +4,7 @@
 # it reads its release's release.info first, and downloads the rest of the release (checked
 # against the release's SHA256SUMS) only after you've confirmed. Nothing is needed on a PC:
 #
-#   wget -O /tmp/basedos-setup.sh <the release's basedos-setup.sh URL> && sh /tmp/basedos-setup.sh
+#   curl -fsSL -o /tmp/basedos-setup.sh <the release's basedos-setup.sh URL> && sh /tmp/basedos-setup.sh
 #
 # (Run from a folder that already holds the release files, it uses those instead.)
 #
@@ -107,11 +107,7 @@ a_card() {
 	done
 	case $_c in 8) echo "an $_c GB card" ;; *) echo "a $_c GB card" ;; esac
 }
-fetch() {  # fetch <url> <file>
-	if command -v curl >/dev/null 2>&1; then curl -fsSL --retry 3 -o "$2" "$1"
-	elif command -v wget >/dev/null 2>&1; then wget -q -O "$2" "$1"
-	else return 1; fi
-}
+fetch() { curl -fsSL --retry 3 -o "$2" "$1"; }  # fetch <url> <file>
 # release_file <name>: the release's file in $HERE, downloaded from the release into RAM when it
 # isn't beside the script, checked against the release's SHA256SUMS either way.
 release_file() {
@@ -143,10 +139,9 @@ rm -rf "$T"; mkdir -p "$T" || die "can't make $T"
 # halfway through).
 miss=""
 for c in awk sed tr cut sort grep head dd tee mkfifo md5sum sha256sum zstd parted partprobe blkid flock \
-	mkfs.vfat udevadm systemctl wpa_passphrase mount umount df sync; do
+	mkfs.vfat udevadm systemctl wpa_passphrase mount umount df sync curl; do
 	command -v $c >/dev/null 2>&1 || miss="$miss $c"
 done
-command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1 || miss="$miss curl-or-wget"
 [ -z "$miss" ] || die "stock is missing tools setup needs:$miss"
 ok "stock has every tool setup uses"
 

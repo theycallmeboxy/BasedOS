@@ -49,6 +49,11 @@ downloads and writes. Two choices:
    Wi-Fi network and SSH keys, and leaves stock's own files untouched.
 4. Reboot. BasedOS starts, then spruce from the card.
 
+From stock, while BasedOS is installed, stock's **Ports** has **Uninstall BasedOS** (it asks
+first, then removes BasedOS and its settings and leaves stock as it was), and after "Switch to
+stock" also **Return to BasedOS**. (Stock's Ports shows only what's in it; these entries are what
+make it appear.)
+
 To go back to stock: the maintenance menu (above), or from SSH `basedos-boot stock-once`,
 `switch-to-stock` or `uninstall` (add `--reboot`); `basedos-boot status` says what boots next.
 `install-dev.sh revert` (from stock or BasedOS) still puts stock's boot script back and leaves
@@ -65,7 +70,7 @@ script is back.
 | You do | BasedOS does |
 |---|---|
 | Power on | boots in about 4 s to spruce's menu |
-| Power on **holding Select** | **maintenance mode**: no spruce; Wi-Fi and SSH, and a menu (Up/Down, A): **Start stock once**; **Switch to stock** (stock boots from then on, and a "Return to BasedOS" entry in stock's Tools puts BasedOS back); **Uninstall BasedOS** (removes its files and settings from the device while it restarts, then starts stock; stock is as before the install); Restart; Power off. Switching and uninstalling want A held 3 s; B goes back. The screen shows the address to SSH to once Wi-Fi is up |
+| Power on **holding Select** | **maintenance mode**: no spruce; Wi-Fi and SSH, and a menu (Up/Down, A): **Start stock once**; **Switch to stock** (stock boots from then on, and a "Return to BasedOS" entry in stock's Ports puts BasedOS back); **Uninstall BasedOS** (removes its files and settings from the device while it restarts, then starts stock; stock is as before the install); Restart; Power off. Switching and uninstalling want A held 3 s; B goes back. The screen shows the address to SSH to once Wi-Fi is up |
 | Power on **holding Start** | **stock, for this boot**: BasedOS restarts into stock once; the next power-on is BasedOS again |
 | Power on **holding another button** | whatever `/data/boot-keys.conf` maps it to (none by default): maintenance mode, stock once, or a frontend on the card other than the first one found. The format and the button names are in `/usr/share/basedos/boot-keys.conf`; copy it to `/data/` to change it. The boot screen lists the mapped buttons |
 | Hold **Volume Up + Volume Down** together **3 s** | clean shutdown with any frontend, also a hung one: programs get 3 s to save and quit, then the card is synced and unmounted (`basedos-shutdown-keys`). Holding power is the frontend's (spruce: Button Settings > Power button hold time) |
@@ -93,7 +98,8 @@ once (or whatever `/data/boot-keys.conf` maps them to), without restarting first
 
 ## Updates
 
-- Put a `baseos-gkd350hultra-<version>.bosupd` at the root of the card and restart, or use spruce's
+- Each release on GitHub has its `baseos-gkd350hultra-<version>.bosupd`. Put it at the root of the
+  card and restart, or use spruce's
   firmware update app, which finds one there (or downloads one) and restarts for you. BasedOS
   installs it while starting: the screen says so, and it restarts once more into the new version.
 - It goes into the copy of BasedOS that isn't running, and is checked before it's used. If the new

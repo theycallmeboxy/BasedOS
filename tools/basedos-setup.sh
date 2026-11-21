@@ -540,6 +540,16 @@ if [ "$TARGET" = install ]; then
 	put "$HERE/boot.scr" $STOCK_P1/boot.scr
 	mount -o remount,ro $STOCK_P1
 	seed_data /storage/basedos-data
+	# "Uninstall BasedOS" in stock's Ports (the folder stock's Ports reads: /storage/roms is a bind
+	# of games-internal/roms), from this release's system layer, so BasedOS can be removed from
+	# stock too.
+	mkdir -p "$T/mnt/rootfs" /storage/games-internal/roms/ports
+	if mount -t squashfs -o ro,loop "$HERE/rootfs.squashfs" "$T/mnt/rootfs"; then
+		cp "$T/mnt/rootfs/usr/share/basedos/stock/Uninstall BasedOS.sh" "/storage/games-internal/roms/ports/" &&
+			chmod 755 "/storage/games-internal/roms/ports/Uninstall BasedOS.sh" ||
+			warn "couldn't put 'Uninstall BasedOS' in stock's Ports (BasedOS's maintenance menu can uninstall it)"
+		umount "$T/mnt/rootfs"
+	fi
 	sync
 	ok "installed"
 	if [ "$REC" = yes ]; then

@@ -7,7 +7,7 @@
 
 UP=$(button_code up) DOWN=$(button_code down) A=$(button_code a) B=$(button_code b)
 ITEMS="stock-once|Start stock once (BasedOS again after)
-switch|Switch to stock (back from stock's Tools)
+switch|Switch to stock (back from stock's Ports)
 uninstall|Uninstall BasedOS
 reboot|Restart
 poweroff|Power off"
@@ -62,7 +62,7 @@ run() {
 		draw "starting stock once"
 		basedos-boot stock-once --reboot || MSG="couldn't set up stock once: see /data/basedos.log" ;;
 	switch)
-		confirm "Switch to stock? BasedOS stays installed; 'Return to BasedOS' in stock's Tools brings it back." || return
+		confirm "Switch to stock? BasedOS stays installed; 'Return to BasedOS' in stock's Ports brings it back." || return
 		draw "switching to stock"
 		basedos-boot switch-to-stock --reboot || MSG="couldn't switch to stock (still BasedOS): see /data/basedos.log" ;;
 	uninstall)

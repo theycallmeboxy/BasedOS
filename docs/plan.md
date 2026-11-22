@@ -2,10 +2,8 @@
 
 ## Status
 
-**Being rebuilt (round 3, 2026-11-20 evening) on the simplified architecture below; not yet on
-the unit.** Until then, what ran on the unit (2026-11-20, build `c9ee8f9`, installed next to stock
-with `tools/install-dev.sh`; power to spruce's menu in about 4 s, boot-time.md) was the earlier
-vendor-set design. Checked on the unit, and carried over:
+**On the unit (2026-11-22, build `51eeeef`) on the architecture below,** installed next to stock
+by `basedos-setup` (power to spruce's menu in about 4 s, boot-time.md). Checked on the unit:
 
 - One system layer and a boot counter that falls back to stock after three failed starts (A/B
   slots were dropped 2026-11-21: their fallback only covered a layer that verified but didn't
@@ -25,8 +23,11 @@ vendor-set design. Checked on the unit, and carried over:
 - Maintenance mode (Select held at power-on): BasedOS's own Wi-Fi and root SSH, no frontend, and
   the menu above.
 - The boot screen, quiet boot, boot keys, and the Volume Up + Volume Down shutdown watcher.
-- The recovery card (setup, choice 2; recovery.md): made on the device, booted, and a real restore
-  of the eMMC verified byte for byte (2026-11-20).
+- Setup (`basedos-setup`, run on stock): install, repair (also with BasedOS's folder deleted),
+  uninstall, and removing what an unfinished install or uninstall left.
+- The recovery card (setup's "Make a recovery SD card"; recovery.md): made on the device, and two
+  real restores of the eMMC: one verified byte for byte (2026-11-20), one after a boot script hung
+  (2026-11-21).
 
 Not done yet: a way for an update to change the boot script and its kernel options, Bluetooth,
 USB storage mode, ScummVM on spruce, and the old-library compat set some ports want
@@ -65,7 +66,7 @@ BasedOS is installed **next to stock on the eMMC**, and uses **stock's own files
   its files only duplicated what's already beside them. The frontend's card is a normal, portable
   spruce card.
 
-## Starting point## Starting point (verified on the device, 2026-11-16)
+## Starting point (verified on the device, 2026-11-16)
 
 - **Device:** RK3576S, 2 GB RAM, 16 GB eMMC (`mmcblk0`), one SD slot (`mmcblk1`),
   a 1440×1600 portrait DSI panel shown landscape. The device tree model is
@@ -112,7 +113,10 @@ complete and bootable.
 
 Leaving it: `basedos-boot` (maintenance menu, Start at power-on) boots stock once, disables
 BasedOS (stock boots; "Enable BasedOS" in stock's Ports turns it back on), or uninstalls (stock's `boot.scr` back and both
-folders removed).
+folders removed). Stock's Ports entries go to both places stock may show Ports from: its
+automount binds `games-internal/roms` or the card's `roms` by its setting
+`system.merged.device`, and with a spruce card (`Roms`) the latter binds nothing and p2's own
+`roms` shows. Both are on p2, never the card.
 
 ## Boot flow
 
@@ -121,7 +125,8 @@ folders removed).
    USB-C), loads stock's kernel and that DTB, and `basedos/initrd.uimg`, from stock's boot
    partition, sets the panel's 60 Hz timing (`fdt set`), and boots with BasedOS's kernel options
    (`rdinit=/basedos/init`, `basedos.disk=mmcblkN`, quiet). If those files can't be loaded it runs
-   stock's saved boot script, so stock boots itself.
+   stock's own boot script, kept beside it as `boot.scr.stock`, so stock boots itself (tested
+   2026-11-21 with BasedOS's folder deleted).
 2. The kernel unpacks its built-in initramfs and then ours over it, so our `/init` runs, not
    stock's. `/basedos/init` mounts p1 read-only, counts the boot on p2 (and does a pending
    uninstall or stock-once there), puts an installed update (`rootfs.new`) in place, loop-mounts the system
@@ -144,7 +149,7 @@ The build fails if a stock file is in the system layer. `prepare-stock` checks t
 
 ## Install paths
 
-- **Users:** `tools/basedos-setup.sh`, run on the device under stock over SSH (user-guide.md, "Setup on the device"); it downloads its release from GitHub. Two choices: install BasedOS on the eMMC (a recovery card first is recommended and offered), or make a recovery card (recovery.md). Nothing of stock's is published or copied.
+- **Users:** `tools/basedos-setup.sh`, run on the device under stock over SSH (user-guide.md, "Setup on the device"); it downloads its release from GitHub. What it offers depends on what it finds: install BasedOS on the eMMC, or repair or uninstall it, or remove what an unfinished install or uninstall left (a recovery card first is recommended and offered), and always making a recovery card (recovery.md). Nothing of stock's is published or copied.
 - **Developer:** build on the PC (`tools/wsl/build.sh`), then run `tools/install-dev.sh` on the device under stock, over SSH. Later builds go in with `tools/dev/update-basedos.sh` from BasedOS, or as a `.bosupd`.
 
 ## Versions

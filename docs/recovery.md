@@ -67,11 +67,13 @@ resize log, the MBR disk ID), so they aren't listed here.
 
 ## Recovery card (basedos-setup)
 
-`basedos-setup.sh`, choice 2 (or offered before an install), makes a card that restores the
+`basedos-setup.sh` ("Make a recovery SD card", or offered before an install, repair or
+uninstall) makes a card that restores the
 built-in storage with no PC, then or later. Tested 2026-11-20 (pre.3): made on the device, booted,
 the backup checked, and a real restore verified byte for byte against the card's backup and the
 PC backup (with the earlier hold-A screen; the tap sequence and the restore that skips the
-bootloader, below, are newer and not yet tested on the unit).
+bootloader, below, are newer and not yet tested on the unit). Used again 2026-11-21, with a card
+made at pre.7, after BasedOS's boot script hung on the logo: the unit came back as the card had it.
 
 **It needs the eMMC's own bootloader to start.** The boot ROM only ever starts the bootloader from
 the eMMC (sectors 64 to 32767): tested 2026-11-20 with those sectors zeroed and a card carrying a
@@ -270,7 +272,7 @@ and the LEDs flash a pattern.
 
 | Hold at power-on | Mode | What the PC sees | Tested |
 |---|---|---|---|
-| **Menu + Home** | GKD's U-Boot USB mass storage (`ums 0 mmc 0:0`). The screen says "USB mode, long press power to exit". | `2207:0010` "Linux UMS disk 0", 15,634,268,160 bytes: the whole eMMC user area. Windows mounts p1 (`EMUELEC`). | Read: all six `/flash` files matched the c8ed06c fingerprint, at about 32 MB/s. Raw read and write need an administrator. Not written. |
+| **Menu + Home** | GKD's U-Boot USB mass storage (`ums 0 mmc 0:0`). The screen says "USB mode, long press power to exit". | `2207:0010` "Linux UMS disk 0", 15,634,268,160 bytes: the whole eMMC user area. Windows mounts p1 (`EMUELEC`). | Read: all six `/flash` files matched the c8ed06c fingerprint, at about 32 MB/s. Raw read and write need an administrator. Not written. Came up again 2026-11-21 while the eMMC's boot script hung on the logo (not used: no PC at hand). |
 | **Volume Down** | **Maskrom** (boot ROM download). Black screen. | `2207:350E` "Rockusb Device". RKDevTool reports "Found One MASKROM Device". | **Full restore tested.** The loader was downloaded to RAM, flash info read (Total Sector `0x1d1f000`, the whole eMMC), and the entire 15.6 GB image written from sector 0. Read back from the rescue card, the whole eMMC's md5 matched the backup exactly. Stock then booted. |
 | none, rescue card in the slot | the rescue card (see above) | none | Booted, read, restore write. |
 

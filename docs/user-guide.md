@@ -169,11 +169,11 @@ once (or whatever `/data/boot-keys.conf` maps them to), without restarting first
 
 If anything goes wrong, see [recovery.md](recovery.md). In short, from gentlest to strongest:
 
-1. **Recovery card** (basedos-setup, choice 2): power on with it in; it checks its backup, and
+1. **Recovery card** (basedos-setup's "Make a recovery SD card"): power on with it in; it checks its backup, and
    when you tap A, B, X, Y in that order it puts the built-in storage back as it was when the card
    was made, then checks it. Tapping power powers off without writing. No PC needed. A restore
    from a recovery card was verified byte for byte on a unit (2026-11-20, with the earlier
-   hold-A screen).
+   hold-A screen), and one brought a unit back after a boot script hung (2026-11-21).
 2. **USB disk mode**: hold **Menu + Home** and power on; the whole eMMC appears on your PC.
 3. **Maskrom**: hold **Volume Down** and power on; RKDevTool on a PC can rewrite the whole eMMC
    (tested, including a full restore).
@@ -189,3 +189,5 @@ the bootloader).
 - BasedOS: `/data/basedos.log` on the eMMC (`basedos-data/basedos.log` seen from stock), about the
   last 256 KB; the part before is in `basedos.log.1`.
 - spruce: `Saves/spruce/spruce.log` and `pyui.log` on the card.
+- Stock's Ports entries: "Uninstall BasedOS" logs to `basedos-uninstall.log` on stock's data
+  partition (`/storage`), which it leaves there.

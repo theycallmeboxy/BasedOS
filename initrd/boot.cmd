@@ -1,7 +1,8 @@
 # BasedOS's boot script (initrd/boot.cmd; tools/mkboot.py script wraps it for U-Boot as boot.scr).
 # BasedOS is installed next to stock on the eMMC (docs/plan.md, Architecture): this script takes the
-# place of stock's boot.scr on stock's boot partition, and stock's own is kept as
-# basedos/boot.scr.stock. It boots stock's own kernel and device trees, from that same partition,
+# place of stock's boot.scr on stock's boot partition, and stock's own is kept beside it as
+# boot.scr.stock (stock's file under another name: outside BasedOS's folder, so removing that
+# folder never takes it). It boots stock's own kernel and device trees, from that same partition,
 # with BasedOS's initrd, which mounts stock's SYSTEM read-only under BasedOS's own system layer.
 #
 #   Image, rk3576-gkd-atom*.dtb    stock's, as stock boots them
@@ -63,7 +64,7 @@ if test "${loaded}" = "1"; then
 fi
 
 echo "BasedOS: stock's kernel, its device tree or BasedOS's initrd can't be loaded"
-if load ${bdev} ${pxefile_addr_r} basedos/boot.scr.stock; then
+if load ${bdev} ${pxefile_addr_r} boot.scr.stock; then
 	echo "BasedOS: booting stock"
 	source ${pxefile_addr_r}
 fi

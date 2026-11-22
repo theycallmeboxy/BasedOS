@@ -210,8 +210,8 @@ say "  - About 5 to 25 minutes. Don't power off or take the card out while it ru
 #   partial    a BasedOS folder with neither: an install that didn't finish (interrupted before it
 #              switched the boot script).
 #   leftovers  no folder, but BasedOS's data or Ports entries (an uninstall that didn't finish).
-#   broken     BasedOS's boot script with no BasedOS folder: it can't start BasedOS, and stock's own
-#              script went with the folder.
+#   (BasedOS's boot script with no BasedOS folder counts as installed, and Repair or Uninstall
+#   fixes it, as long as stock's own boot script is still kept beside it.)
 # scr_ok <file>: a whole U-Boot script image: its magic, the type "script", and the size its header
 # gives (as basedos-boot checks them).
 scr_ok() {
@@ -223,6 +223,10 @@ scr_ok() {
 }
 is_basedos_scr() { dd if="$1" bs=64 skip=1 2>/dev/null | grep -q "rdinit=/basedos/init"; }
 B=$STOCK_P1/basedos
+# Stock's own boot script, kept beside its place while BasedOS's is there: stock's file under
+# another name, outside BasedOS's folder, so removing that folder never takes it. (Installs before
+# 2026-11-21 kept it in BasedOS's folder: OLD_SS, moved by Repair.)
+SS=$STOCK_P1/boot.scr.stock OLD_SS=$B/boot.scr.stock
 BD=/storage/basedos-data
 PORTS=/storage/games-internal/roms/ports
 # Every place BasedOS has put its Ports entries, and their names (older ones too).
@@ -236,34 +240,41 @@ any_entry() {
 	done
 	return 1
 }
-# stock's boot script as BasedOS saved it: a whole script, and not BasedOS's.
-stock_saved_ok() { scr_ok $B/boot.scr.stock && ! is_basedos_scr $B/boot.scr.stock; }
-STATE=none DISABLED=""
+# The kept copy of stock's boot script (where an older install kept it if it isn't beside its
+# place), and whether it's a whole script and not BasedOS's.
+saved_stock() { if [ -f $SS ] || [ ! -f $OLD_SS ]; then echo $SS; else echo $OLD_SS; fi; }
+stock_saved_ok() { scr_ok "$(saved_stock)" && ! is_basedos_scr "$(saved_stock)"; }
+STATE=none DISABLED="" NOFOLDER=""
 if is_basedos_scr $STOCK_P1/boot.scr; then
-	if [ -d "$B" ]; then STATE=installed; else STATE=broken; fi
+	STATE=installed
+	if [ ! -d "$B" ]; then
+		NOFOLDER=1
+		stock_saved_ok || STATE=broken
+	fi
 elif [ -f "$B/boot.scr.basedos" ]; then
 	STATE=installed DISABLED=1
 elif [ -d "$B" ]; then
 	STATE=partial
-elif [ -d "$BD" ] || any_entry; then
+elif [ -d "$BD" ] || [ -f $SS ] || any_entry; then
 	STATE=leftovers
 fi
 INSTALLED=""; [ $STATE = installed ] && INSTALLED=1
 [ $STATE = broken ] &&
-	die "$STOCK_P1/boot.scr is BasedOS's, but BasedOS's folder (with stock's own boot script) is gone: the recovery card restores the built-in storage (docs/recovery.md)"
+	die "$STOCK_P1/boot.scr is BasedOS's, but BasedOS's folder is gone and stock's own boot script isn't kept beside it: the recovery card restores the built-in storage (docs/recovery.md)"
 say ""
 case $STATE in
 installed)
 	if [ -n "$DISABLED" ]; then say "BasedOS is installed, and disabled (stock starts)."
+	elif [ -n "$NOFOLDER" ]; then say "BasedOS's boot script is there, but its folder ($B) is gone: Repair puts it back."
 	else say "BasedOS is installed."; fi ;;
 partial) say "An earlier BasedOS install didn't finish (stock starts; $B is left)." ;;
-leftovers) say "BasedOS isn't installed, but its settings or Ports entries are left from before." ;;
+leftovers) say "BasedOS isn't installed, but some of its files are left from before." ;;
 esac
 # The choices for what's there: "<target>|<label>" lines.
 case $STATE in
 none) CHOICES="install|Install BasedOS on the built-in storage, next to stock" ;;
 leftovers) CHOICES="install|Install BasedOS on the built-in storage, next to stock
-uninstall|Remove what's left of BasedOS (its settings and Ports entries)" ;;
+uninstall|Remove what's left of BasedOS" ;;
 partial) CHOICES="install|Install BasedOS, replacing the unfinished install
 uninstall|Remove the unfinished install" ;;
 installed) CHOICES="repair|Repair BasedOS: put BasedOS $VERSION back, keeping its settings
@@ -282,7 +293,7 @@ case "$_a" in ''|*[!0-9]*) die "no choice made" ;; esac
 TARGET=$(echo "$CHOICES" | sed -n "${_a}p" | cut -d'|' -f1)
 # Uninstalling an enabled BasedOS puts stock's saved boot script back: it must be whole.
 if [ "$TARGET" = uninstall ] && is_basedos_scr $STOCK_P1/boot.scr && ! stock_saved_ok; then
-	die "BasedOS's copy of stock's boot script ($B/boot.scr.stock) is missing or damaged, so stock's can't be put back: the recovery card restores the built-in storage (docs/recovery.md)"
+	die "the kept copy of stock's boot script ($(saved_stock)) is missing or damaged, so stock's can't be put back: the recovery card restores the built-in storage (docs/recovery.md)"
 fi
 
 REC=no
@@ -344,7 +355,7 @@ repair)
 	item "Put BasedOS $VERSION's system, initrd and boot script back. Its settings stay."
 	[ -n "$DISABLED" ] && say "     ${C_DIM}(It stays disabled: 'Enable BasedOS' in stock's Ports starts it.)${C_0}"
 	if [ -z "$DISABLED" ] && ! stock_saved_ok; then
-		warn "BasedOS's copy of stock's boot script is missing or damaged: Repair can't bring it back, so Disable and Uninstall won't work. The recovery card restores the built-in storage."
+		warn "The kept copy of stock's boot script is missing or damaged: Repair can't bring it back, so Disable and Uninstall won't work. The recovery card restores the built-in storage."
 	fi ;;
 uninstall)
 	if [ $STATE = installed ]; then item "Uninstall BasedOS: stock's boot script back, BasedOS's files and settings removed."
@@ -674,7 +685,7 @@ install)
 	# its folder; it's replaced.
 	if [ $STATE = partial ]; then rm -rf "$B" || die "can't remove the unfinished install's $B"; fi
 	mkdir -p "$B" || die "can't make $B"
-	put $STOCK_P1/boot.scr "$B/boot.scr.stock"
+	put $STOCK_P1/boot.scr $SS
 	put "$HERE/rootfs.squashfs" "$B/rootfs.squashfs"
 	put "$HERE/initrd.uimg" "$B/initrd.uimg"
 	# BasedOS's boot script last: it switches the device over.
@@ -698,10 +709,15 @@ repair)
 	step "Repairing BasedOS"
 	mount -o remount,rw $STOCK_P1 || die "can't write $STOCK_P1"
 	P1_RW=1
-	# Disabled, stock's boot script is the active one: saved again if BasedOS's copy is gone.
+	mkdir -p "$B" || die "can't make $B"
+	# Stock's boot script's copy beside its place, where this release's boot script looks for it:
+	# moved from BasedOS's folder (older installs), or, disabled (stock's is the active one), saved
+	# again if it's gone.
+	[ ! -f $SS ] && stock_saved_ok && put $OLD_SS $SS
 	if [ -n "$DISABLED" ] && ! stock_saved_ok; then
-		scr_ok $STOCK_P1/boot.scr && put $STOCK_P1/boot.scr "$B/boot.scr.stock"
+		scr_ok $STOCK_P1/boot.scr && put $STOCK_P1/boot.scr $SS
 	fi
+	[ -f $SS ] && rm -f $OLD_SS
 	dev_leftovers
 	put "$HERE/rootfs.squashfs" "$B/rootfs.squashfs"
 	put "$HERE/initrd.uimg" "$B/initrd.uimg"
@@ -728,9 +744,14 @@ uninstall)
 	mount -o remount,rw $STOCK_P1 || die "can't write $STOCK_P1"
 	P1_RW=1
 	# Stock's boot script first, if BasedOS's is the active one (checked in phase 1).
-	if is_basedos_scr $STOCK_P1/boot.scr; then put "$B/boot.scr.stock" $STOCK_P1/boot.scr; fi
+	if is_basedos_scr $STOCK_P1/boot.scr; then put "$(saved_stock)" $STOCK_P1/boot.scr; fi
 	# Then BasedOS's files: nothing boots them any more.
 	rm -rf "$B" || die "can't remove $B"
+	# Stock's boot script is in its place: its copy goes, if it's that same file.
+	if [ -f $SS ]; then
+		if [ "$(md5sum < $SS)" = "$(md5sum < $STOCK_P1/boot.scr)" ]; then rm -f $SS
+		else warn "kept $SS: it isn't the boot script in place, so it may be stock's only copy"; fi
+	fi
 	is_basedos_scr $STOCK_P1/boot.scr.prev 2>/dev/null && rm -f $STOCK_P1/boot.scr.prev
 	sync
 	mount -o remount,ro $STOCK_P1

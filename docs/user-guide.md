@@ -32,7 +32,7 @@ downloads and writes. What it offers depends on what it finds on the device:
 | On the device | Choices |
 |---|---|
 | No BasedOS | **Install BasedOS on the built-in storage (eMMC)**, next to stock |
-| BasedOS installed (on or disabled) | **Repair BasedOS**: puts this release's BasedOS back (its system, initrd and boot script), keeps its settings and clears its boot counter. For a BasedOS that no longer starts (the device then starts stock), or to go back to this release. A disabled one stays disabled. **Uninstall BasedOS**: stock's boot script back, BasedOS's files, settings and Ports entries removed; stock is as it was |
+| BasedOS installed (on or disabled; also when its folder was deleted, as long as stock's own boot script, kept beside BasedOS's as `boot.scr.stock`, is still there) | **Repair BasedOS**: puts this release's BasedOS back (its system, initrd and boot script), keeps its settings and clears its boot counter. For a BasedOS that no longer starts (the device then starts stock), or to go back to this release. A disabled one stays disabled. **Uninstall BasedOS**: stock's boot script back, BasedOS's files, settings and Ports entries removed; stock is as it was |
 | An install that didn't finish | **Install** (replaces it), or **Remove** it |
 | Settings or Ports entries left from an uninstall that didn't finish | **Install**, or **Remove** what's left |
 | Always | **Make a recovery SD card**: see "Recovery" below. You type `ERASE` to confirm the card |

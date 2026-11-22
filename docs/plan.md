@@ -106,7 +106,7 @@ complete and bootable.
 | Region | Contents |
 |---|---|
 | sectors 0 to 32767 | stock's MBR, idbloader and U-Boot FIT. Never written. |
-| p1 vfat, 3 GB (`/flash` under stock, `/boot` under BasedOS) | stock's own files, used in place and never changed: `SYSTEM` (2.3 GB, mounted read-only at `/stock`), `Image`, DTBs (booted by BasedOS's boot script); `boot.scr` (BasedOS's own while BasedOS is on; stock's kept as `basedos/boot.scr.stock`); `basedos/`: `initrd.uimg`, the system layer (`rootfs.squashfs`; an installed update waits as `rootfs.new` until the restart) |
+| p1 vfat, 3 GB (`/flash` under stock, `/boot` under BasedOS) | stock's own files, used in place and never changed: `SYSTEM` (2.3 GB, mounted read-only at `/stock`), `Image`, DTBs (booted by BasedOS's boot script); `boot.scr` (BasedOS's own while BasedOS is on; stock's own kept beside it as `boot.scr.stock`, outside BasedOS's folder: stock's file under another name, renamed back at uninstall); `basedos/`: `initrd.uimg`, the system layer (`rootfs.squashfs`; an installed update waits as `rootfs.new` until the restart) |
 | p2 ext4, 11.6 GB (stock's `/storage`) | stock's data; `basedos-data/`, BasedOS's `/data` (logs, update state, accounts, Wi-Fi, SSH keys) |
 | `boot0`, `boot1` | an old Amlogic loader the RK3576 never reads; left alone |
 

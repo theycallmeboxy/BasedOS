@@ -38,7 +38,7 @@ echo "$(date) uninstall: text_viewer answered $rc (yes is $YES)" >> $LOG
 
 # Stock's boot script, if BasedOS's is the active one: the saved copy must be a whole stock script.
 if is_basedos $P1/boot.scr; then
-	SAVED=$B/boot.scr.stock
+	SAVED=$P1/boot.scr.stock
 	scr_ok "$SAVED" && ! is_basedos "$SAVED" || fail "Couldn't uninstall BasedOS." "BasedOS's saved copy of stock's boot script isn't a whole one"
 	mount -o remount,rw $P1 || fail "Couldn't uninstall BasedOS." "can't write $P1"
 	rm -f $P1/boot.scr.new
@@ -56,6 +56,8 @@ fi
 # Then BasedOS's files: nothing boots them any more. An older developer update's copy of BasedOS's
 # boot script beside stock's files goes too (the initrd's uninstall removes it the same way).
 rm -rf $B
+# Stock's boot script is back under its own name: its copy goes (only if it is that file).
+[ "$(md5sum < $P1/boot.scr.stock 2>/dev/null)" = "$(md5sum < $P1/boot.scr)" ] && rm -f $P1/boot.scr.stock
 is_basedos $P1/boot.scr.prev 2>/dev/null && rm -f $P1/boot.scr.prev
 sync
 mount -o remount,ro $P1

@@ -18,7 +18,7 @@
 #
 # The maintenance menu (basedos-menu) and the Start boot key call these.
 # install-dev.sh, which installed BasedOS, changed only these: it kept stock's boot.scr as
-# basedos/boot.scr.stock and wrote BasedOS's own; stock's SYSTEM, kernel, DTBs and /storage are
+# boot.scr.stock beside it and wrote BasedOS's own; stock's SYSTEM, kernel, DTBs and /storage are
 # untouched.
 #
 # Caution, since a wrong boot.scr is the one thing here that can stop the device booting:
@@ -41,6 +41,8 @@ DISABLE_NAME="Disable BasedOS.sh"
 UNINSTALL_NAME="Uninstall BasedOS.sh"
 OLD_RETURN_NAME="Return to BasedOS.sh"
 KNOWN_STOCK=/usr/share/basedos/stock-boot-scr.sha256
+# Stock's own boot script, kept beside its place (outside BasedOS's folder) while BasedOS's is there.
+SS=/boot/boot.scr.stock
 
 die() { log "boot: $*"; echo "basedos-boot: $*" >&2; exit 1; }
 
@@ -126,7 +128,7 @@ stock_once() {
 disable() {
 	check_places
 	[ "$(scr_kind /boot/boot.scr)" = basedos ] || die "/boot/boot.scr isn't BasedOS's; nothing to disable"
-	check_stock $B/boot.scr.stock || die "$B/boot.scr.stock isn't a stock boot script; not disabling"
+	check_stock $SS || die "$SS isn't a stock boot script; not disabling"
 	# 1. The way back (and "Uninstall BasedOS"), written and read back before anything that boots
 	# changes.
 	stock_entries "$ENABLE_NAME" "$UNINSTALL_NAME" || die "couldn't write '$ENABLE_NAME' in stock's Ports; not disabling"
@@ -136,7 +138,7 @@ disable() {
 		{ ro; undo_return; die "couldn't save BasedOS's boot script; not disabling"; }
 	# 2. The switch. On a failure, BasedOS's script goes back (put keeps the old file whole until
 	# the rename, so boot.scr is one or the other either way).
-	put $B/boot.scr.stock /boot/boot.scr && cmp -s $B/boot.scr.stock /boot/boot.scr || {
+	put $SS /boot/boot.scr && cmp -s $SS /boot/boot.scr || {
 		cmp -s $B/boot.scr.basedos /boot/boot.scr || put $B/boot.scr.basedos /boot/boot.scr
 		rm -f $B/boot.scr.basedos; ro; undo_return
 		die "couldn't write stock's boot script; still BasedOS"
@@ -148,14 +150,14 @@ disable() {
 
 uninstall() {
 	check_places
-	check_stock $B/boot.scr.stock || die "$B/boot.scr.stock isn't a stock boot script; not uninstalling"
+	check_stock $SS || die "$SS isn't a stock boot script; not uninstalling"
 	grep -q "^$BOOT_P2 /data " /proc/mounts || die "/data isn't on the boot disk this boot; can't leave the flag"
 	# The removal itself happens at the restart, in BasedOS's initrd, before anything is mounted
 	# from these files: removing a running system's files leaves them half freed (stock's fsck
 	# then finds them as FSCK*.REC on p1) and some can't go at all (/etc/passwd, bound from
 	# /data). Here: everything checked, and the flag left with the SHA-256 of the stock boot
 	# script that was checked, which the initrd puts back only if it's still that file.
-	_sha=$(sha256sum < $B/boot.scr.stock | cut -c1-64)
+	_sha=$(sha256sum < $SS | cut -c1-64)
 	echo "$_sha" > /data/uninstall.new && sync && mv /data/uninstall.new /data/uninstall && sync &&
 		[ "$(head -c 64 /data/uninstall)" = "$_sha" ] || { rm -f /data/uninstall /data/uninstall.new; die "couldn't leave the uninstall flag"; }
 	rm -f /data/boot-stock-once
@@ -170,7 +172,7 @@ status() {
 	stock) echo "next boot: stock (BasedOS disabled; '$ENABLE_NAME' in stock's Ports enables it)" ;;
 	*) echo "next boot: /boot/boot.scr DOESN'T LOOK LIKE A BOOT SCRIPT" ;;
 	esac
-	if check_stock $B/boot.scr.stock; then echo "stock's boot script: saved"; else echo "stock's boot script: NOT saved or not valid"; fi
+	if check_stock $SS; then echo "stock's boot script: saved"; else echo "stock's boot script: NOT saved or not valid"; fi
 	echo "system: BasedOS $BASEOS_VERSION ($BASEOS_BUILD)"
 	[ -f $B/rootfs.new ] && echo "update: installed, put in place at the next start"
 	echo "initrd interface: $(initrd_abi)"

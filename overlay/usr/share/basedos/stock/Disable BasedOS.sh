@@ -44,8 +44,8 @@ put() {
 
 scr_ok $P1/boot.scr && is_basedos $P1/boot.scr ||
 	fail "BasedOS is already disabled."
-scr_ok $B/boot.scr.stock && ! is_basedos $B/boot.scr.stock ||
-	fail "BasedOS's files are damaged." "stock's saved boot script ($B/boot.scr.stock) isn't there or isn't whole"
+scr_ok $P1/boot.scr.stock && ! is_basedos $P1/boot.scr.stock ||
+	fail "BasedOS's files are damaged." "stock's saved boot script ($P1/boot.scr.stock) isn't there or isn't whole"
 
 # 1. "Enable BasedOS" in Ports, from BasedOS's system layer (an installed update's first: it's
 # the one that would boot).
@@ -72,7 +72,7 @@ if ! put $P1/boot.scr $B/boot.scr.basedos; then
 	rm -f $B/boot.scr.basedos; sync; mount -o remount,ro $P1; undo
 	fail "Couldn't disable BasedOS." "couldn't save BasedOS's boot script"
 fi
-if ! put $B/boot.scr.stock $P1/boot.scr; then
+if ! put $P1/boot.scr.stock $P1/boot.scr; then
 	# boot.scr is one whole file or the other (put renames only once the copy reads back).
 	[ "$(md5sum < $B/boot.scr.basedos)" = "$(md5sum < $P1/boot.scr)" ] || put $B/boot.scr.basedos $P1/boot.scr
 	rm -f $B/boot.scr.basedos; sync; mount -o remount,ro $P1; undo

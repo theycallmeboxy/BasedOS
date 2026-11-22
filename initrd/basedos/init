@@ -62,10 +62,10 @@ if $bb mount -t ext4 -o noatime $P2 /p2 2>/dev/null; then
 	# boots as usual. A power cut after the boot script is back leaves leftovers, but stock boots.
 	if [ -f /p2/basedos-data/uninstall ]; then
 		want=$($bb head -c 64 /p2/basedos-data/uninstall)
-		have=$($bb sha256sum < /p1/basedos/boot.scr.stock 2>/dev/null | $bb cut -c1-64)
+		have=$($bb sha256sum < /p1/boot.scr.stock 2>/dev/null | $bb cut -c1-64)
 		if [ ${#want} -eq 64 ] && [ "$want" = "$have" ] && $bb mount -o remount,rw /p1; then
 			$bb rm -f /p1/boot.scr.new
-			if $bb cp /p1/basedos/boot.scr.stock /p1/boot.scr.new && $bb sync &&
+			if $bb cp /p1/boot.scr.stock /p1/boot.scr.new && $bb sync &&
 				echo 3 > /proc/sys/vm/drop_caches &&
 				[ "$($bb sha256sum < /p1/boot.scr.new | $bb cut -c1-64)" = "$want" ] &&
 				$bb mv /p1/boot.scr.new /p1/boot.scr && $bb sync &&
@@ -76,6 +76,8 @@ if $bb mount -t ext4 -o noatime $P2 /p2 2>/dev/null; then
 				done
 				$bb rm -rf /p2/basedos-data
 				$bb rm -rf /p1/basedos
+				# Stock's boot script is back under its own name: the copy goes.
+				$bb rm -f /p1/boot.scr.stock
 				# An older developer update's copy of BasedOS's boot script, beside stock's files.
 				$bb grep -q "rdinit=/basedos/init" /p1/boot.scr.prev 2>/dev/null && $bb rm -f /p1/boot.scr.prev
 				$bb sync

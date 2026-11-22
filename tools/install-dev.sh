@@ -6,7 +6,7 @@
 #
 # A fresh setup (docs/plan.md, Architecture): adds /flash/basedos/ (p1) and
 # /storage/basedos-data/ (p2), puts BasedOS's own boot.scr in place of stock's and keeps stock's
-# copy in /flash/basedos/boot.scr.stock. In basedos/: the initrd and the system layer
+# copy beside it as /flash/boot.scr.stock. In basedos/: the initrd and the system layer
 # (rootfs.squashfs). Stock's SYSTEM, Image, DTBs and /storage stay as they are; BasedOS
 # boots stock's kernel and DTBs and mounts its SYSTEM read-only, in place (docs/plan.md,
 # Architecture), so the system layer must be made for this stock build (its needs-stock).
@@ -37,8 +37,8 @@ put() {
 }
 
 if [ "${1:-}" = revert ]; then
-	[ -f $P1/basedos/boot.scr.stock ] || die "no saved stock boot.scr"
-	rw; put $P1/basedos/boot.scr.stock $P1/boot.scr; ro
+	[ -f $P1/boot.scr.stock ] || die "no saved stock boot.scr"
+	rw; put $P1/boot.scr.stock $P1/boot.scr; ro
 	echo "stock boot.scr restored; reboot to boot stock"
 	exit 0
 fi
@@ -59,11 +59,11 @@ HAVE=$(sed -n 's/^BUILD_ID="\{0,1\}\([0-9a-f]*\)"\{0,1\}$/\1/p' /etc/os-release)
 rw
 trap ro EXIT
 mkdir -p $P1/basedos
-if [ ! -f $P1/basedos/boot.scr.stock ]; then
+if [ ! -f $P1/boot.scr.stock ]; then
 	# Never save BasedOS's own script as "stock": revert would then be a no-op.
 	dd if=$P1/boot.scr bs=72 skip=1 2>/dev/null | grep -q "BasedOS" &&
 		die "boot.scr is already BasedOS's and there is no saved stock copy"
-	put $P1/boot.scr $P1/basedos/boot.scr.stock
+	put $P1/boot.scr $P1/boot.scr.stock
 fi
 # The system layer and initrd first; boot.scr, which switches the device over, only once they
 # verify.

@@ -69,6 +69,12 @@ replace() {
 if [ -s "$SRC/boot.scr" ]; then
 	scr=$(dd if="$SRC/boot.scr" bs=72 skip=1 2>/dev/null)
 	case "$scr" in *"BasedOS"*"rdinit=/basedos/init"*) ;; *) die "$SRC/boot.scr isn't BasedOS's (mkboot.py script)" ;; esac
+	# Stock's own, from where an older install kept it (BasedOS's folder) to beside its place, where
+	# this boot script looks for it.
+	if [ -f "$B/boot.scr.stock" ] && [ ! -f /boot/boot.scr.stock ]; then
+		put "$B/boot.scr.stock" /boot/boot.scr.stock
+	fi
+	[ -f /boot/boot.scr.stock ] && rm -f "$B/boot.scr.stock"
 	# The old one in BasedOS's folder, not beside stock's files: uninstall removes basedos/ whole.
 	replace "$SRC/boot.scr" /boot/boot.scr "$B/boot.scr.prev"
 fi

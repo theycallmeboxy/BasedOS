@@ -35,7 +35,7 @@ On the eMMC (stock's partition layout; the bootloader area is never written):
 
 | Partition | Holds |
 |---|---|
-| p1 vfat (stock's) | stock's own files, untouched (BasedOS boots stock's kernel and DTBs and mounts its SYSTEM from here); BasedOS's boot files, `boot.scr` (stock's kept in `basedos/`) and `basedos/initrd.uimg`, which setup installs and updates don't carry; `basedos/rootfs.squashfs`: the system layer (an installed update waits beside it as `rootfs.new` until the restart) |
+| p1 vfat (stock's) | stock's own files, untouched (BasedOS boots stock's kernel and DTBs and mounts its SYSTEM from here); BasedOS's boot files, `boot.scr` (stock's own kept beside it as `boot.scr.stock`, outside BasedOS's folder) and `basedos/initrd.uimg`, which setup installs and updates don't carry; `basedos/rootfs.squashfs`: the system layer (an installed update waits beside it as `rootfs.new` until the restart) |
 | p2 ext4 (stock's) | stock's data; `basedos-data/`, BasedOS's `/data`: SSH keys, Wi-Fi config, logs, boot counter |
 
 Boot: U-Boot runs BasedOS's `boot.scr` → stock's kernel and DTB, the panel at 60 Hz,

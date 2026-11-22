@@ -365,8 +365,8 @@ fi
 # Phase 2: no more questions.
 PHASE2=1
 
-# The rest of the release, now.
-step "Getting BasedOS $VERSION"
+# The rest of the release, now (Uninstall alone needs none of it).
+[ "$REC" = yes ] || [ "$TARGET" = install ] || [ "$TARGET" = repair ] && step "Getting BasedOS $VERSION"
 if [ "$REC" = yes ]; then
 	for f in recovery-initrd.uimg recovery.scr rk3576_usb_loader_ddr1.13_usbplug1.04.bin LICENSE.rkbin.txt; do release_file $f; done
 fi
@@ -378,7 +378,7 @@ if [ "$TARGET" = install ] || [ "$TARGET" = repair ]; then
 		die "rootfs.squashfs isn't made for this stock build"
 	umount "$T/mnt/rootfs"
 fi
-ok "downloaded and checked"
+[ "$REC" = yes ] || [ "$TARGET" = install ] || [ "$TARGET" = repair ] && ok "downloaded and checked"
 
 # put <src> <dst>: written as <dst>.new, synced, re-read (not from the page cache) and compared,
 # then renamed.

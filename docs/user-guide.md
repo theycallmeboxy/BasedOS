@@ -151,7 +151,8 @@ once (or whatever `/data/boot-keys.conf` maps them to), without restarting first
   folder) resets it.
   A start that gets as far as BasedOS's own start-up counts as a good one, even when its data
   partition needs a check it can't do by itself.
-- **Bad boot files**: if BasedOS's initrd is missing or damaged, the boot script boots stock.
+- **Bad boot files**: if BasedOS's initrd is missing or damaged, or its whole folder is gone,
+  the boot script boots stock (with its folder deleted: tested 2026-11-21).
   Updates never change the boot files, so after a bad update stock still starts, and setup can
   repair BasedOS from there.
 - **Stock changed**: if stock isn't the build BasedOS was made for (reflashed, say), BasedOS

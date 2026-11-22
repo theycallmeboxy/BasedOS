@@ -12,7 +12,12 @@
 # before boot.scr changes, and boot.scr is written as boot.scr.new, read back, then renamed.
 P1=/flash
 B=$P1/basedos
+# Stock's Ports: games-internal/roms/ports, or p2's own roms/ports when stock's automount bound
+# nothing on /storage/roms (its setting "external" with a spruce card in; basedos-boot, Stock's
+# Ports). Never the card's.
 PORTS=/storage/games-internal/roms/ports
+OWN=""
+grep -q " /storage/roms " /proc/mounts || OWN=/storage/roms/ports
 NAME="Disable BasedOS.sh"
 ENABLE="Enable BasedOS.sh"
 show() { /usr/bin/text_viewer "$@" >/dev/null 2>&1; }
@@ -50,12 +55,13 @@ scr_ok $P1/boot.scr.stock && ! is_basedos $P1/boot.scr.stock ||
 # 1. "Enable BasedOS" in Ports, from BasedOS's system layer (an installed update's first: it's
 # the one that would boot).
 m=/tmp/basedos-disable.$$
-mkdir -p "$m" "$PORTS" || fail "Couldn't disable BasedOS." "can't make $m or $PORTS"
+mkdir -p "$m" "$PORTS" $OWN || fail "Couldn't disable BasedOS." "can't make $m or $PORTS"
 got=""
 for s in rootfs.new rootfs.squashfs; do
 	[ -f "$B/$s" ] || continue
 	mount -t squashfs -o ro,loop "$B/$s" "$m" 2>/dev/null || continue
-	if [ -f "$m/usr/share/basedos/stock/$ENABLE" ] && put "$m/usr/share/basedos/stock/$ENABLE" "$PORTS/$ENABLE"; then
+	if [ -f "$m/usr/share/basedos/stock/$ENABLE" ] && put "$m/usr/share/basedos/stock/$ENABLE" "$PORTS/$ENABLE" &&
+		{ [ -z "$OWN" ] || put "$m/usr/share/basedos/stock/$ENABLE" "$OWN/$ENABLE"; }; then
 		got=1
 	fi
 	umount "$m"
@@ -63,8 +69,8 @@ for s in rootfs.new rootfs.squashfs; do
 done
 rmdir "$m"
 [ -n "$got" ] || fail "Couldn't disable BasedOS." "couldn't put 'Enable BasedOS' in stock's Ports"
-chmod 755 "$PORTS/$ENABLE"
-undo() { rm -f "$PORTS/$ENABLE"; sync; }
+chmod 755 "$PORTS/$ENABLE" ${OWN:+"$OWN/$ENABLE"}
+undo() { rm -f "$PORTS/$ENABLE" ${OWN:+"$OWN/$ENABLE"}; sync; }
 
 # 2. BasedOS's boot script saved, then stock's in its place.
 mount -o remount,rw $P1 || { undo; fail "Couldn't disable BasedOS." "can't write $P1"; }

@@ -90,29 +90,38 @@ check_places() {
 	grep -q "^$BOOT_P2 $P2 " /proc/mounts || die "the boot disk's p2 ($BOOT_P2) isn't mounted at $P2"
 }
 
-# Stock's Ports, as stock reads it: under stock, /storage/roms is a bind mount of
-# games-internal/roms on its data partition (p2), so that's where its Ports folder is
-# (games-internal/roms/ports). Not p2's own roms/ports (hidden under the bind), and not Tools
-# (/storage/.config/modules, which stock rsyncs with --delete from its image at every boot).
-stock_ports_dir() { echo "$P2/games-internal/roms/ports"; }
+# Stock's Ports, as stock reads it: its automount sets /storage/roms up at every start, by its
+# setting system.merged.device. "internal" binds games-internal/roms on its data partition (p2);
+# "external" binds the card's roms folder, and with a spruce card (its folder is "Roms", and the
+# lookup is case-sensitive) nothing is bound, so stock shows p2's own roms (seen 2026-11-22, after
+# a recovery-card restore had reset the setting). So the entries go to both p2 places, never to
+# the card. Not Tools (/storage/.config/modules, which stock rsyncs with --delete from its image
+# at every boot).
+STOCK_PORTS="$P2/games-internal/roms/ports $P2/roms/ports"
 # Older places BasedOS put its entries, cleaned up wherever they go.
-OLD_PLACES="$P2/roms/ports $P2/.config/modules"
+OLD_PLACES="$P2/.config/modules"
 
 # stock_entries <name>...: those of "Enable BasedOS", "Disable BasedOS" and "Uninstall BasedOS"
-# (/usr/share/basedos/stock/) into stock's Ports, each written, read back and renamed. 0 if all are.
-# The older "Return to BasedOS" goes, wherever it is.
+# (/usr/share/basedos/stock/) into stock's Ports (both places), each written, read back and
+# renamed; BasedOS's other entries there go (they'd do the wrong thing now), and the older "Return
+# to BasedOS". 0 if all are written.
 STOCK_FILES=/usr/share/basedos/stock
 stock_entries() {
-	_d=$(stock_ports_dir)
-	mkdir -p "$_d" || return 1
-	for _f in "$@"; do
-		cp "$STOCK_FILES/$_f" "$_d/$_f.new" && chmod 755 "$_d/$_f.new" && sync &&
-			cmp -s "$STOCK_FILES/$_f" "$_d/$_f.new" && mv "$_d/$_f.new" "$_d/$_f" && sync ||
-			{ rm -f "$_d/$_f.new"; return 1; }
+	for _d in $STOCK_PORTS; do
+		mkdir -p "$_d" || return 1
+		for _f in "$ENABLE_NAME" "$DISABLE_NAME" "$UNINSTALL_NAME" "$OLD_RETURN_NAME"; do
+			case " $* " in *" $_f "*) ;; *) rm -f "$_d/$_f" ;; esac
+		done
+		for _f in "$@"; do
+			cp "$STOCK_FILES/$_f" "$_d/$_f.new" && chmod 755 "$_d/$_f.new" && sync &&
+				cmp -s "$STOCK_FILES/$_f" "$_d/$_f.new" && mv "$_d/$_f.new" "$_d/$_f" && sync ||
+				{ rm -f "$_d/$_f.new"; return 1; }
+		done
 	done
-	rm -f "$_d/$OLD_RETURN_NAME"
 	for _o in $OLD_PLACES; do rm -f "$_o/$OLD_RETURN_NAME" "$_o/$ENABLE_NAME"; done
 }
+# no_entry <name>: that entry gone from stock's Ports.
+no_entry() { for _d in $STOCK_PORTS; do rm -f "$_d/$1"; done; sync; }
 
 stock_once() {
 	# The flag must be on p2: /data in RAM (p2 unusable this boot) would lose it.
@@ -132,7 +141,7 @@ disable() {
 	# 1. The way back (and "Uninstall BasedOS"), written and read back before anything that boots
 	# changes.
 	stock_entries "$ENABLE_NAME" "$UNINSTALL_NAME" || die "couldn't write '$ENABLE_NAME' in stock's Ports; not disabling"
-	undo_return() { rm -f "$(stock_ports_dir)/$ENABLE_NAME"; sync; }
+	undo_return() { no_entry "$ENABLE_NAME"; }
 	rw
 	put /boot/boot.scr $B/boot.scr.basedos && [ "$(scr_kind $B/boot.scr.basedos)" = basedos ] ||
 		{ ro; undo_return; die "couldn't save BasedOS's boot script; not disabling"; }
@@ -144,7 +153,6 @@ disable() {
 		die "couldn't write stock's boot script; still BasedOS"
 	}
 	ro
-	rm -f "$(stock_ports_dir)/$DISABLE_NAME"; sync
 	log "boot: BasedOS disabled (its files stay; '$ENABLE_NAME' in stock's Ports enables it)"
 }
 

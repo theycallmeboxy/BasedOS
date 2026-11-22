@@ -62,9 +62,14 @@ is_basedos $P1/boot.scr.prev 2>/dev/null && rm -f $P1/boot.scr.prev
 sync
 mount -o remount,ro $P1
 rm -rf $DATA
-for d in /storage/games-internal/roms/ports /storage/roms/ports /storage/.config/modules; do
+# Stock's Ports entries: both places BasedOS writes them (p2's own roms/ports through a plain bind
+# of /storage, which shows p2 without what's mounted over /storage/roms), and older ones.
+r=/tmp/basedos-uninstall-p2
+mkdir -p $r && mount --bind /storage $r || r=""
+for d in /storage/games-internal/roms/ports ${r:+$r/roms/ports} /storage/roms/ports /storage/.config/modules; do
 	rm -f "$d/Enable BasedOS.sh" "$d/Disable BasedOS.sh" "$d/Return to BasedOS.sh" "$d/Uninstall BasedOS.sh"
 done
+[ -n "$r" ] && umount $r; rmdir /tmp/basedos-uninstall-p2 2>/dev/null
 sync
 echo "$(date) uninstall: done" >> $LOG
 show -t "Uninstall BasedOS" -m "BasedOS is uninstalled."

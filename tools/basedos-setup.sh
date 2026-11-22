@@ -144,6 +144,13 @@ step "Checking"
 EMMC=$(disk_of $EMMCC)
 [ "$EMMC" = mmcblk0 ] || die "this doesn't look like a GKD 350H Ultra (no eMMC at mmcblk0)"
 grep -q "^/dev/${EMMC}p1 $STOCK_P1 " /proc/mounts || die "run it on stock ROCKNIX ($STOCK_P1 isn't the eMMC's p1)"
+# What an earlier run left in RAM goes, but never through a mount: a bind of stock's data partition
+# left under $T (a run killed hard) would take its files with it.
+for m in $(awk -v t="$T/" 'index($2, t) == 1 { print $2 }' /proc/mounts | sort -r); do umount "$m" 2>/dev/null; done
+if grep -q " $T/" /proc/mounts; then
+	printf '\nSTOPPED: something is still mounted under %s; restart the device and run setup again\n' "$T" >&2
+	exit 1
+fi
 rm -rf "$T"; mkdir -p "$T" || die "can't make $T"
 
 # Every tool setup uses, before anything else (stock's own: a missing one stops it here, not
@@ -228,9 +235,16 @@ B=$STOCK_P1/basedos
 # 2026-11-21 kept it in BasedOS's folder: OLD_SS, moved by Repair.)
 SS=$STOCK_P1/boot.scr.stock OLD_SS=$B/boot.scr.stock
 BD=/storage/basedos-data
+# Stock's Ports: games-internal/roms/ports, or p2's own roms/ports when stock's automount bound
+# nothing on /storage/roms (its setting "external" with a spruce card in: overlay's basedos-boot,
+# Stock's Ports). Both get the entries; never the card. p2's own is reached through a plain bind of
+# /storage, which shows p2 without what's mounted over /storage/roms.
 PORTS=/storage/games-internal/roms/ports
+P2RAW=$T/mnt/p2
+mkdir -p $P2RAW && mount --bind /storage $P2RAW || die "can't look at stock's data partition ($P2RAW)"
+OWN_PORTS=$P2RAW/roms/ports
 # Every place BasedOS has put its Ports entries, and their names (older ones too).
-PORTS_DIRS="$PORTS /storage/roms/ports /storage/.config/modules"
+PORTS_DIRS="$PORTS $OWN_PORTS /storage/roms/ports /storage/.config/modules"
 PORTS_NAMES="Enable BasedOS.sh|Disable BasedOS.sh|Uninstall BasedOS.sh|Return to BasedOS.sh"
 any_entry() {
 	for _d in $PORTS_DIRS; do
@@ -655,11 +669,13 @@ entries() {
 		for _n in $PORTS_NAMES; do rm -f "$_d/$_n"; done
 		IFS=$_IFS
 	done
-	mkdir -p "$T/mnt/rootfs" $PORTS
+	mkdir -p "$T/mnt/rootfs" $PORTS $OWN_PORTS
 	if mount -t squashfs -o ro,loop "$HERE/rootfs.squashfs" "$T/mnt/rootfs"; then
 		for e in "$@"; do
-			cp "$T/mnt/rootfs/usr/share/basedos/stock/$e" "$PORTS/" && chmod 755 "$PORTS/$e" ||
-				warn "couldn't put '${e%.sh}' in stock's Ports (BasedOS's maintenance menu has it too)"
+			for _d in $PORTS $OWN_PORTS; do
+				cp "$T/mnt/rootfs/usr/share/basedos/stock/$e" "$_d/" && chmod 755 "$_d/$e" ||
+					warn "couldn't put '${e%.sh}' in $_d (BasedOS's maintenance menu has it too)"
+			done
 		done
 		umount "$T/mnt/rootfs"
 	else

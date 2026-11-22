@@ -12,7 +12,9 @@
 #
 # If its files can't be loaded, stock's own boot script runs, so stock boots itself.
 #
-# (U-Boot's shell is old: one condition per if.)
+# (U-Boot's shell is old: one condition per if, and no ' outside comments: an apostrophe inside
+# double quotes, in an echo, hung it on the logo when the fallback below ran (tested 2026-11-21:
+# with one, stock's script never ran; without it, stock booted). tools/mkboot.py refuses them.)
 setenv bdev "${devtype} ${devnum}:${distro_bootpart}"
 
 # Which output U-Boot's display menu chose (GKD's board code sets hdmi_detect): the panel, HDMI
@@ -63,7 +65,7 @@ if test "${loaded}" = "1"; then
 	booti ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r}
 fi
 
-echo "BasedOS: stock's kernel, its device tree or BasedOS's initrd can't be loaded"
+echo "BasedOS: the stock kernel, its device tree or the BasedOS initrd did not load"
 if load ${bdev} ${pxefile_addr_r} boot.scr.stock; then
 	echo "BasedOS: booting stock"
 	source ${pxefile_addr_r}

@@ -97,6 +97,11 @@ def script(src, out):
     s = open(src, "rb").read().replace(b"\r\n", b"\n")
     if not s.endswith(b"\n"):
         s += b"\n"
+    # This U-Boot's shell hangs on an apostrophe inside double quotes (an echo with one stopped
+    # the fallback to stock on the logo, 2026-11-21): none outside comments.
+    for n, line in enumerate(s.split(b"\n"), 1):
+        if b"'" in line and not line.lstrip().startswith(b"#"):
+            sys.exit(f"{src}:{n}: no ' outside comments (U-Boot's shell hangs on it)")
     data = struct.pack(">II", len(s), 0xFFFFFFFF) + s
     with open(out, "xb") as f:
         f.write(uimage(data, typ=6, arch=2, name=b"BasedOS boot script"))  # arch as stock's

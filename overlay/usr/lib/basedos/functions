@@ -34,33 +34,6 @@ BOOT_DISK=${BOOT_DISK:-mmcblk0}
 BOOT_P1=/dev/${BOOT_DISK}p1
 BOOT_P2=/dev/${BOOT_DISK}p2
 
-# Which rootfs slot this boot runs: the initrd loop-mounts rootfs.squashfs (a) or
-# rootfs-b.squashfs (b) as /, with stock's SYSTEM at its /stock. Read from the loop device
-# mounted at /, so a slot image loop-mounted for a look (slot_info) doesn't count.
-boot_slot() {
-	_d=$(awk '$2 == "/" && $1 ~ /^\/dev\/loop/ { d = $1 } END { print d }' /proc/mounts)
-	for _f in ${_d:+/sys/block/${_d#/dev/}/loop/backing_file} /sys/block/loop*/loop/backing_file; do
-		case "$(cat "$_f" 2>/dev/null)" in
-		*/basedos/rootfs-b.squashfs) echo b; return ;;
-		*/basedos/rootfs.squashfs) echo a; return ;;
-		esac
-	done
-	echo "?"
-}
-
-# The rootfs slots on p1 (/boot/basedos): slot_image <a|b> is that slot's system layer; next_slot
-# the one the initrd boots next (the slot file: b, or anything else for a); point_slot <a|b> sets
-# it (p1 must be writable). The initrd's boot counter can still take the other one for a boot.
-slot_image() { if [ "$1" = b ]; then echo /boot/basedos/rootfs-b.squashfs; else echo /boot/basedos/rootfs.squashfs; fi; }
-next_slot() { if [ "$(head -c 2 /boot/basedos/slot 2>/dev/null | tr -d '\n')" = b ]; then echo b; else echo a; fi; }
-point_slot() {
-	if [ "$1" = b ]; then
-		echo b > /boot/basedos/slot.new && sync && mv /boot/basedos/slot.new /boot/basedos/slot
-	else
-		rm -f /boot/basedos/slot
-	fi && sync
-}
-
 # initrd_abi [<initrd.uimg>]: the interface an initrd gives the system layers (its init's ABI),
 # from its U-Boot image name, "BasedOS initrd abi N". "BasedOS initrd" alone is 1, the interface
 # before it had a number; anything else 0.
@@ -75,56 +48,12 @@ initrd_abi() {
 	esac
 }
 
-# slot_info <a|b>: what's in a slot. SI_BUILD is its build (empty if none); SI_FIT is empty if it
-# would start on this device, else why not ("empty" when there's no image). The running slot is
-# read from /etc; another is loop-mounted read-only for a moment, as the initrd would see it.
-slot_info() {
-	SI_BUILD="" SI_FIT=""
-	_img=$(slot_image "$1")
-	[ -f "$_img" ] || { SI_FIT=empty; return 0; }
-	if [ "$1" = "$(boot_slot)" ]; then SI_BUILD=$BASEOS_BUILD; return 0; fi
-	_m=/run/basedos/slot-$1
-	mkdir -p "$_m"
-	if ! mount -t squashfs -o ro,loop "$_img" "$_m" 2>/dev/null; then
-		rmdir "$_m" 2>/dev/null
-		SI_FIT="damaged"
-		return 0
-	fi
-	SI_BUILD=$(sed -n 's/^BASEOS_BUILD=//p' "$_m/etc/baseos-release" 2>/dev/null)
-	_stock=$(cat "$_m/usr/share/basedos/needs-stock" 2>/dev/null)
-	_need=$(cat "$_m/usr/share/basedos/needs-initrd" 2>/dev/null)
-	umount "$_m"
-	rmdir "$_m" 2>/dev/null
-	case "$_need" in ''|*[!0-9]*) _need=1 ;; esac
-	if [ -z "$_stock" ] || [ "$_stock" != "${BASEOS_STOCK_BUILD_ID:-}" ]; then
-		SI_FIT="made for another stock version"
-	elif [ "$_need" -gt "$(initrd_abi)" ]; then
-		SI_FIT="needs a newer BasedOS install"
-	fi
-	return 0
-}
-
-# slot_line <a|b> [<separator>]: one line on a slot, for basedos-boot status and the maintenance
-# menu ("Slot A: ..."; the menu passes ":<TAB>", the boot screen's key-value form).
-slot_line() {
-	slot_info "$1"
-	_sep=${2:-: } _what=""
-	[ "$1" = "$(boot_slot)" ] && _what="running"
-	[ "$1" = "$(next_slot)" ] && _what="${_what:+$_what, }boots next"
-	case "$SI_FIT" in
-	empty) echo "Slot $(echo "$1" | tr ab AB)${_sep}empty" ;;
-	"") echo "Slot $(echo "$1" | tr ab AB)${_sep}${SI_BUILD:-unknown build}${_what:+  ($_what)}" ;;
-	*) echo "Slot $(echo "$1" | tr ab AB)${_sep}${SI_BUILD:+$SI_BUILD, }won't start: $SI_FIT${_what:+  ($_what)}" ;;
-	esac
-}
-
 # The boot screen's info lines for a normal boot (basedos-splash's line kinds: key<TAB>value,
 # @button label).
 splash_boot_info() {
 	{
 		printf 'Version:\t%s\n' "$BASEOS_VERSION"
 		printf 'Build:\t%s\n' "$BASEOS_BUILD"
-		printf 'Active Slot:\t%s\n' "$(boot_slot | tr ab AB)"
 		boot_key_hints
 	} > "$SPLASH_INFO"
 }

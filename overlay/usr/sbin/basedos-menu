@@ -1,27 +1,17 @@
 #!/bin/sh
 # basedos-menu: maintenance mode's menu on the boot screen (frontend-session runs it). It shows
-# what's in each system slot (A/B). Up and Down choose, A runs; the ones that change what boots
-# (an update, the other slot, disable BasedOS, uninstall) want A, B, X, Y tapped in that order, as the
-# recovery card does, and any other button goes back. Wi-Fi and SSH
+# the version that's installed. Up and Down choose, A runs; the ones that change what boots (an
+# update, disable BasedOS, uninstall) want A, B, X, Y tapped in that order, as the recovery card
+# does, and any other button goes back. Wi-Fi and SSH
 # run beside it as before. Each choice is basedos-boot's (or reboot, poweroff), so the same can
 # be done over SSH.
 . /usr/lib/basedos/functions
 
 UP=$(button_code up) DOWN=$(button_code down) A=$(button_code a) B=$(button_code b)
 X=$(button_code x) Y=$(button_code y)
-# The slots, read once: nothing here changes them without restarting.
 TAB=$(printf '\t')
-SLOTS="$(slot_line a ":$TAB")
-$(slot_line b ":$TAB")"
-OTHER=b; [ "$(next_slot)" = b ] && OTHER=a
-OTHER_S=$(echo "$OTHER" | tr ab AB)
-# The running slot, and the spare one updates go to (the running one is never written).
-RUN=$(boot_slot) RUN_S=$(boot_slot | tr ab AB)
-SPARE=b; [ "$RUN" = b ] && SPARE=a
-SPARE_S=$(echo "$SPARE" | tr ab AB)
 ITEMS="stock-once|Boot Stock OS
 update|Install update
-slot|Switch to slot $OTHER_S
 disable|Disable BasedOS
 uninstall|Uninstall BasedOS
 reboot|Restart
@@ -36,7 +26,7 @@ draw() {
 	{
 		echo "!MAINTENANCE MODE"
 		if [ -n "$_ip" ]; then echo "SSH:${TAB}root@$_ip (no password)"; else echo "SSH:${TAB}waiting for Wi-Fi"; fi
-		echo "$SLOTS"
+		printf 'Version:\t%s\nBuild:\t%s\n' "$BASEOS_VERSION" "$BASEOS_BUILD"
 		echo ""
 		_i=0
 		echo "$ITEMS" | while IFS='|' read -r _k _label; do
@@ -134,7 +124,7 @@ run() {
 		draw "Starting stock..."
 		basedos-boot stock-once --reboot || MSG="Couldn't start stock." ;;
 	update)
-		# A .bosupd on the card, picked by hand (older ones too), into the slot that isn't running.
+		# A .bosupd on the card, picked by hand (older ones too).
 		[ -f /run/basedos/data-ok ] || { MSG="Can't update: settings storage unavailable."; return; }
 		QUIET=1 /usr/sbin/mount-frontend >/dev/null 2>&1
 		_list=$(basedos-update list 2>/dev/null)
@@ -149,40 +139,20 @@ run() {
 		_old_ifs=$IFS; IFS='
 '
 		# shellcheck disable=SC2086
-		pick "Install which update?" "It goes into slot $SPARE_S. Slot $RUN_S is running and isn't touched." "" - $_labels || { IFS=$_old_ifs; return; }
+		pick "Install which update?" "Installed now: $BASEOS_BUILD" "" - $_labels || { IFS=$_old_ifs; return; }
 		IFS=$_old_ifs
 		_line=$(echo "$_list" | sed -n "${PICKED}p")
 		_p=${_line%%|*} _r=${_line#*|} _b=${_r%%|*} _r=${_r#*|} _k=${_r%%|*} _w=${_r#*|}
 		[ "$_k" = no ] && { MSG="$_b can't be installed: $_w."; return; }
-		pick "Install $_b in slot $SPARE_S, then:" - "Boot slot $SPARE_S" "Keep booting slot $RUN_S" || return
-		if [ "$PICKED" = 1 ]; then _then=boot; else _then=keep; fi
-		if [ $_then = boot ]; then
-			confirm "Install $_b in slot $SPARE_S and boot it?" "What's in slot $SPARE_S now is replaced." 				"If it doesn't start, slot $RUN_S comes back." || return
-		else
-			confirm "Install $_b in slot $SPARE_S?" "What's in slot $SPARE_S now is replaced." "Slot $RUN_S still boots." || return
-		fi
-		draw "Installing in slot $SPARE_S..."
-		basedos-update install "$_p" $_then
-		case $? in
-		10) while :; do sleep 3600; done ;;   # installed; the reboot is under way
-		0) MSG="Slot $SPARE_S has $_b. Slot $RUN_S still boots."
-		   SLOTS="$(slot_line a ":$TAB")
-$(slot_line b ":$TAB")" ;;
-		*) MSG="Install failed. BasedOS is unchanged." ;;
-		esac ;;
-	slot)
-		# One that can't start isn't offered (basedos-boot would refuse it too).
-		slot_info "$OTHER"
-		case "$SI_FIT" in
-		"") ;;
-		empty) MSG="Slot $OTHER_S is empty."; return ;;
-		*) MSG="Slot $OTHER_S can't start: $SI_FIT."; return ;;
-		esac
-		confirm "Switch to slot $OTHER_S?" "The device restarts into ${SI_BUILD:-it}." || return
-		draw "Switching to slot $OTHER_S..."
-		basedos-boot slot "$OTHER" --reboot 2>/dev/null || MSG="Couldn't switch slots." ;;
+		confirm "Install $_b?" "It replaces $BASEOS_BUILD, and the device restarts." \
+			"If it won't start, stock starts instead. Run setup there to repair BasedOS." || return
+		draw "Installing $_b..."
+		basedos-update install "$_p"
+		[ $? -eq 10 ] && while :; do sleep 3600; done   # installed; the reboot is under way
+		MSG="Install failed. BasedOS is unchanged." ;;
 	disable)
-		confirm "Disable BasedOS?" "The device boots stock instead of BasedOS." "BasedOS stays installed." 			"To boot it again, run Enable BasedOS from stock's Ports." || return
+		confirm "Disable BasedOS?" "The device boots stock instead of BasedOS." "BasedOS stays installed." \
+			"To boot it again, run Enable BasedOS from stock's Ports." || return
 		draw "Disabling BasedOS..."
 		basedos-boot disable --reboot || MSG="Couldn't disable BasedOS." ;;
 	uninstall)

@@ -27,13 +27,21 @@ release page has the exact line for each release):
 
 It checks stock's build and files first, states its requirements, asks everything, shows a
 numbered summary, asks you to type the confirmations (capitals don't matter), and only then
-downloads and writes. Two choices:
+downloads and writes. What it offers depends on what it finds on the device:
 
-1. **Install BasedOS on the built-in storage (eMMC)**, next to stock. It recommends making a
-   recovery card first and offers to in the same run (the install happens only once the card is
-   made and checked). You type `INSTALL` to confirm you understand the built-in storage is
-   modified, know the risks and have a backup.
-2. **Make a recovery SD card**: see "Recovery" below. You type `ERASE` to confirm the card.
+| On the device | Choices |
+|---|---|
+| No BasedOS | **Install BasedOS on the built-in storage (eMMC)**, next to stock |
+| BasedOS installed (on or disabled) | **Repair BasedOS**: puts this release's BasedOS back (its system, initrd and boot script), keeps its settings and clears its boot counter. For a BasedOS that no longer starts (the device then starts stock), or to go back to this release. A disabled one stays disabled. **Uninstall BasedOS**: stock's boot script back, BasedOS's files, settings and Ports entries removed; stock is as it was |
+| An install that didn't finish | **Install** (replaces it), or **Remove** it |
+| Settings or Ports entries left from an uninstall that didn't finish | **Install**, or **Remove** what's left |
+| Always | **Make a recovery SD card**: see "Recovery" below. You type `ERASE` to confirm the card |
+
+Before Install, Repair or Uninstall it recommends making a recovery card and offers to in the
+same run (the change happens only once the card is made and checked). You type `INSTALL`,
+`REPAIR` or `UNINSTALL` to confirm you understand the built-in storage is modified, know the
+risks and have a backup. Setup installs the release it comes with: to go back to an older
+release, run that release's setup.
 
 If setup stops part-way (Ctrl-C, the SSH connection drops), run it again. A card is simply made
 again. An install is finished: BasedOS's boot script goes in last, so until then stock still
@@ -80,7 +88,7 @@ script is back.
 | You do | BasedOS does |
 |---|---|
 | Power on | boots in about 4 s to spruce's menu |
-| Power on **holding Select** | **maintenance mode**: no spruce; Wi-Fi and SSH, what's in BasedOS's two copies (slots A and B: which build, which runs, which boots next), and a menu (Up/Down, A): **Boot Stock OS** (this boot only); **Install update** (a `.bosupd` from the card into the slot that isn't running: see Updates); **Switch to slot A/B** (the other copy, if it's there and would start; it restarts into it); **Disable BasedOS** (stock boots from then on, and an "Enable BasedOS" entry in stock's Ports turns BasedOS back on); **Uninstall BasedOS** (removes its files and settings from the device while it restarts, then starts stock; stock is as before the install); Restart; Power off. Updating, changing slots, disabling and uninstalling want A, B, X, Y tapped in that order (as the recovery card); any other button goes back. The screen shows the address to SSH to once Wi-Fi is up |
+| Power on **holding Select** | **maintenance mode**: no spruce; Wi-Fi and SSH, BasedOS's version and build, and a menu (Up/Down, A): **Boot Stock OS** (this boot only); **Install update** (a `.bosupd` from the card: see Updates); **Disable BasedOS** (stock boots from then on, and an "Enable BasedOS" entry in stock's Ports turns BasedOS back on); **Uninstall BasedOS** (removes its files and settings from the device while it restarts, then starts stock; stock is as before the install); Restart; Power off. Updating, disabling and uninstalling want A, B, X, Y tapped in that order (as the recovery card); any other button goes back. The screen shows the address to SSH to once Wi-Fi is up |
 | Power on **holding Start** | **stock, for this boot**: BasedOS restarts into stock once; the next power-on is BasedOS again |
 | Power on **holding another button** | whatever `/data/boot-keys.conf` maps it to (none by default): maintenance mode, stock once, or a frontend on the card other than the first one found. The format and the button names are in `/usr/share/basedos/boot-keys.conf`; copy it to `/data/` to change it. The boot screen labels the mapped buttons: Select's and Start's beside the buttons themselves ("Maintenance", "Boot Stock OS" by default), any other in a list |
 | Hold **Volume Up + Volume Down** together **3 s** | clean shutdown with any frontend, also a hung one: programs get 3 s to save and quit, then the card is synced and unmounted (`basedos-shutdown-keys`). Holding power is the frontend's (spruce: Button Settings > Power button hold time) |
@@ -116,38 +124,36 @@ once (or whatever `/data/boot-keys.conf` maps them to), without restarting first
     release, so while BasedOS has only pre-releases, download the `.bosupd` from the release page
     yourself and put it at the root of the card.)
   - **The maintenance menu** (Select held at power-on): **Install update** lists the `.bosupd`
-    files on the card, older ones too (you're choosing by hand). The one you pick goes into the
-    slot that isn't running, and you choose whether to boot it now or keep booting the running
-    slot (then it waits in the other slot as a spare). The running slot can't be written while
-    it runs: to update it, switch to the other slot first. It asks for A, B, X, Y.
+    files on the card, older ones too (you're choosing by hand), and installs the one you pick. It
+    asks for A, B, X, Y.
 
   A `.bosupd` that's only on the card is never installed by itself.
-- It goes into the copy of BasedOS that isn't running, and is checked before it's used. If the new
-  copy doesn't start, BasedOS goes back to the old one after a few tries and stays on it, and
-  won't try that update again.
+- It's checked after it's written, and put in place while the device restarts. BasedOS keeps one
+  copy of itself: if the new version doesn't start, the device starts stock after three tries,
+  and setup, run from stock, repairs BasedOS (**Repair** puts its release back).
 - An update it won't install, when asked to, is renamed on the card, so neither BasedOS nor
   spruce's updater keeps offering it: `.bosupd.skipped` (not newer than the running release, or already installed once),
-  `.bosupd.refused` (for another device or stock build, or a newer initrd), `.bosupd.failed` (it didn't verify, or the
-  new copy didn't start). Rename one back to `.bosupd` to have it looked at again.
+  `.bosupd.refused` (for another device or stock build, or a newer initrd), `.bosupd.failed` (it
+  didn't verify). Rename one back to `.bosupd` to have it looked at again.
 - An update holds only BasedOS's own files, never your device's stock firmware (BasedOS uses
   stock's kernel, its modules, the GPU drivers and the firmware in place). Each BasedOS release is
   made for one stock firmware build; an update for another one is refused. To see what an update
   would do, from SSH: `basedos-update status`.
-- An update doesn't carry BasedOS's boot files either: the boot script and the initrd, which
-  choose the copy and count failed starts, so going back to the other copy couldn't undo a bad
-  one. They come with setup; a change needs a developer update (`tools/dev/update-basedos.sh`)
-  for now. An update made for a newer initrd than the device has is refused (`.bosupd.refused`).
-- From SSH, `basedos-boot status` lists both copies too, and `basedos-boot slot a` (or `b`)
-  boots that one from now on, as the maintenance menu does.
+- An update doesn't carry BasedOS's boot files either: the boot script and the initrd, which put
+  the update in place and count failed starts, so a bad one would stop every start. They come
+  with setup; a change needs a developer update (`tools/dev/update-basedos.sh`) for now. An
+  update made for a newer initrd than the device has is refused (`.bosupd.refused`).
 
 ## Safeguards
 
-- **Boot counter**: if BasedOS fails to start three times in a row it boots its other copy (A/B
-  slot); after five failures it boots stock. Delete `boot-attempts` in BasedOS's data folder to reset.
+- **Boot counter**: if BasedOS fails to start three times in a row, the device starts stock, and
+  keeps starting stock until setup's **Repair** (or deleting `boot-attempts` in BasedOS's data
+  folder) resets it.
   A start that gets as far as BasedOS's own start-up counts as a good one, even when its data
   partition needs a check it can't do by itself.
 - **Bad boot files**: if BasedOS's initrd is missing or damaged, the boot script boots stock.
-  Updates never change the boot files, so a bad update can always be undone by the other copy.
+  Updates never change the boot files, so after a bad update stock still starts, and setup can
+  repair BasedOS from there.
 - **Stock changed**: if stock isn't the build BasedOS was made for (reflashed, say), BasedOS
   doesn't start and stock boots. "Enable BasedOS" in stock's Ports checks this first and says
   so, instead of enabling a BasedOS that wouldn't start.

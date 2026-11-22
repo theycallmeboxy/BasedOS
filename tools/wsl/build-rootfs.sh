@@ -21,7 +21,7 @@
 #             A .bosupd carries it.
 #   stock     what the links point at, harvested here only as a build-time view (<work>/vendor):
 #             the checks below and the merged view use it; it never leaves the PC.
-# Outputs in <work>: rootfs.squashfs (the system layer; the slot files keep their names), and
+# Outputs in <work>: rootfs.squashfs (the system layer, as it is on the device), and
 # rootfs/ (the system layer with stock's linked files in place, for the checks and tools that want
 # one tree).
 set -eu

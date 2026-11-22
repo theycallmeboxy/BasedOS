@@ -91,7 +91,7 @@ if [ -f $STATE/maintenance ]; then
 	log "maintenance mode: no frontend; SSH is up once Wi-Fi is"
 	maintenance_screen
 	basedos_network &
-	# The menu on the boot screen (stock once, the other slot, disable BasedOS, uninstall, restart, power off).
+	# The menu on the boot screen (stock once, an update, disable BasedOS, uninstall, restart, power off).
 	/usr/sbin/basedos-menu
 	log "basedos-menu exited ($?); maintenance mode stays up"
 	while :; do sleep 3600; done
@@ -167,14 +167,13 @@ until QUIET=1 /usr/sbin/mount-frontend 2>/dev/null; do
 done
 rm -f /run/basedos/said-nocard
 
-# System updates, once a boot, now that the card is here (.bosupd at its root, as spruce's updater
-# leaves them): settle the last one, then, only if the frontend asked for it (basedos-update
-# request), install a new one and reboot into it. The request is used up first, so a failing
-# update isn't retried at every boot. Only with /data on p2 (the update's record lives there).
+# A system update, once a boot, now that the card is here (.bosupd at its root, as spruce's updater
+# leaves them), only if the frontend asked for it (basedos-update request): install it and reboot
+# into it. The request is used up first, so a failing update isn't retried at every boot. Only
+# with /data on p2 (the update's record lives there).
 if [ ! -f $STATE/updates-checked ]; then
 	touch $STATE/updates-checked
 	if [ -f $STATE/data-ok ]; then
-		/usr/sbin/basedos-update confirm
 		if [ -f /data/update/requested ]; then
 			rm -f /data/update/requested; sync
 			/usr/sbin/basedos-update apply

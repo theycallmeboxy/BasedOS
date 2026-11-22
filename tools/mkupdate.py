@@ -7,8 +7,8 @@ Writes <out dir>/baseos-gkd350hultra-<version>.bosupd: an uncompressed tar of `m
 `rootfs.squashfs` (the system layer). Only BasedOS's own files: BasedOS uses the device's own
 stock files in place (links into /stock), so the manifest names the stock build this system
 layer's links are made against (`stock`, its BUILD_ID), and a device with another stock refuses
-the payload. BasedOS's boot files (boot.scr, the initrd) aren't in it: they pick the slot and
-count failed boots, so the A/B fallback couldn't undo a bad one; setup installs them. The
+the payload. BasedOS's boot files (boot.scr, the initrd) aren't in it: a bad one would stop
+every boot before the boot counter could help; setup installs them. The
 manifest names the initrd interface the system layer needs (`needs-initrd`, its
 usr/share/basedos/needs-initrd), and a device whose initrd is older refuses it. The name is
 spruce's (baseos_local_update_file looks for baseos-<target>-*.bosupd at the card root); the format is BasedOS's own (`basedos-update/1`; overlay/usr/sbin/basedos-update

@@ -95,7 +95,7 @@ BasedOS): `libpython3.10`, `libbsd`, `libcrypto.so.1.1`, `libffi.so.8`, Samba's 
 ## Risks
 
 - glibc and the C++ runtime are under every program: a build that breaks them breaks the system.
-  The A/B slots and the boot counter fall back to the other slot; test on the unit before a
+  The boot counter falls back to stock after three failed starts; test on the unit before a
   `.bosupd`.
 - The closed Mali driver against a newer glibc and libstdc++: its headers ask for nothing newer
   than glibc 2.28 and no versioned C++ symbols, so this is expected to work; it is checked first

@@ -5,8 +5,9 @@
 # with BasedOS's initrd, which mounts stock's SYSTEM read-only under BasedOS's own system layer.
 #
 #   Image, rk3576-gkd-atom*.dtb    stock's, as stock boots them
-#   basedos/initrd.uimg            BasedOS's initrd: picks the A/B system slot, checks it's made for
-#                                  this stock build, mounts stock's SYSTEM at /stock
+#   basedos/initrd.uimg            BasedOS's initrd: puts an installed update in place, checks the
+#                                  system layer is made for this stock build, mounts stock's SYSTEM
+#                                  at /stock
 #
 # If its files can't be loaded, stock's own boot script runs, so stock boots itself.
 #

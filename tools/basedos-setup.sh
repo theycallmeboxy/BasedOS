@@ -8,19 +8,27 @@
 #
 # (Run from a folder that already holds the release files, it uses those instead.)
 #
-# Two choices:
+# What it offers depends on what's on the device:
 #
-#   1. Install BasedOS on the built-in storage (eMMC), next to stock (docs/plan.md,
-#      Architecture): BasedOS's folder in stock's boot partition, its data in stock's data
-#      partition, its boot script in place of stock's (kept). Stock's own files are used in place
-#      (its kernel, device trees and SYSTEM) and never changed. A recovery card first is
-#      recommended and offered in the same run.
-#   2. Make a recovery SD card: a backup of the built-in storage as it is now, by region (the
-#      partition table, the bootloader, p1, p2; together the whole main area, byte for byte), a
-#      small recovery system that starts from the card and puts it back (tools/recovery), and
-#      what a maskrom restore from a PC needs (Rockchip's USB loader and the steps). It needs
-#      the device's own bootloader to start: a lost bootloader takes maskrom and a PC, with the
-#      card's bootloader.img (docs/recovery.md).
+#   Install    BasedOS on the built-in storage (eMMC), next to stock (docs/plan.md, Architecture):
+#              BasedOS's folder in stock's boot partition, its data in stock's data partition, its
+#              boot script in place of stock's (kept). Stock's own files are used in place (its
+#              kernel, device trees and SYSTEM) and never changed. Also finishes an install that
+#              was interrupted.
+#   Repair     BasedOS installed: this release's system layer, initrd and boot script put back,
+#              its settings kept and its boot counter cleared. For a BasedOS that no longer starts
+#              (the device then boots stock), or to go back to this release. A disabled BasedOS
+#              stays disabled.
+#   Uninstall  BasedOS (or what an unfinished install or uninstall left) removed: stock's boot
+#              script back, BasedOS's folder, data and Ports entries gone. Stock is as it was.
+#   Recovery card (always): a backup of the built-in storage as it is now, by region (the
+#              partition table, the bootloader, p1, p2; together the whole main area, byte for
+#              byte), a small recovery system that starts from the card and puts it back
+#              (tools/recovery), and what a maskrom restore from a PC needs (Rockchip's USB loader
+#              and the steps). It needs the device's own bootloader to start: a lost bootloader
+#              takes maskrom and a PC, with the card's bootloader.img (docs/recovery.md).
+#
+# Install, Repair and Uninstall offer a recovery card first.
 #
 # It states its requirements first, checks every tool and stock's files, asks everything, shows a
 # numbered summary and asks for the typed confirmations (capitals don't matter); only then does it
@@ -143,7 +151,7 @@ rm -rf "$T"; mkdir -p "$T" || die "can't make $T"
 miss=""
 for c in awk sed tr cut sort grep head dd tee mkfifo md5sum sha256sum zstd parted partprobe blkid flock \
 	mkfs.vfat udevadm systemctl wpa_passphrase mount umount df du sync curl cat ls wc sleep cp mv rm mkdir \
-	chmod date id dirname readlink; do
+	chmod date id dirname readlink od; do
 	command -v $c >/dev/null 2>&1 || miss="$miss $c"
 done
 [ -z "$miss" ] || die "stock is missing tools setup needs:$miss"
@@ -196,42 +204,89 @@ say "    Everything on it is lost."
 say "  - About 5 to 25 minutes. Don't power off or take the card out while it runs."
 [ -n "$CHG" ] || [ -z "$PCT" ] || [ "$PCT" -ge 30 ] || die "the battery is at $PCT %: charge it, or plug the charger in, then run setup again"
 
-# What's on the built-in storage now. Installed: BasedOS's boot script is the active one, or it's
-# disabled (its own saved, for "Enable BasedOS"). A BasedOS folder with neither is an install
-# that didn't finish (setup interrupted before it switched the boot script): the install replaces it.
+# What's on the built-in storage now:
+#   installed  BasedOS's boot script is the active one, or BasedOS is disabled (its own saved, for
+#              "Enable BasedOS": DISABLED).
+#   partial    a BasedOS folder with neither: an install that didn't finish (interrupted before it
+#              switched the boot script).
+#   leftovers  no folder, but BasedOS's data or Ports entries (an uninstall that didn't finish).
+#   broken     BasedOS's boot script with no BasedOS folder: it can't start BasedOS, and stock's own
+#              script went with the folder.
+# scr_ok <file>: a whole U-Boot script image: its magic, the type "script", and the size its header
+# gives (as basedos-boot checks them).
+scr_ok() {
+	[ -s "$1" ] || return 1
+	[ "$(dd if="$1" bs=4 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n')" = 27051956 ] || return 1
+	[ "$(dd if="$1" bs=1 skip=30 count=1 2>/dev/null | od -An -tu1 | tr -d ' \n')" = 6 ] || return 1
+	_len=$(dd if="$1" bs=1 skip=12 count=4 2>/dev/null | od -An -tu1 | awk '{print (($1*256+$2)*256+$3)*256+$4}')
+	[ "$(wc -c < "$1" | tr -d ' ')" = "$((_len + 64))" ]
+}
 is_basedos_scr() { dd if="$1" bs=64 skip=1 2>/dev/null | grep -q "rdinit=/basedos/init"; }
-INSTALLED="" PARTIAL="" BROKEN=""
+B=$STOCK_P1/basedos
+BD=/storage/basedos-data
+PORTS=/storage/games-internal/roms/ports
+# Every place BasedOS has put its Ports entries, and their names (older ones too).
+PORTS_DIRS="$PORTS /storage/roms/ports /storage/.config/modules"
+PORTS_NAMES="Enable BasedOS.sh|Disable BasedOS.sh|Uninstall BasedOS.sh|Return to BasedOS.sh"
+any_entry() {
+	for _d in $PORTS_DIRS; do
+		_IFS=$IFS; IFS='|'
+		for _n in $PORTS_NAMES; do [ -f "$_d/$_n" ] && { IFS=$_IFS; return 0; }; done
+		IFS=$_IFS
+	done
+	return 1
+}
+# stock's boot script as BasedOS saved it: a whole script, and not BasedOS's.
+stock_saved_ok() { scr_ok $B/boot.scr.stock && ! is_basedos_scr $B/boot.scr.stock; }
+STATE=none DISABLED=""
 if is_basedos_scr $STOCK_P1/boot.scr; then
-	INSTALLED=1
-	[ -d "$STOCK_P1/basedos" ] || BROKEN=1
-elif [ -f "$STOCK_P1/basedos/boot.scr.basedos" ]; then
-	INSTALLED=1
-elif [ -d "$STOCK_P1/basedos" ]; then
-	PARTIAL=1
+	if [ -d "$B" ]; then STATE=installed; else STATE=broken; fi
+elif [ -f "$B/boot.scr.basedos" ]; then
+	STATE=installed DISABLED=1
+elif [ -d "$B" ]; then
+	STATE=partial
+elif [ -d "$BD" ] || any_entry; then
+	STATE=leftovers
 fi
-UNINSTALL_HOW="'Uninstall BasedOS' in stock's Ports, or BasedOS's maintenance menu (Select held at power-on)"
+INSTALLED=""; [ $STATE = installed ] && INSTALLED=1
+[ $STATE = broken ] &&
+	die "$STOCK_P1/boot.scr is BasedOS's, but BasedOS's folder (with stock's own boot script) is gone: the recovery card restores the built-in storage (docs/recovery.md)"
+say ""
+case $STATE in
+installed)
+	if [ -n "$DISABLED" ]; then say "BasedOS is installed, and disabled (stock starts)."
+	else say "BasedOS is installed."; fi ;;
+partial) say "An earlier BasedOS install didn't finish (stock starts; $B is left)." ;;
+leftovers) say "BasedOS isn't installed, but its settings or Ports entries are left from before." ;;
+esac
+# The choices for what's there: "<target>|<label>" lines.
+case $STATE in
+none) CHOICES="install|Install BasedOS on the built-in storage, next to stock" ;;
+leftovers) CHOICES="install|Install BasedOS on the built-in storage, next to stock
+uninstall|Remove what's left of BasedOS (its settings and Ports entries)" ;;
+partial) CHOICES="install|Install BasedOS, replacing the unfinished install
+uninstall|Remove the unfinished install" ;;
+installed) CHOICES="repair|Repair BasedOS: put BasedOS $VERSION back, keeping its settings
+uninstall|Uninstall BasedOS: remove it and its settings (stock stays as it is)" ;;
+esac
+CHOICES="$CHOICES
+recovery|Make a recovery SD card (it can put the built-in storage back as it is now)"
 say ""
 say "${C_B}What do you want to do?${C_0}"
-if [ -n "$INSTALLED" ]; then
-	say "  1) ${C_DIM}Install BasedOS: it's installed already (to reinstall, uninstall it first: $UNINSTALL_HOW)${C_0}"
-elif [ -n "$PARTIAL" ]; then
-	say "  1) Install BasedOS on the built-in storage, next to stock (finishes an earlier install that was interrupted)"
-else
-	say "  1) Install BasedOS on the built-in storage, next to stock"
+_n=0
+echo "$CHOICES" | while IFS='|' read -r _t _l; do _n=$((_n + 1)); say "  $_n) $_l"; done
+_max=$(echo "$CHOICES" | wc -l)
+ask "Choose 1 to $_max:" _a
+case "$_a" in ''|*[!0-9]*) die "no choice made" ;; esac
+[ "$_a" -ge 1 ] && [ "$_a" -le "$_max" ] || die "no choice made"
+TARGET=$(echo "$CHOICES" | sed -n "${_a}p" | cut -d'|' -f1)
+# Uninstalling an enabled BasedOS puts stock's saved boot script back: it must be whole.
+if [ "$TARGET" = uninstall ] && is_basedos_scr $STOCK_P1/boot.scr && ! stock_saved_ok; then
+	die "BasedOS's copy of stock's boot script ($B/boot.scr.stock) is missing or damaged, so stock's can't be put back: the recovery card restores the built-in storage (docs/recovery.md)"
 fi
-say "  2) Make a recovery SD card (it can put the built-in storage back as it is now)"
-ask "Choose 1 or 2:" _a
-case "$_a" in
-1) [ -z "$BROKEN" ] ||
-		die "$STOCK_P1/boot.scr is BasedOS's, but BasedOS's folder is gone: put stock's boot script back first (docs/recovery.md)"
-	[ -z "$INSTALLED" ] || die "BasedOS is installed already: uninstall it first ($UNINSTALL_HOW)"
-	TARGET=install ;;
-2) TARGET=recovery ;;
-*) die "no choice made" ;;
-esac
 
 REC=no
-if [ "$TARGET" = install ]; then
+if [ "$TARGET" != recovery ]; then
 	say ""
 	say "This changes the built-in storage. A recovery card first is recommended: it starts on its"
 	say "own and can put the built-in storage back as it is now, without a PC."
@@ -280,18 +335,30 @@ if [ "$REC" = yes ]; then
 	item "Make it a recovery card."
 	[ -n "$INSTALLED" ] && say "     ${C_DIM}(BasedOS is on the built-in storage now: the card would restore it as it is, with BasedOS.)${C_0}"
 fi
-if [ "$TARGET" = install ]; then
+case $TARGET in
+install)
 	item "Install BasedOS $VERSION on the built-in storage, next to stock."
-	[ -n "$PARTIAL" ] && say "     ${C_DIM}(An earlier install didn't finish: its folder, $STOCK_P1/basedos, is replaced.)${C_0}"
-	[ "$REC" = yes ] && say "     ${C_DIM}(Only after the recovery card is made and checked.)${C_0}"
-fi
+	[ $STATE = partial ] && say "     ${C_DIM}(An earlier install didn't finish: its folder, $B, is replaced.)${C_0}"
+	[ $STATE = leftovers ] && say "     ${C_DIM}(BasedOS's settings left from before are kept.)${C_0}" ;;
+repair)
+	item "Put BasedOS $VERSION's system, initrd and boot script back. Its settings stay."
+	[ -n "$DISABLED" ] && say "     ${C_DIM}(It stays disabled: 'Enable BasedOS' in stock's Ports starts it.)${C_0}"
+	if [ -z "$DISABLED" ] && ! stock_saved_ok; then
+		warn "BasedOS's copy of stock's boot script is missing or damaged: Repair can't bring it back, so Disable and Uninstall won't work. The recovery card restores the built-in storage."
+	fi ;;
+uninstall)
+	if [ $STATE = installed ]; then item "Uninstall BasedOS: stock's boot script back, BasedOS's files and settings removed."
+	else item "Remove what's left of BasedOS: its folder, settings and Ports entries."; fi ;;
+esac
+[ "$TARGET" != recovery ] && [ "$REC" = yes ] && say "     ${C_DIM}(Only after the recovery card is made and checked.)${C_0}"
 say ""
 [ -n "$CARD" ] && confirm ERASE "erase this $SIZE_GB GB card"
-if [ "$TARGET" = install ]; then
+if [ "$TARGET" != recovery ]; then
 	say ""
 	say "This modifies the device's built-in storage. If something goes wrong, the device may not start"
 	say "until it's restored$([ "$REC" = yes ] && echo " with the recovery card" || echo " from a backup (docs/recovery.md)")."
-	confirm INSTALL "confirm that you understand this, know the risks, and have a backup"
+	_w=$(echo "$TARGET" | tr a-z A-Z)
+	confirm "$_w" "confirm that you understand this, know the risks, and have a backup"
 fi
 
 # ---------------------------------------------------------------------------------------------
@@ -303,7 +370,7 @@ step "Getting BasedOS $VERSION"
 if [ "$REC" = yes ]; then
 	for f in recovery-initrd.uimg recovery.scr rk3576_usb_loader_ddr1.13_usbplug1.04.bin LICENSE.rkbin.txt; do release_file $f; done
 fi
-if [ "$TARGET" = install ]; then
+if [ "$TARGET" = install ] || [ "$TARGET" = repair ]; then
 	for f in rootfs.squashfs initrd.uimg boot.scr; do release_file $f; done
 	mkdir -p "$T/mnt/rootfs"
 	mount -t squashfs -o ro,loop "$HERE/rootfs.squashfs" "$T/mnt/rootfs" || die "$HERE/rootfs.squashfs does not mount"
@@ -564,16 +631,48 @@ seed_data() {
 	} > $DATA/wpa_supplicant.conf)
 }
 
-if [ "$TARGET" = install ]; then
+# clear_flags: BasedOS's one-boot flags and its boot counter, left from before (a count from a
+# BasedOS that didn't start would send the next boot to stock; an uninstall flag would remove it).
+clear_flags() {
+	rm -f $BD/boot-attempts $BD/boot-stock-once $BD/uninstall $BD/uninstall.new $BD/update/requested
+}
+# entries <name>...: those Ports entries from this release's system layer into stock's Ports, and
+# the other BasedOS entries removed (they'd do the wrong thing in this state).
+entries() {
+	for _d in $PORTS_DIRS; do
+		_IFS=$IFS; IFS='|'
+		for _n in $PORTS_NAMES; do rm -f "$_d/$_n"; done
+		IFS=$_IFS
+	done
+	mkdir -p "$T/mnt/rootfs" $PORTS
+	if mount -t squashfs -o ro,loop "$HERE/rootfs.squashfs" "$T/mnt/rootfs"; then
+		for e in "$@"; do
+			cp "$T/mnt/rootfs/usr/share/basedos/stock/$e" "$PORTS/" && chmod 755 "$PORTS/$e" ||
+				warn "couldn't put '${e%.sh}' in stock's Ports (BasedOS's maintenance menu has it too)"
+		done
+		umount "$T/mnt/rootfs"
+	else
+		warn "couldn't put BasedOS's entries in stock's Ports (BasedOS's maintenance menu has them too)"
+	fi
+}
+# Developer leftovers in BasedOS's folder: the two-slot layout's second slot and pointer, a
+# waiting update, copies kept by tools/dev/update-basedos.sh, unfinished writes.
+dev_leftovers() {
+	rm -f "$B/rootfs-b.squashfs" "$B/slot" "$B/rootfs.new" "$B/initrd.uimg.prev" "$B/boot.scr.prev" "$B"/*.new
+	is_basedos_scr $STOCK_P1/boot.scr.prev 2>/dev/null && rm -f $STOCK_P1/boot.scr.prev
+	return 0
+}
+
+case $TARGET in
+install)
 	step "Installing BasedOS on the built-in storage"
-	B=$STOCK_P1/basedos
 	# Checked again here (phase 1 did): stock's boot script must be stock's before it's saved.
 	is_basedos_scr $STOCK_P1/boot.scr && die "$STOCK_P1/boot.scr is BasedOS's already: nothing was written"
 	mount -o remount,rw $STOCK_P1 || die "can't write $STOCK_P1"
 	P1_RW=1
 	# An earlier install that didn't finish: stock's boot script is still stock's, so nothing boots
 	# its folder; it's replaced.
-	if [ -n "$PARTIAL" ]; then rm -rf "$B" || die "can't remove the unfinished install's $B"; fi
+	if [ $STATE = partial ]; then rm -rf "$B" || die "can't remove the unfinished install's $B"; fi
 	mkdir -p "$B" || die "can't make $B"
 	put $STOCK_P1/boot.scr "$B/boot.scr.stock"
 	put "$HERE/rootfs.squashfs" "$B/rootfs.squashfs"
@@ -582,29 +681,76 @@ if [ "$TARGET" = install ]; then
 	put "$HERE/boot.scr" $STOCK_P1/boot.scr
 	mount -o remount,ro $STOCK_P1
 	P1_RW=""
-	seed_data /storage/basedos-data
+	seed_data $BD
+	clear_flags
 	# "Disable BasedOS" and "Uninstall BasedOS" in stock's Ports (the folder stock's Ports reads:
 	# /storage/roms is a bind of games-internal/roms), from this release's system layer, so BasedOS
 	# can be disabled or removed from stock too.
-	mkdir -p "$T/mnt/rootfs" /storage/games-internal/roms/ports
-	if mount -t squashfs -o ro,loop "$HERE/rootfs.squashfs" "$T/mnt/rootfs"; then
-		for e in "Disable BasedOS.sh" "Uninstall BasedOS.sh"; do
-			cp "$T/mnt/rootfs/usr/share/basedos/stock/$e" "/storage/games-internal/roms/ports/" &&
-				chmod 755 "/storage/games-internal/roms/ports/$e" ||
-				warn "couldn't put '${e%.sh}' in stock's Ports (BasedOS's maintenance menu has it too)"
-		done
-		umount "$T/mnt/rootfs"
-	fi
+	entries "Disable BasedOS.sh" "Uninstall BasedOS.sh"
 	sync
 	ok "installed"
 	if [ "$REC" = yes ]; then
 		RESULT="BasedOS $VERSION is installed next to stock. Power off, take the recovery card out (keep it safe: with it in, the device starts the restore screen), and power on to start BasedOS."
 	else
 		RESULT="BasedOS $VERSION is installed next to stock. Restart to start it."
+	fi ;;
+repair)
+	step "Repairing BasedOS"
+	mount -o remount,rw $STOCK_P1 || die "can't write $STOCK_P1"
+	P1_RW=1
+	# Disabled, stock's boot script is the active one: saved again if BasedOS's copy is gone.
+	if [ -n "$DISABLED" ] && ! stock_saved_ok; then
+		scr_ok $STOCK_P1/boot.scr && put $STOCK_P1/boot.scr "$B/boot.scr.stock"
 	fi
-else
-	RESULT="The recovery card is ready. Power off and take it out; keep it safe. To restore the built-in storage: power off, put the card in, power on, and follow the screen."
-fi
+	dev_leftovers
+	put "$HERE/rootfs.squashfs" "$B/rootfs.squashfs"
+	put "$HERE/initrd.uimg" "$B/initrd.uimg"
+	# BasedOS's boot script last: where it's kept while disabled, else the active one.
+	if [ -n "$DISABLED" ]; then put "$HERE/boot.scr" "$B/boot.scr.basedos"
+	else put "$HERE/boot.scr" $STOCK_P1/boot.scr; fi
+	mount -o remount,ro $STOCK_P1
+	P1_RW=""
+	seed_data $BD
+	clear_flags
+	if [ -n "$DISABLED" ]; then entries "Enable BasedOS.sh" "Uninstall BasedOS.sh"
+	else entries "Disable BasedOS.sh" "Uninstall BasedOS.sh"; fi
+	sync
+	ok "repaired"
+	if [ -n "$DISABLED" ]; then
+		RESULT="BasedOS $VERSION is back in place, and still disabled: run 'Enable BasedOS' from stock's Ports to start it."
+	elif [ "$REC" = yes ]; then
+		RESULT="BasedOS $VERSION is repaired. Power off, take the recovery card out (keep it safe), and power on to start BasedOS."
+	else
+		RESULT="BasedOS $VERSION is repaired. Restart to start it."
+	fi ;;
+uninstall)
+	step "Removing BasedOS"
+	mount -o remount,rw $STOCK_P1 || die "can't write $STOCK_P1"
+	P1_RW=1
+	# Stock's boot script first, if BasedOS's is the active one (checked in phase 1).
+	if is_basedos_scr $STOCK_P1/boot.scr; then put "$B/boot.scr.stock" $STOCK_P1/boot.scr; fi
+	# Then BasedOS's files: nothing boots them any more.
+	rm -rf "$B" || die "can't remove $B"
+	is_basedos_scr $STOCK_P1/boot.scr.prev 2>/dev/null && rm -f $STOCK_P1/boot.scr.prev
+	sync
+	mount -o remount,ro $STOCK_P1
+	P1_RW=""
+	rm -rf $BD
+	for _d in $PORTS_DIRS; do
+		_IFS=$IFS; IFS='|'
+		for _n in $PORTS_NAMES; do rm -f "$_d/$_n"; done
+		IFS=$_IFS
+	done
+	sync
+	ok "removed"
+	if [ "$REC" = yes ]; then
+		RESULT="BasedOS is uninstalled; stock is as it was. Power off and take the recovery card out (keep it safe)."
+	else
+		RESULT="BasedOS is uninstalled; stock is as it was."
+	fi ;;
+recovery)
+	RESULT="The recovery card is ready. Power off and take it out; keep it safe. To restore the built-in storage: power off, put the card in, power on, and follow the screen." ;;
+esac
 
 # The card stays out of stock's automounter until the next power-on: released now, it would mount
 # the new card's partition and write to it.

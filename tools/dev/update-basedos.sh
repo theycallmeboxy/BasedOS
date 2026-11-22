@@ -1,13 +1,11 @@
 #!/bin/sh
 # Developer update, run ON the device under BasedOS:
 #   update-basedos.sh <dir with rootfs.squashfs [initrd.uimg] [boot.scr]>
-# Writes the rootfs (the system layer) to the slot that is NOT running (rootfs.squashfs /
-# rootfs-b.squashfs on p1), verifies it from the card, then points /boot/basedos/slot at it. Like
-# a .bosupd, a rootfs made for another stock build (its needs-stock) is refused (docs/plan.md,
-# Architecture). Reboot to use it; the
-# initrd's boot counter falls back to the other slot if the new one never reaches rcS.
-# The running slot is read from the loop device itself, not the slot file, so running this
-# twice without rebooting can never overwrite the image that is running.
+# Writes the rootfs (the system layer) beside the running one as basedos/rootfs.new, verified from
+# the eMMC, as a .bosupd does; the initrd puts it in place at the next start (the running image
+# can't be replaced while it's in use). Like a .bosupd, a rootfs made for another stock build (its
+# needs-stock) is refused (docs/plan.md, Architecture). Reboot to use it; one that never reaches
+# rcS sends the device to stock after three tries (setup's Repair puts a release back).
 set -eu
 SRC=${1:?usage: $0 <dir>}
 B=/boot/basedos
@@ -16,19 +14,6 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 grep -q '^BASEOS_NAME=BasedOS$' /etc/baseos-release 2>/dev/null || die "not running BasedOS"
 grep -q '^/dev/mmcblk0p1 /boot ' /proc/mounts || die "/boot isn't eMMC p1"
 [ -s "$SRC/rootfs.squashfs" ] || die "missing $SRC/rootfs.squashfs"
-
-running=""
-for f in /sys/block/loop*/loop/backing_file; do
-	case "$(cat "$f" 2>/dev/null)" in
-		*/basedos/rootfs.squashfs) running=a ;;
-		*/basedos/rootfs-b.squashfs) running=b ;;
-	esac
-done
-[ -n "$running" ] || die "can't tell which rootfs slot is running"
-want=$(head -c 2 $B/slot 2>/dev/null | tr -d '\n'); [ "$want" = b ] || want=a
-[ "$want" = "$running" ] ||
-	die "slot file already points at $want (running $running): reboot before updating again"
-if [ "$running" = b ]; then new=a; newfile=rootfs.squashfs; else new=b; newfile=rootfs-b.squashfs; fi
 
 # Write .new, sync, re-read from the card, rename, sync: a power cut leaves old or new, never short.
 put() {
@@ -66,8 +51,8 @@ mount -o remount,rw /boot
 trap 'sync; mount -o remount,ro /boot || echo "WARNING: /boot stayed read-write" >&2' EXIT
 [ -n "$new_stock" ] && [ "$new_stock" = "$(cat /stock/etc/os-release 2>/dev/null | sed -n 's/^BUILD_ID="\{0,1\}\([0-9a-f]*\)"\{0,1\}$/\1/p')" ] ||
 	die "the new rootfs is made for stock build '$new_stock', not this device's"
-put "$SRC/rootfs.squashfs" "$B/$newfile"
-# The initrd and boot.scr are not A/B: the slot fallback can't undo them, so each
+put "$SRC/rootfs.squashfs" "$B/rootfs.new"
+# The initrd and boot.scr are BasedOS's boot files: a bad one stops every boot, so each
 # one replaced keeps the file it replaces as <name>.prev (boot.scr's as basedos/boot.scr.prev). To
 # go back (from SSH or maintenance mode):
 #   mount -o remount,rw /boot; cp <name>.prev <name>; sync
@@ -87,10 +72,8 @@ if [ -s "$SRC/boot.scr" ]; then
 	# The old one in BasedOS's folder, not beside stock's files: uninstall removes basedos/ whole.
 	replace "$SRC/boot.scr" /boot/boot.scr "$B/boot.scr.prev"
 fi
-if [ "$new" = b ]; then
-	echo b > "$B/slot.new" && sync && mv "$B/slot.new" "$B/slot"
-else
-	rm -f "$B/slot"
-fi
+# What the two-slot layout left: the second slot and its pointer (not while it's the running one).
+grep -qs '/basedos/rootfs-b.squashfs' /sys/block/loop*/loop/backing_file || rm -f "$B/rootfs-b.squashfs"
+rm -f "$B/slot"
 sync
-echo "running slot: $running; next boot: $new ($newfile, for stock $new_stock). Reboot to switch."
+echo "installed as $B/rootfs.new (for stock $new_stock): reboot to put it in place."

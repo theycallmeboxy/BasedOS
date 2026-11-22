@@ -35,22 +35,23 @@ On the eMMC (stock's partition layout; the bootloader area is never written):
 
 | Partition | Holds |
 |---|---|
-| p1 vfat (stock's) | stock's own files, untouched (BasedOS boots stock's kernel and DTBs and mounts its SYSTEM from here); BasedOS's boot files, `boot.scr` (stock's kept in `basedos/`) and `basedos/initrd.uimg`, which setup installs and updates don't carry; `basedos/`: two system layers, slot A `rootfs.squashfs` and slot B `rootfs-b.squashfs` |
+| p1 vfat (stock's) | stock's own files, untouched (BasedOS boots stock's kernel and DTBs and mounts its SYSTEM from here); BasedOS's boot files, `boot.scr` (stock's kept in `basedos/`) and `basedos/initrd.uimg`, which setup installs and updates don't carry; `basedos/rootfs.squashfs`: the system layer (an installed update waits beside it as `rootfs.new` until the restart) |
 | p2 ext4 (stock's) | stock's data; `basedos-data/`, BasedOS's `/data`: SSH keys, Wi-Fi config, logs, boot counter |
 
 Boot: U-Boot runs BasedOS's `boot.scr` → stock's kernel and DTB, the panel at 60 Hz,
-BasedOS's initrd → the initrd mounts the chosen slot's system layer as the root and stock's SYSTEM
-at its `/stock`, checks stock is the build the slot was made for (falling back to the other slot
-after failed boots, then to stock) → BusyBox init → `rcS` (`/data`,
+BasedOS's initrd → the initrd puts an installed update in place, mounts the system layer as the
+root and stock's SYSTEM at its `/stock`, checks stock is the build the layer was made for (falling
+back to stock if not, or after three failed boots) → BusyBox init → `rcS` (`/data`,
 card, Wi-Fi driver) → `frontend-session` finds the frontend on the card (spruce's `runtime.sh`)
 and starts it, again if it exits.
 
 Updates: a `baseos-gkd350hultra-<version>.bosupd` at the card root is installed by
 `basedos-update` only when asked for: by spruce's firmware updater (BasedOS's own copy fetches or
 finds one, runs `basedos-update request` and reboots; installed at the next boot, once the card
-is mounted and before the frontend starts) or from the maintenance menu ("Install update": any payload on the card, older ones too, into the
-slot that isn't running, booted or kept as a spare): the system layer to the spare slot, verified,
-then the slot flips. One it won't install is renamed on the card (`.skipped`, `.refused`,
+is mounted and before the frontend starts) or from the maintenance menu ("Install update": any payload on the card, older ones too): the
+system layer is written beside the running one as `rootfs.new`, verified, and put in place by
+the initrd at the restart. One that doesn't start sends the device to stock, where setup's
+Repair puts a release back. One it won't install is renamed on the card (`.skipped`, `.refused`,
 `.failed`), so it isn't offered again. It carries nothing of stock's; each
 release is made for one stock build, and one for another stock build is refused
 ([docs/plan.md](docs/plan.md), Architecture).
@@ -83,7 +84,7 @@ PortMaster's 32-bit ports (docs/lib32.md); BasedOS's own programs are all 64-bit
 | `buildroot/` | BasedOS's Buildroot tree: the 64-bit and 32-bit (armhf) configurations |
 | `manifest/` | what each layer takes: `base.list` and `base32.list` from BasedOS's Buildroot roots, `harvest.list`, the stock files the system layer links to in `/stock`; known stock-build fingerprints |
 | `tools/` | prepare-stock, harvest, rootfs and boot-file builders (`wsl/build.sh` runs them all), dev install, the 32-bit gap report (`lib32-gaps.py`) and the PortMaster library scan (`pm-libscan.py`) |
-| `tools/dev/` | SSH helper, rootfs slot update, recon, power and screenshot probes, eMMC backup, `lib-closure.py` (what a frontend's libraries need from the base) |
+| `tools/dev/` | SSH helper, rootfs update, recon, power and screenshot probes, eMMC backup, `lib-closure.py` (what a frontend's libraries need from the base) |
 | `tools/rescue/` | rescue SD card built on the device from its own files |
 | `tools/maskrom/` | builds the RK3576 maskrom USB loader from Rockchip's `rkbin` |
 

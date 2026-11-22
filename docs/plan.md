@@ -7,11 +7,13 @@ the unit.** Until then, what ran on the unit (2026-11-20, build `c9ee8f9`, insta
 with `tools/install-dev.sh`; power to spruce's menu in about 4 s, boot-time.md) was the earlier
 vendor-set design. Checked on the unit, and carried over:
 
-- A/B slots with a boot counter that falls back to the other slot, then to stock; with
+- One system layer and a boot counter that falls back to stock after three failed starts (A/B
+  slots were dropped 2026-11-21: their fallback only covered a layer that verified but didn't
+  start, which stock now catches, and setup's Repair puts a release back from stock); with
   BasedOS's files unloadable, the boot script hands over to stock's own.
-- Updates: a `.bosupd` at the card root, from spruce's BaseOS updater or by hand, installed at the
-  next boot into the spare slot and confirmed once it boots (`basedos-update`). The boot script
-  is not in a payload.
+- Updates: a `.bosupd` at the card root, from spruce's BaseOS updater or the maintenance menu,
+  written beside the running layer as `rootfs.new` and put in place by the initrd at the restart
+  (`basedos-update`). The boot script is not in a payload.
 - Leaving BasedOS (`basedos-boot`, the maintenance menu, Start held at power-on): stock once,
   disable BasedOS (stock boots; "Enable BasedOS" in stock's Ports turns it back on, and stock's
   Ports has "Disable BasedOS" too), uninstall (done by the initrd at the
@@ -51,12 +53,12 @@ BasedOS is installed **next to stock on the eMMC**, and uses **stock's own files
   takes a BasedOS release made for it.
 - **BasedOS's own** (published): its boot script (written by BasedOS, not derived from stock's;
   it sets the panel to 60 Hz with `fdt set` on the loaded device tree, never changing stock's
-  file), its initrd, the A/B system slots, its tools. The boot script and the initrd are its
-  **boot files**: they pick the slot and count failed boots, so the A/B fallback couldn't undo a
-  bad one, and only setup (or a developer update) installs them. A `.bosupd` carries the system
+  file), its initrd, the system layer, its tools. The boot script and the initrd are its
+  **boot files**: they put an update in place and count failed boots, so a bad one would stop
+  every start, and only setup (or a developer update) installs them. A `.bosupd` carries the system
   layer only, and names the stock build it's made for and the initrd interface it needs (the
   initrd's `ABI`, in its image name; a system layer's `usr/share/basedos/needs-initrd`): a
-  device whose initrd is older refuses it, and the initrd itself won't use such a slot.
+  device whose initrd is older refuses it, and the initrd itself won't use such a layer.
 - **No SD-card install, and no vendor copies.** Both were tried and dropped (2026-11-20): the
   boot ROM only ever starts the bootloader from the eMMC (a card's copy is never used: tested,
   recovery.md), so no install path is independent of the eMMC, and with stock static, copies of
@@ -93,7 +95,7 @@ BasedOS is installed **next to stock on the eMMC**, and uses **stock's own files
 | `/etc/os-release` | `ID=basedos`, `NAME="BasedOS"` | both |
 | Init | BusyBox init: `rcS` sysinit, `frontend-session` respawn, `rcK` shutdown. No udev at boot; devtmpfs only (`basedos-udev` runs eudev's udevd for the length of a PortMaster Weston port, whose libinput needs its database). | both |
 | Writable state | `/data` on p2 (ext4): keys, logs, machine-id, update state. tmpfs `/run`, `/tmp`, `/var`. Root is read-only. | my355 |
-| Updates | `baseos-gkd350hultra-<ver>.bosupd` at the card root, `format=basedos-update/1`: a tar of `manifest` and the system layer (`tools/mkupdate.py`; `basedos-update` installs it into the spare slot when asked: at boot after spruce's updater requests it, or from the maintenance menu) | my355's name and manifest style (spruce looks for `baseos-<target>-*.bosupd`); the format is BasedOS's own, as its slots are files |
+| Updates | `baseos-gkd350hultra-<ver>.bosupd` at the card root, `format=basedos-update/1`: a tar of `manifest` and the system layer (`tools/mkupdate.py`; `basedos-update` installs it as `rootfs.new` when asked, at boot after spruce's updater requests it or from the maintenance menu, and the initrd puts it in place at the restart) | my355's name and manifest style (spruce looks for `baseos-<target>-*.bosupd`); the format is BasedOS's own, as its slots are files |
 | Logs | `/data/basedos.log` (mirroring to the card is not done yet) | both |
 
 ## eMMC layout
@@ -104,7 +106,7 @@ complete and bootable.
 | Region | Contents |
 |---|---|
 | sectors 0 to 32767 | stock's MBR, idbloader and U-Boot FIT. Never written. |
-| p1 vfat, 3 GB (`/flash` under stock, `/boot` under BasedOS) | stock's own files, used in place and never changed: `SYSTEM` (2.3 GB, mounted read-only at `/stock`), `Image`, DTBs (booted by BasedOS's boot script); `boot.scr` (BasedOS's own while BasedOS is on; stock's kept as `basedos/boot.scr.stock`); `basedos/`: `initrd.uimg`, the two system slots (`rootfs.squashfs`, `rootfs-b.squashfs`) and the slot file |
+| p1 vfat, 3 GB (`/flash` under stock, `/boot` under BasedOS) | stock's own files, used in place and never changed: `SYSTEM` (2.3 GB, mounted read-only at `/stock`), `Image`, DTBs (booted by BasedOS's boot script); `boot.scr` (BasedOS's own while BasedOS is on; stock's kept as `basedos/boot.scr.stock`); `basedos/`: `initrd.uimg`, the system layer (`rootfs.squashfs`; an installed update waits as `rootfs.new` until the restart) |
 | p2 ext4, 11.6 GB (stock's `/storage`) | stock's data; `basedos-data/`, BasedOS's `/data` (logs, update state, accounts, Wi-Fi, SSH keys) |
 | `boot0`, `boot1` | an old Amlogic loader the RK3576 never reads; left alone |
 
@@ -122,11 +124,11 @@ folders removed).
    stock's saved boot script, so stock boots itself.
 2. The kernel unpacks its built-in initramfs and then ours over it, so our `/init` runs, not
    stock's. `/basedos/init` mounts p1 read-only, counts the boot on p2 (and does a pending
-   uninstall or stock-once there), loop-mounts the chosen slot's system layer as the root and
-   stock's `SYSTEM` at its `/stock`, checks that stock is the build the slot was made for (falling
-   back to the other slot, then to stock's own `/init`), then `switch_root`s and execs `/sbin/init`.
+   uninstall or stock-once there), puts an installed update (`rootfs.new`) in place, loop-mounts the system
+   layer as the root and stock's `SYSTEM` at its `/stock`, checks that stock is the build the layer
+   was made for (falling back to stock's own `/init`), then `switch_root`s and execs `/sbin/init`.
 3. BusyBox init runs `rcS`: proc/sys/devpts and the `/dev` links, the boot screen, the clock, `/data` (checked, then mounted from p2), a first try at the card, then the Wi-Fi driver and the shutdown-key watcher in the background. Joining Wi-Fi and SSH are the frontend's; BasedOS's own start only in maintenance mode or after a failing frontend.
-4. `frontend-session` (respawned) mounts the card (retrying until it's probed), settles and installs a pending update once a boot (`basedos-update confirm`, `apply`: installed, then straight to a reboot), then runs the frontend probe. With no card or frontend, it shows a splash and retries.
+4. `frontend-session` (respawned) mounts the card (retrying until it's probed), installs a requested update once a boot (`basedos-update apply`: installed, then straight to a reboot), then runs the frontend probe. With no card or frontend, it shows a splash and retries.
 
 ## Rootfs
 
@@ -148,7 +150,7 @@ The build fails if a stock file is in the system layer. `prepare-stock` checks t
 ## Versions
 
 - **v0 (done 2026-11-16):** boots to BusyBox init. SSH over Wi-Fi, the card mounted at `/mnt/SDCARD`, frontend probe, splash. No updates, no A/B. Success means BasedOS hands off to a test frontend, then to spruce, whatever spruce does after that.
-- **v1 (mostly done):** power key handling, battery and charging, sleep and audio (spruce's, on BasedOS), `.bosupd` with A/B and trial boots. Left: a USB gadget (adb or storage), the boot log on the card.
+- **v1 (mostly done):** power key handling, battery and charging, sleep and audio (spruce's, on BasedOS), `.bosupd` updates (A/B and trial boots, then one layer with stock as the fallback). Left: a USB gadget (adb or storage), the boot log on the card.
 - **v2:** the installer card for users, boot time work (begun: boot-time.md), NextUI.
 - **spruce side (done; spruce-on-gkd.md)** (in the spruce repo, in parallel): a `BASEOS_TARGET=gkd350hultra` platform checked before the CPU-ID case (the 350H Ultra's `0xd03` cores would otherwise match H700), a PyUI rotation like the RG28XX, and RetroArch on KMS/GBM.
 

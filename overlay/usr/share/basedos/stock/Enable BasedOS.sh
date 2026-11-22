@@ -42,7 +42,7 @@ layer_fits() {
 scr_ok "$SAVED" || fail "BasedOS's files are missing or damaged." "$SAVED isn't a whole boot script"
 dd if="$SAVED" bs=64 skip=1 2>/dev/null | grep -q "rdinit=/basedos/init" || fail "BasedOS's files are missing or damaged." "$SAVED isn't BasedOS's"
 [ -f $P1/basedos/initrd.uimg ] || fail "BasedOS's files are missing or damaged." "no $P1/basedos/initrd.uimg"
-layer_fits $P1/basedos/rootfs.squashfs || layer_fits $P1/basedos/rootfs-b.squashfs ||
+layer_fits $P1/basedos/rootfs.new || layer_fits $P1/basedos/rootfs.squashfs ||
 	fail "BasedOS doesn't support this stock version. Install a BasedOS release made for it." "no system layer made for stock build ${STOCK_ID:-unknown}"
 mount -o remount,rw $P1 || fail "Couldn't enable BasedOS." "can't write $P1"
 rm -f $P1/boot.scr.new

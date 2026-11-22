@@ -7,7 +7,7 @@
 # A fresh setup (docs/plan.md, Architecture): adds /flash/basedos/ (p1) and
 # /storage/basedos-data/ (p2), puts BasedOS's own boot.scr in place of stock's and keeps stock's
 # copy in /flash/basedos/boot.scr.stock. In basedos/: the initrd and the system layer
-# (rootfs.squashfs, slot a). Stock's SYSTEM, Image, DTBs and /storage stay as they are; BasedOS
+# (rootfs.squashfs). Stock's SYSTEM, Image, DTBs and /storage stay as they are; BasedOS
 # boots stock's kernel and DTBs and mounts its SYSTEM read-only, in place (docs/plan.md,
 # Architecture), so the system layer must be made for this stock build (its needs-stock).
 # Copies stock's SSH host keys (same fingerprint) and its saved Wi-Fi network

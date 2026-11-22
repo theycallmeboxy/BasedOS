@@ -9,18 +9,21 @@
 # BUILD_ID); with any other stock it isn't used, and stock boots.
 #
 # Boot attempts are counted on p2 (basedos-data/boot-attempts) before the root is
-# chosen, and rcS deletes the count once userspace is up. Boots that never reach
-# rcS keep counting: from the 4th the other rootfs slot is used, from the 6th
-# stock boots. The count stays until rcS (or you) deletes it. basedos-data/boot-stock-once,
-# if there, is removed and stock boots once.
+# mounted, and rcS deletes the count once userspace is up. Boots that never reach rcS keep
+# counting: from the 4th, stock boots, and goes on booting until the count goes (setup's Repair
+# deletes it, or you do). basedos-data/boot-stock-once, if there, is removed and stock boots once.
+#
+# BasedOS has one system layer, basedos/rootfs.squashfs. An update (basedos-update) leaves the
+# next one beside it as rootfs.new, whole and checked, and it takes the old one's place here,
+# before anything is mounted from it.
 bb=/basedos/busybox
 
 # This initrd's interface to the system layers: what it sets up for them before switch_root. A
 # system layer names the one it needs (usr/share/basedos/needs-initrd) and isn't used with an
 # older initrd. Raise it when a system layer starts relying on something new here. tools/mkboot.py
 # puts it in the image's name ("BasedOS initrd abi N"), where basedos-update reads it. The initrd
-# is one of BasedOS's boot files with boot.scr: setup installs it, updates don't carry it (the
-# slot fallback below couldn't undo a bad one).
+# is one of BasedOS's boot files with boot.scr: setup installs it, updates don't carry it (a bad
+# one would stop every boot before the boot counter could help).
 ABI=1
 log() { echo "basedos-init: $*" > /dev/kmsg; }
 
@@ -111,22 +114,25 @@ if $bb mount -t ext4 -o noatime $P2 /p2 2>/dev/null; then
 else
 	log "can't mount $P2; boot attempts not counted"
 fi
-[ "$attempts" -ge 6 ] && fallback "BasedOS did not reach rcS in the last $((attempts - 1)) boots"
+[ "$attempts" -ge 4 ] && fallback "BasedOS did not reach rcS in the last $((attempts - 1)) boots"
 
-# Slot "b" is rootfs-b.squashfs; anything else (none, empty, garbage) is rootfs.squashfs.
-slot=$($bb head -c 2 /p1/basedos/slot 2>/dev/null | $bb tr -d '\n')
-[ "$slot" = b ] || slot=""
-other=b; [ "$slot" = b ] && other=""
-if [ "$attempts" -ge 4 ] && [ -f "/p1/basedos/rootfs${other:+-$other}.squashfs" ]; then
-	log "boot attempt $attempts without reaching rcS: trying the other slot"
-	s=$slot; slot=$other; other=$s
+# An installed update: rootfs.new over rootfs.squashfs, in one rename (a running system's image
+# can't be replaced, so it's done here). A power cut before it leaves rootfs.new for the next start.
+R=/p1/basedos/rootfs.squashfs
+if [ -f /p1/basedos/rootfs.new ]; then
+	if $bb mount -o remount,rw /p1; then
+		if $bb mv -f /p1/basedos/rootfs.new $R && $bb sync; then log "update: the new system layer is in place"
+		else log "update: couldn't put the new system layer in place"; fi
+		$bb mount -o remount,ro /p1
+	else
+		log "update: can't write p1; the new system layer waits"
+	fi
 fi
 
-# A slot is BasedOS's system layer (rootfs.squashfs or rootfs-b.squashfs), mounted read-only as
-# the root, with stock's SYSTEM mounted read-only at its /stock. It's used only if stock is the
-# build it was made against (its needs-stock against stock's own BUILD_ID), this initrd is new
-# enough for it (its needs-initrd) and it has its tools.
-mount_slot() {
+# The system layer, mounted read-only as the root, with stock's SYSTEM mounted read-only at its
+# /stock. It's used only if stock is the build it was made against (its needs-stock against
+# stock's own BUILD_ID), this initrd is new enough for it (its needs-initrd) and it has its tools.
+mount_layer() {
 	$bb mount -t squashfs -o ro,loop "$1" /newroot || { log "$1 does not mount"; return 1; }
 	want=$($bb cat /newroot/usr/share/basedos/needs-stock 2>/dev/null)
 	if [ -z "$want" ]; then
@@ -170,17 +176,12 @@ mount_slot() {
 	return 1
 }
 
-# root is set only once a slot has mounted: a missing or refused slot must end in stock, never in
-# switch_root on an empty /newroot (PID 1 would exit and the kernel would hang on the panic).
-root=""
-for s in "$slot" "$other"; do
-	r=/p1/basedos/rootfs${s:+-$s}.squashfs
-	[ -f "$r" ] || { log "no $r"; continue; }
-	mount_slot "$r" && { root=$r; break; }
-done
-[ -n "$root" ] || fallback "no usable rootfs"
+# A missing or refused system layer must end in stock, never in switch_root on an empty /newroot
+# (PID 1 would exit and the kernel would hang on the panic).
+[ -f $R ] || fallback "no $R"
+mount_layer $R || fallback "no usable rootfs"
 
-log "root $root on stock $have (boot attempt $attempts)"
+log "root $R on stock $have (boot attempt $attempts)"
 $bb mkdir -p /newroot/boot 2>/dev/null
 $bb mount --move /p1 /newroot/boot 2>/dev/null || $bb mount -o bind /p1 /newroot/boot
 $bb mount --move /dev /newroot/dev

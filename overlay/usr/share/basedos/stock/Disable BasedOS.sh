@@ -47,14 +47,14 @@ scr_ok $P1/boot.scr && is_basedos $P1/boot.scr ||
 scr_ok $B/boot.scr.stock && ! is_basedos $B/boot.scr.stock ||
 	fail "BasedOS's files are damaged." "stock's saved boot script ($B/boot.scr.stock) isn't there or isn't whole"
 
-# 1. "Enable BasedOS" in Ports, from BasedOS's system layer (the slot that boots next first).
-case "$(head -c 2 $B/slot 2>/dev/null)" in b*) slots="rootfs-b rootfs" ;; *) slots="rootfs rootfs-b" ;; esac
+# 1. "Enable BasedOS" in Ports, from BasedOS's system layer (an installed update's first: it's
+# the one that would boot).
 m=/tmp/basedos-disable.$$
 mkdir -p "$m" "$PORTS" || fail "Couldn't disable BasedOS." "can't make $m or $PORTS"
 got=""
-for s in $slots; do
-	[ -f "$B/$s.squashfs" ] || continue
-	mount -t squashfs -o ro,loop "$B/$s.squashfs" "$m" 2>/dev/null || continue
+for s in rootfs.new rootfs.squashfs; do
+	[ -f "$B/$s" ] || continue
+	mount -t squashfs -o ro,loop "$B/$s" "$m" 2>/dev/null || continue
 	if [ -f "$m/usr/share/basedos/stock/$ENABLE" ] && put "$m/usr/share/basedos/stock/$ENABLE" "$PORTS/$ENABLE"; then
 		got=1
 	fi

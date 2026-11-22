@@ -89,12 +89,14 @@ pick() {
 
 # confirm <question> <line>...: 0 once A, B, X, Y are tapped in that order; 1 on any other button,
 # or 10 s without one. The lines say what happens; the status line shows how far it's got.
+# (Shell variables are all global: confirm's progress is _tap, never a name run's branches use
+# across the call. As _p it replaced the update's file name, and the install found no file.)
 confirm() {
 	_q=$1; shift
 	_i=0
 	listen
 	while :; do
-		case $_i in 0) _p="_ _ _ _" ;; 1) _p="A _ _ _" ;; 2) _p="A B _ _" ;; *) _p="A B X _" ;; esac
+		case $_i in 0) _tap="_ _ _ _" ;; 1) _tap="A _ _ _" ;; 2) _tap="A B _ _" ;; *) _tap="A B X _" ;; esac
 		{
 			echo "!$_q"
 			printf '%s
@@ -103,7 +105,7 @@ confirm() {
 			echo "Tap A, B, X, Y to confirm."
 			echo "Any other button cancels."
 		} > "$SPLASH_INFO"
-		splash "Tapped: $_p"
+		splash "Tapped: $_tap"
 		_k=""
 		read -r -t 10 _k <&5
 		case "$_i:$_k" in

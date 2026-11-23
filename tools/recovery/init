@@ -147,7 +147,20 @@ mbr() { od -An -tu4 -j "$1" -N4 "$BK/$NAME.0-partition-table.img" | tr -d ' \n';
 	[ "$(mbr 470)" = "$R3_START" ] && [ "$(mbr 474)" = "$R3_SECTORS" ] ||
 	stop "This backup doesn't match this device." "the backup's regions aren't laid out as a restore can write them (backup.info against its partition table)"
 
-screen "Checking the backup (a few minutes)..." "!RECOVERY CARD" "Backup:$TAB$WHEN" "Contains:$TAB$WHAT"
+# progress <disk> <stat field> <sectors> <heading> <status> <after>: the share of <sectors> that
+# <disk> has read (field 3) or written (7) since it started, as "<status> N %<after>", on the
+# screen every 2 s until killed, so a step of minutes is seen moving.
+progress() {
+	_base=$(awk -v f=$2 '{ print $f }' /sys/block/$1/stat)
+	while sleep 2; do
+		_now=$(awk -v f=$2 '{ print $f }' /sys/block/$1/stat)
+		_pct=$(( (_now - _base) * 100 / ($3 > 0 ? $3 : 1) ))
+		[ $_pct -gt 99 ] && _pct=99
+		screen "$5 $_pct %$6" "!$4" "Backup:$TAB$WHEN" "Contains:$TAB$WHAT"
+	done
+}
+
+screen "Checking the backup..." "!RECOVERY CARD" "Backup:$TAB$WHEN" "Contains:$TAB$WHAT"
 # Each region it writes: whole (its size in bytes) and as it was made (its MD5). A short region
 # would be written short, the rest of the storage left as it is.
 region_ok() {  # region_ok <n> <file or piece prefix> <raw|zst>
@@ -159,9 +172,15 @@ region_ok() {  # region_ok <n> <file or piece prefix> <raw|zst>
 	wait $_c
 	[ "$_g" = "$_m" ] && [ "$(tr -d ' \n' < /tmp/count.out)" = "$_b" ]
 }
+# How far it has got: the card's sectors read against the size of what's checked (its first read
+# of them since power-on, so all of it comes from the card).
+progress $CARD 3 $(( $(du -ck "$BK/$NAME".[023]-* | tail -1 | cut -f1) * 2 )) "RECOVERY CARD" "Checking the backup:" "" & P=$!
 region_ok 0 "$BK/$NAME.0-partition-table.img" raw &&
 	region_ok 2 "$BK/$NAME.2-p1.img.zst" zst &&
-	region_ok 3 "$BK/$NAME.3-p2.img.zst" zst ||
+	region_ok 3 "$BK/$NAME.3-p2.img.zst" zst
+_rc=$?
+kill $P 2>/dev/null; wait $P 2>/dev/null
+[ $_rc -eq 0 ] ||
 	stop "The backup on this card is damaged. Make a new card." "the backup doesn't read as it was made (MD5 or size)"
 log "backup $NAME checks out"
 
@@ -179,16 +198,6 @@ power_ok() {
 	[ -n "$_chg" ] || [ -z "$_cap" ] || [ "$_cap" -ge 30 ]
 }
 
-# progress <stat field> <what>: the share of p1 and p2's sectors read (3) or written (7) since it
-# started, on the screen every 2 s, until killed.
-progress() {
-	_base=$(awk -v f=$1 '{ print $f }' /sys/block/$EMMC/stat)
-	_all=$((R2_SECTORS + R3_SECTORS))
-	while sleep 2; do
-		_now=$(awk -v f=$1 '{ print $f }' /sys/block/$EMMC/stat)
-		screen "Restoring: $(( (_now - _base) * 100 / _all )) %. Don't turn off." "!RESTORING" "Backup:$TAB$WHEN" "Contains:$TAB$WHAT"
-	done
-}
 
 # region_md5 <start> <sectors>: the MD5 of that region of the eMMC, read past the page cache's
 # leftovers (drop_caches first).
@@ -213,7 +222,7 @@ restore() {
 	# The partition table, then p1 and p2. Never the bootloader (R1).
 	dd if="$BK/$NAME.0-partition-table.img" of=/dev/$EMMC bs=512 seek=$R0_START count=$R0_SECTORS conv=fsync 2>/dev/null ||
 		{ FAIL="Writing stopped."; log "the partition table didn't write"; return 1; }
-	progress 7 writing & P=$!
+	progress $EMMC 7 $((R2_SECTORS + R3_SECTORS)) RESTORING "Restoring:" ". Don't turn off." & P=$!
 	write_region 2 "$BK/$NAME.2-p1.img.zst.*" && write_region 3 "$BK/$NAME.3-p2.img.zst.*"
 	_rc=$?
 	kill $P 2>/dev/null; wait $P 2>/dev/null
@@ -221,7 +230,7 @@ restore() {
 	[ $_rc -eq 0 ] || return 1
 	# Read back, past the page cache: everything that was written.
 	echo 3 > /proc/sys/vm/drop_caches
-	progress 3 checking & P=$!
+	progress $EMMC 3 $((R2_SECTORS + R3_SECTORS)) RESTORING "Checking what was written:" ". Don't turn off." & P=$!
 	_g0=$(dd if=/dev/$EMMC bs=512 skip=$R0_START count=$R0_SECTORS 2>/dev/null | md5sum | cut -c1-32)
 	_g2=$(region_md5 $R2_START $R2_SECTORS)
 	_g3=$(region_md5 $R3_START $R3_SECTORS)

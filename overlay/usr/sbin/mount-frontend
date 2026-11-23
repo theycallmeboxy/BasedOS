@@ -42,15 +42,22 @@ fat_dirty() {
 	[ $(( $(dd if="$1" bs=1 skip=65 count=1 2>/dev/null | hexdump -e '1/1 "%u"') % 2 )) -eq 1 ]
 }
 # Repair once per insertion (per card ID), with the checker for its filesystem; its output goes
-# to a per-card file in /run, and only a summary to the log on the eMMC.
+# to a per-card file in /run, and only a summary to the log on the eMMC. The checkers can't say
+# how far they've got, so the screen counts the seconds instead (a big card can take a while).
 repair() {
 	[ -e "$checked" ] && return 1
 	touch "$checked"
 	case "$type" in
-		vfat) say "Checking the SD card..." "checking the card ($1)"; fsck.fat -a "$dev" > "$checked" 2>&1 ;;
-		exfat) say "Checking the SD card..." "checking the card ($1)"; fsck.exfat -y "$dev" > "$checked" 2>&1 ;;
+		vfat) say "Checking the SD card..." "checking the card ($1)"; fsck.fat -a "$dev" > "$checked" 2>&1 & ;;
+		exfat) say "Checking the SD card..." "checking the card ($1)"; fsck.exfat -y "$dev" > "$checked" 2>&1 & ;;
 		*) log "card $dev is ${type:-unformatted}: not vfat or exFAT"; return 1 ;;
 	esac
+	_p=$! _s=0
+	while sleep 1; kill -0 $_p 2>/dev/null; do
+		_s=$((_s + 1))
+		splash "Checking the SD card... $_s s"
+	done
+	wait $_p
 	log "card check ($type) exit $?: $(tail -1 "$checked")"
 }
 

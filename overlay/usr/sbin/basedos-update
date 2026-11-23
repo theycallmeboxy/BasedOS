@@ -129,12 +129,29 @@ evaluate() {
 	return 0
 }
 
-# member <payload> <member> <dest> <sha256>: write, sync, drop the cache, re-read, rename.
+# member <payload> <member> <dest> <sha256> <text>: write, sync, drop the cache, re-read, rename.
+# The screen's status line is <text> and how far it has got, every second: the write is the first
+# half (what's written against the payload's size: the member is nearly all of it), the re-read
+# the second.
+size_of() { ls -lnL "$1" 2>/dev/null | awk '{ print $5 + 0 }'; }
 member() {
-	tar -xOf "$1" "$2" > "$3.new" 2>/dev/null || { rm -f "$3.new"; return 1; }
+	_all=$(size_of "$1")
+	[ "${_all:-0}" -gt 0 ] || _all=1
+	tar -xOf "$1" "$2" > "$3.new" 2>/dev/null & _p=$!
+	while sleep 1; kill -0 $_p 2>/dev/null; do
+		splash "$5 $(( $(size_of "$3.new") * 50 / _all )) %"
+	done
+	wait $_p || { rm -f "$3.new"; return 1; }
 	sync
 	echo 3 > /proc/sys/vm/drop_caches
-	[ "$(sha256sum < "$3.new" | cut -d' ' -f1)" = "$4" ] || { rm -f "$3.new"; return 1; }
+	sha256sum < "$3.new" > /tmp/basedos-update.sum & _p=$!
+	while sleep 1; kill -0 $_p 2>/dev/null; do
+		_pos=$(awk '$1 == "pos:" { print $2 }' /proc/$_p/fdinfo/0 2>/dev/null)
+		splash "$5 $(( 50 + ${_pos:-0} * 50 / _all )) %"
+	done
+	wait $_p
+	[ "$(cut -d' ' -f1 /tmp/basedos-update.sum)" = "$4" ] || { rm -f "$3.new" /tmp/basedos-update.sum; return 1; }
+	rm -f /tmp/basedos-update.sum
 	mv "$3.new" "$3" && sync
 }
 
@@ -169,7 +186,7 @@ apply() {
 install_image() {
 	say "Installing $EV_BUILD..." "installing $EV_VERSION ($EV_BUILD) from $1"
 	mount -o remount,rw /boot || { log "can't write p1; not updating"; return 1; }
-	if ! member "$1" rootfs.squashfs "$B/rootfs.new" "$EV_SHA"; then
+	if ! member "$1" rootfs.squashfs "$B/rootfs.new" "$EV_SHA" "Installing $EV_BUILD:"; then
 		mount -o remount,ro /boot
 		set_aside "$1" failed "the system image didn't verify, or didn't fit"
 		say "Update failed. BasedOS is unchanged." "update failed: the system image didn't verify; still on $BASEOS_VERSION"

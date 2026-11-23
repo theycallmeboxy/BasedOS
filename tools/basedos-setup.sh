@@ -270,9 +270,15 @@ grep '^P1 ' "$INFO" > "$T/p1"
 while read -r _k _sha _f; do
 	[ -f "$STOCK_P1/$_f" ] || die "stock has no $STOCK_P1/$_f"
 	[ -n "$SCREEN" ] && say "[ ] $_f"
-	sha256sum < "$STOCK_P1/$_f" > "$T/sum" 2>/dev/null & _p=$!
-	progress $_p "$(size_of "$STOCK_P1/$_f")" "[ ] $_f" fd_pos $_p 0
-	wait $_p
+	# How far it has got only for a big file (a small one is done before it'd show).
+	_size=$(size_of "$STOCK_P1/$_f")
+	if [ -n "$SCREEN" ] && [ "$_size" -ge 4194304 ]; then
+		sha256sum < "$STOCK_P1/$_f" > "$T/sum" 2>/dev/null & _p=$!
+		progress $_p "$_size" "[ ] $_f" fd_pos $_p 0
+		wait $_p
+	else
+		sha256sum < "$STOCK_P1/$_f" > "$T/sum" 2>/dev/null
+	fi
 	[ "$(cut -c1-64 "$T/sum")" = "$_sha" ] || die "stock's $_f isn't the file BasedOS $VERSION is made for"
 	if [ -n "$SCREEN" ]; then ui_last "[x] $_f"; fi
 done < "$T/p1"

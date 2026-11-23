@@ -58,7 +58,7 @@ swapped while stock runs, it still shows the card that was in. With the setup ca
 Ports shows the card's own `roms/ports` (stock uses the card's `roms` folder, and makes its own
 system folders there), so BasedOS's menu from the card is the one there.
 
-The entry copies the release into memory and checks it, then runs the same setup with BasedOS's
+The entry copies the release into memory and checks it (on the screen, a file at a time), then runs the same setup with BasedOS's
 screens: Up/Down and A choose, B goes back to stock before anything is written, and the summary
 is confirmed by tapping A, B, X, Y in that order, as in BasedOS's maintenance menu. Stock's
 frontend is stopped while it runs. The checks and the recovery card's backup show how far
@@ -121,7 +121,7 @@ script is back.
 | Power on **holding another button** | whatever `/data/boot-keys.conf` maps it to (none by default): maintenance mode, stock once, or a frontend on the card other than the first one found. The format and the button names are in `/usr/share/basedos/boot-keys.conf`; copy it to `/data/` to change it. The boot screen labels the mapped buttons: Select's and Start's beside the buttons themselves ("Maintenance", "Boot Stock OS" by default), any other in a list |
 | Hold **Volume Up + Volume Down** together **3 s** | clean shutdown with any frontend, also a hung one: programs get 3 s to save and quit, then the card is synced and unmounted (`basedos-shutdown-keys`). Holding power is the frontend's (spruce: Button Settings > Power button hold time) |
 | Tap power (in spruce) | sleep; tap again to wake. spruce's "Shutdown after sleeping" works |
-| Pull and reinsert the card | the card is found again; a card that wasn't unmounted cleanly is checked first |
+| Pull and reinsert the card | the card is found again; a card that wasn't unmounted cleanly is checked first (the screen counts the seconds) |
 
 Without a card, or with a card that has no frontend on it (a setup card, say), BasedOS waits
 for one and says so on screen; a card with a frontend put in then starts it. While it waits, the

@@ -125,7 +125,8 @@ stopping the frontend stops what it started, and starts the frontend again when 
 seat manager hands the console back in text mode just after the frontend stops, and the text
 console clears the screen then: `basedos-splash --console graphics` waits for that and keeps
 the console off the screen until the frontend starts again.
-A setup card carries the same `BasedOS.sh`: with a release beside it (`basedos-setup/`), it copies
+A setup card carries the same `BasedOS.sh`: with a release beside it (`basedos-setup/`), it runs
+`load` (with the screens from the card's system layer, so the screen is up from the start), which copies
 that release into memory, checks it, and runs setup from it (`basedos-setup.sh --screen`) the
 same way, with Disable and Enable in its menu too.
 

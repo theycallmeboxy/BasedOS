@@ -108,7 +108,7 @@ maskrom was tested 2026-11-20).
   another unit's eMMC (ID) or a different size, checks where it would write (the partition table
   at sectors 0..63; p1 and p2 back to back to the end, past the Rockchip loader area, where the
   backup's own partition table puts them), decompresses the backup and checks each region's MD5
-  and size, and wants 30 % battery or the charger. Then it shows what it would restore: tap A, B,
+  and size (the screen shows how far it has got), and wants 30 % battery or the charger. Then it shows what it would restore: tap A, B,
   X, Y in order to restore (a wrong key or a 5 s pause starts over; one key reader runs for each
   screen and reads the keys as events, so taps can't be missed), tap power to power off.
 - The restore writes the partition table, p1 and p2, each at its sector, and leaves the bootloader

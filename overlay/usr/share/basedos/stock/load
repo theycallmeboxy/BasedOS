@@ -1,0 +1,84 @@
+#!/bin/bash
+# load: a setup card's release into memory, on BasedOS's screens, then setup from it. The setup
+# card's Ports entry (BasedOS.sh) runs it as a service of its own, with UI the screens it took from
+# the card's system layer, and the card's release folder as $1, so the screen is up from the start.
+#
+# Each file the release's SHA256SUMS lists (but the update payload, which setup doesn't use) is
+# copied into memory and checked against it: a line each, ticked when it checks out, the one being
+# copied or checked showing how far it has got. Then setup runs from memory
+# (basedos-setup.sh --screen), so the card can come out or be erased as the recovery card, with the
+# screens from the checked copy of the system layer (the card's own were only for this).
+. "$UI/screen.sh"
+SRC=$1 REL=/tmp/basedos-release CHECKED=/tmp/basedos-ui.checked M=/tmp/basedos-ui.layer
+ui_lines=()
+# show: the heading and the last 7 lines (a negative offset past the start would give none).
+show() {
+	_from=$(( ${#ui_lines[@]} > 7 ? ${#ui_lines[@]} - 7 : 0 ))
+	screen "" "!Getting the setup files" "From the SD card into memory, checked:" "${ui_lines[@]:_from}"
+}
+add() { ui_lines+=("$1"); show; }
+last() { ui_lines[${#ui_lines[@]}-1]=$1; show; }
+# fail <screen text> [<log text>]
+fail() {
+	echo "load: ${2:-$1}" >&2
+	umount $M 2>/dev/null; rmdir $M 2>/dev/null
+	rm -rf $REL $CHECKED
+	message "A: back to stock" "!Setup" "$1" "" "Nothing was changed."
+	screen_off
+	exit 1
+}
+DAMAGED="The setup files on the SD card are damaged or incomplete: unpack the setup card zip onto it again."
+size_of() { ls -lnL "$1" 2>/dev/null | awk '{ print $5 + 0 }'; }
+fd_pos() { awk '$1 == "pos:" { print $2 }' /proc/$1/fdinfo/$2 2>/dev/null; }
+# watch <pid> <line> <total> <counter...>: while <pid> runs, the last line is <line> and how far it
+# has got (the counter prints the amount done, out of <total>), redrawn as it changes.
+watch() {
+	_wp=$1 _wl=$2 _wt=$3 _ww=""
+	shift 3
+	while kill -0 $_wp 2>/dev/null; do
+		_wd=$("$@")
+		_wc=$(( ${_wd:-0} * 100 / (_wt > 0 ? _wt : 1) ))
+		[ $_wc -gt 99 ] && _wc=99
+		[ "$_wc" = "$_ww" ] || { last "$_wl $_wc %"; _ww=$_wc; }
+		sleep 0.25
+	done
+}
+
+screen_on
+show
+rm -rf $REL $CHECKED; mkdir -p $REL
+[ -s "$SRC/SHA256SUMS" ] && cp "$SRC/SHA256SUMS" $REL/ || fail "$DAMAGED" "no SHA256SUMS in $SRC"
+while read -r _sum _f; do
+	_f=${_f#\*}
+	case "$_f" in ""|*.bosupd) continue ;; esac
+	[ -f "$SRC/$_f" ] || fail "$DAMAGED" "$SRC/$_f is missing"
+	_size=$(size_of "$SRC/$_f")
+	add "[ ] $_f"
+	# How far it has got only for a big file (a small one is done before it'd show).
+	if [ "$_size" -ge 4194304 ]; then
+		cp "$SRC/$_f" "$REL/$_f" & _p=$!
+		watch $_p "[ ] $_f: copying" "$_size" size_of "$REL/$_f"
+		wait $_p || fail "Couldn't copy the setup files into memory." "couldn't copy $_f"
+		sha256sum < "$REL/$_f" > $REL/.sum & _p=$!
+		watch $_p "[ ] $_f: checking" "$_size" fd_pos $_p 0
+		wait $_p
+	else
+		cp "$SRC/$_f" "$REL/$_f" || fail "Couldn't copy the setup files into memory." "couldn't copy $_f"
+		sha256sum < "$REL/$_f" > $REL/.sum
+	fi
+	[ "$(cut -c1-64 $REL/.sum)" = "$_sum" ] || fail "$DAMAGED" "$_f doesn't match SHA256SUMS"
+	last "[x] $_f"
+done < $REL/SHA256SUMS
+rm -f $REL/.sum
+
+# Setup's screens from the checked system layer.
+mkdir -p $CHECKED $M
+mount -t squashfs -o ro,loop $REL/rootfs.squashfs $M 2>/dev/null || fail "$DAMAGED" "the release's system layer doesn't mount"
+cp $M/usr/share/basedos/stock/* $M/usr/bin/basedos-splash $M/usr/bin/basedos-keys $M/etc/baseos-release $CHECKED/ 2>/dev/null
+umount $M; rmdir $M
+[ -f $CHECKED/screen.sh ] && [ -x $CHECKED/basedos-splash ] && [ -x $CHECKED/basedos-keys ] ||
+	fail "$DAMAGED" "the release's system layer has no screens"
+
+# Setup, on the screen this stopped the frontend for: it starts the frontend again after.
+UI=$CHECKED /bin/sh $REL/basedos-setup.sh --screen
+screen_off

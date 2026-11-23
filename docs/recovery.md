@@ -71,9 +71,9 @@ resize log, the MBR disk ID), so they aren't listed here.
 uninstall) makes a card that restores the
 built-in storage with no PC, then or later. Tested 2026-11-20 (pre.3): made on the device, booted,
 the backup checked, and a real restore verified byte for byte against the card's backup and the
-PC backup (with the earlier hold-A screen; the tap sequence and the restore that skips the
-bootloader, below, are newer and not yet tested on the unit). Used again 2026-11-21, with a card
-made at pre.7, after BasedOS's boot script hung on the logo: the unit came back as the card had it.
+PC backup (with the earlier hold-A screen). Used again 2026-11-21, with a card made at pre.7 (the
+tap sequence and the restore that skips the bootloader, below), after BasedOS's boot script hung
+on the logo: the unit came back as the card had it.
 
 **It needs the eMMC's own bootloader to start.** The boot ROM only ever starts the bootloader from
 the eMMC (sectors 64 to 32767): tested 2026-11-20 with those sectors zeroed and a card carrying a

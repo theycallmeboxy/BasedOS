@@ -2,7 +2,7 @@
 
 ## Status
 
-**On the unit (2026-11-22, build `51eeeef`) on the architecture below,** installed next to stock
+**On the unit (2026-11-22, build `658c2ab`) on the architecture below,** installed next to stock
 by `basedos-setup` (power to spruce's menu in about 4 s, boot-time.md). Checked on the unit:
 
 - One system layer and a boot counter that falls back to stock after three failed starts (A/B
@@ -14,16 +14,22 @@ by `basedos-setup` (power to spruce's menu in about 4 s, boot-time.md). Checked 
   (`basedos-update`). The boot script is not in a payload.
 - Leaving BasedOS (`basedos-boot`, the maintenance menu, Start held at power-on): stock once,
   disable BasedOS (stock boots; BasedOS's menu in stock's Ports turns it back on, and has
-  Disable and Uninstall too), uninstall (done by the initrd at the restart). Each boot script written is checked and read back.
+  Disable and Uninstall too), uninstall (done by the initrd at the restart). Each boot script
+  written is checked and read back. BasedOS's menu in stock's Ports: Disable, Enable and
+  Uninstall, each used on the unit (2026-11-22).
 - spruce: menu, emulators (RetroArch, DSperate, DraStic, PPSSPP, Mupen64Plus, Flycast,
   YabaSanshiro), E-Reader, Gallery, sleep and wake, clean shutdown, Wi-Fi and SSH (spruce's own,
   as on its other devices), screenshots, PortMaster with Weston and 32-bit ports (lib32.md,
   portmaster-libs.md). Details in spruce-on-gkd.md.
 - Maintenance mode (Select held at power-on): BasedOS's own Wi-Fi and root SSH, no frontend, and
   the menu above.
-- The boot screen, quiet boot, boot keys, and the Volume Up + Volume Down shutdown watcher.
+- The boot screen, quiet boot, boot keys, and the Volume Up + Volume Down shutdown watcher. The
+  waiting screens watch the boot keys too: Start held on "no frontend on the SD card" started
+  stock (2026-11-22).
 - Setup (`basedos-setup`, run on stock): install, repair (also with BasedOS's folder deleted),
-  uninstall, and removing what an unfinished install or uninstall left.
+  uninstall, and removing what an unfinished install or uninstall left. From a setup card with no
+  PC (2026-11-22): install, repair, uninstall, a recovery card, disable and enable, with the
+  checks' progress on the screen.
 - The recovery card (setup's "Make a recovery SD card"; recovery.md): made on the device, and two
   real restores of the eMMC: one verified byte for byte (2026-11-20), one after a boot script hung
   (2026-11-21).

@@ -20,8 +20,10 @@ between the 350H Ultra and your other spruce devices.
 
 ## Setup on the device (basedos-setup)
 
-`basedos-setup.sh` runs on the 350H Ultra itself, under stock, and downloads its release from
-GitHub. From a PC, in one go (press Enter at the password prompt: stock's root has none; the
+`basedos-setup.sh` runs on the 350H Ultra itself, under stock. There are two ways to run it: from a
+PC over SSH (here), or from a setup card with no PC (below); both offer the same choices.
+
+Over SSH it downloads its release from GitHub. From a PC, in one go (press Enter at the password prompt: stock's root has none; the
 release page has the exact line for each release):
 
     ssh -t root@<device> "curl -fsSL -o /tmp/basedos-setup.sh <release URL>/basedos-setup.sh && sh /tmp/basedos-setup.sh"
@@ -36,10 +38,10 @@ downloads and writes. What it offers depends on what it finds on the device:
 | BasedOS installed (on or disabled; also when its folder was deleted, as long as stock's own boot script, kept beside BasedOS's as `boot.scr.stock`, is still there) | **Repair BasedOS**: puts this release's BasedOS back (its system, initrd and boot script), keeps its settings and clears its boot counter. For a BasedOS that no longer starts (the device then starts stock), or to go back to this release. A disabled one stays disabled. **Uninstall BasedOS**: stock's boot script back, BasedOS's files, settings and its Ports entry removed; stock is as it was (to install again: setup, from a PC or a setup card) |
 | An install that didn't finish | **Install** (replaces it), or **Remove** it |
 | Settings or Ports entries left from an uninstall that didn't finish | **Install**, or **Remove** what's left |
-| Always | **Make a recovery SD card**: see "Recovery" below. You type `ERASE` to confirm the card |
+| Always | **Make a recovery SD card**: see "Recovery" below. Over SSH you type `ERASE` to confirm the card |
 
 Before Install, Repair or Uninstall it recommends making a recovery card and offers to in the
-same run (the change happens only once the card is made and checked). You type `INSTALL`,
+same run (the change happens only once the card is made and checked). Over SSH you type `INSTALL`,
 `REPAIR` or `UNINSTALL` to confirm you understand the built-in storage is modified, know the
 risks and have a backup. Setup installs the release it comes with: to go back to an older
 release, run that release's setup.
@@ -58,8 +60,8 @@ swapped while stock runs, it still shows the card that was in. With the setup ca
 Ports shows the card's own `roms/ports` (stock uses the card's `roms` folder, and makes its own
 system folders there), so BasedOS's menu from the card is the one there.
 
-The entry copies the release into memory and checks it (on the screen, a file at a time), then runs the same setup with BasedOS's
-screens: Up/Down and A choose, B goes back to stock before anything is written, and the summary
+The entry copies the release into memory and checks it (on the screen, a file at a time), then
+runs the same setup with BasedOS's screens: Up/Down and A choose, B goes back to stock before anything is written, and the summary
 is confirmed by tapping A, B, X, Y in that order, as in BasedOS's maintenance menu. Stock's
 frontend is stopped while it runs. The checks and the recovery card's backup show how far
 they've got. While BasedOS is installed, the menu also has **Disable BasedOS** or **Enable
@@ -70,19 +72,7 @@ take it out and put in the card to erase, or use the setup card itself (setup ha
 in memory). The screen shows the card in the slot, and A takes it. At the end it restarts or goes
 back to stock (after a recovery card: it powers off).
 
-## Install (developer install, next to stock)
-
-1. Prepare your stock files from a backup of your eMMC (recovery.md):
-   `python tools/prepare_stock.py <backup>/mmcblk0.img prepared`. The build makes BasedOS's links
-   into stock's files against them; nothing of stock's goes into BasedOS.
-2. In WSL: build (`tools/wsl/build.sh`; it unpacks your stock image the first time). It writes
-   `out/`: the system layer (`rootfs.squashfs`), the initrd, BasedOS's boot script, the recovery
-   card's files and an update payload (`.bosupd`).
-3. With the 350H Ultra running stock and reachable over SSH, copy `out/` to `/tmp` on the device and run
-   `tools/install-dev.sh /tmp/<dir>` there. It adds BasedOS's files to the boot partition (the
-   system layer, the initrd), puts BasedOS's boot script in place of stock's (kept), copies your
-   Wi-Fi network and SSH keys, and leaves stock's own files untouched.
-4. Reboot. BasedOS starts, then spruce from the card.
+## BasedOS in stock's Ports
 
 From stock, while BasedOS is installed, stock's **Ports** has **BasedOS**: BasedOS's menu, with
 its version, stock's build, the battery and whether BasedOS is on or disabled. It shows BasedOS's
@@ -100,7 +90,7 @@ after), and Disable and Uninstall want A, B, X, Y tapped in that order:
 
 (Stock's Ports shows only what's in it; this entry is what makes BasedOS appear there.)
 
-To go back to stock: the maintenance menu (above), or from SSH `basedos-boot stock-once`,
+To go back to stock: the maintenance menu (below, Everyday use), or from SSH `basedos-boot stock-once`,
 `disable` or `uninstall` (add `--reboot`); `basedos-boot status` says what boots next.
 `install-dev.sh revert` (from stock or BasedOS) still puts stock's boot script back and leaves
 BasedOS's files.
@@ -189,7 +179,8 @@ The screen stays on while it waits, so a device left there runs its battery down
   doesn't start and stock boots. Enable BasedOS in stock's Ports > BasedOS checks this first and says
   so, instead of enabling a BasedOS that wouldn't start.
 - **Frontend crash loop**: if spruce exits within 15 s five times in a row, BasedOS stops
-  restarting it and shows a message, instead of looping.
+  restarting it and shows a message, instead of looping. Wi-Fi and SSH come up so it can be
+  looked at, and Select or Start held for a second there still go to maintenance mode or stock.
 - **Card checks**: a card left dirty by a power cut is checked (`fsck`) once before use.
 - **Clean shutdown**: BasedOS's own power-off and restart (the volume-key combo, SSH) turn off a
   swap file on the card and release anything loop-mounted from it first, as spruce's own power-off
@@ -222,3 +213,19 @@ the bootloader).
 - Stock's Ports > BasedOS: Uninstall logs to `basedos-uninstall.log` on stock's data partition
   (`/storage`), which it leaves there; Disable logs to `basedos-data/basedos.log`.
   Setup from a setup card logs to the journal (`journalctl -u basedos-stock`).
+
+## For developers: installing a build
+
+Setup (above) is the way to install. To install a build of your own instead:
+
+1. Prepare your stock files from a backup of your eMMC (recovery.md):
+   `python tools/prepare_stock.py <backup>/mmcblk0.img prepared`. The build makes BasedOS's links
+   into stock's files against them; nothing of stock's goes into BasedOS.
+2. In WSL: build (`tools/wsl/build.sh`; it unpacks your stock image the first time). It writes
+   `out/`: the system layer (`rootfs.squashfs`), the initrd, BasedOS's boot script, the recovery
+   card's files and an update payload (`.bosupd`).
+3. With the 350H Ultra running stock and reachable over SSH, copy `out/` to `/tmp` on the device and run
+   `tools/install-dev.sh /tmp/<dir>` there. It adds BasedOS's files to the boot partition (the
+   system layer, the initrd), puts BasedOS's boot script in place of stock's (kept), copies your
+   Wi-Fi network and SSH keys, and leaves stock's own files untouched.
+4. Reboot. BasedOS starts, then spruce from the card.

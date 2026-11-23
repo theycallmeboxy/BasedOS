@@ -16,8 +16,8 @@ between the 350H Ultra and your other spruce devices.
   (no PC or network on the device; below).
 - An SD card you can erase, for the recovery card (recommended; setup says what size).
 - A spruce card (FAT32 or exFAT) with spruce for the 350H Ultra: an unofficial full build from the
-  [spruce fork's releases](https://github.com/theycallmeboxy/spruceOS/releases/latest), or spruce
-  plus the 350H Ultra kit (see [spruce-on-gkd.md](spruce-on-gkd.md)).
+  [spruce fork's releases](https://github.com/theycallmeboxy/spruceOS/releases/latest) (see
+  [spruce-on-gkd.md](spruce-on-gkd.md)).
 
 ## Setup on the device (basedos-setup)
 

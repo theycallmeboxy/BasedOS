@@ -69,4 +69,5 @@ licence, which allows using, copying and distributing them and travels with them
 
 The spruce changes for this device live in the spruce fork
 (https://github.com/theycallmeboxy/spruceOS, branch `gkd350h-ultra`) under spruce's own license.
-`tools/spruce-kit.py` packages them as an overlay and patches with release notes.
+The fork's `gkd350hultra-nightly.yml` workflow publishes full spruce builds with them, unofficial,
+on the fork's releases page.

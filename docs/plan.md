@@ -13,9 +13,8 @@ by `basedos-setup` (power to spruce's menu in about 4 s, boot-time.md). Checked 
   written beside the running layer as `rootfs.new` and put in place by the initrd at the restart
   (`basedos-update`). The boot script is not in a payload.
 - Leaving BasedOS (`basedos-boot`, the maintenance menu, Start held at power-on): stock once,
-  disable BasedOS (stock boots; "Enable BasedOS" in stock's Ports turns it back on, and stock's
-  Ports has "Disable BasedOS" too), uninstall (done by the initrd at the
-  restart). Each boot script written is checked and read back.
+  disable BasedOS (stock boots; BasedOS's menu in stock's Ports turns it back on, and has
+  Disable and Uninstall too), uninstall (done by the initrd at the restart). Each boot script written is checked and read back.
 - spruce: menu, emulators (RetroArch, DSperate, DraStic, PPSSPP, Mupen64Plus, Flycast,
   YabaSanshiro), E-Reader, Gallery, sleep and wake, clean shutdown, Wi-Fi and SSH (spruce's own,
   as on its other devices), screenshots, PortMaster with Weston and 32-bit ports (lib32.md,
@@ -112,11 +111,23 @@ complete and bootable.
 | `boot0`, `boot1` | an old Amlogic loader the RK3576 never reads; left alone |
 
 Leaving it: `basedos-boot` (maintenance menu, Start at power-on) boots stock once, disables
-BasedOS (stock boots; "Enable BasedOS" in stock's Ports turns it back on), or uninstalls (stock's `boot.scr` back and both
-folders removed). Stock's Ports entries go to both places stock may show Ports from: its
+BasedOS (stock boots; Enable BasedOS in BasedOS's menu in stock's Ports turns it back on), or uninstalls (stock's
+`boot.scr` back and both folders removed). BasedOS's menu in stock's Ports (`BasedOS.sh`: Disable
+or Enable, and Uninstall) goes to both places stock may show Ports from: its
 automount binds `games-internal/roms` or the card's `roms` by its setting
 `system.merged.device`, and with a spruce card (`Roms`) the latter binds nothing and p2's own
-`roms` shows. Both are on p2, never the card.
+`roms` shows. Both are on p2, never the card. The entry only starts the menu: the menu and its
+actions (`/usr/share/basedos/stock/`) come from BasedOS's system layer, so they change with
+BasedOS's updates, and show BasedOS's screens (`screen.sh`, `basedos-splash`, `basedos-keys`,
+copied into memory). They draw on the framebuffer, which the panel shows once stock's frontend
+(sway and EmulationStation) is stopped; the menu runs as its own service (`systemd-run`), since
+stopping the frontend stops what it started, and starts the frontend again when it's done. The
+seat manager hands the console back in text mode just after the frontend stops, and the text
+console clears the screen then: `basedos-splash --console graphics` waits for that and keeps
+the console off the screen until the frontend starts again.
+A setup card carries the same `BasedOS.sh`: with a release beside it (`basedos-setup/`), it copies
+that release into memory, checks it, and runs setup from it (`basedos-setup.sh --screen`) the
+same way, with Disable and Enable in its menu too.
 
 ## Boot flow
 

@@ -154,7 +154,7 @@ run() {
 		MSG="Install failed. BasedOS is unchanged." ;;
 	disable)
 		confirm "Disable BasedOS?" "The device boots stock instead of BasedOS." "BasedOS stays installed." \
-			"To boot it again, run Enable BasedOS from stock's Ports." || return
+			"To start it again: Ports > BasedOS > Enable BasedOS." || return
 		draw "Disabling BasedOS..."
 		basedos-boot disable --reboot || MSG="Couldn't disable BasedOS." ;;
 	uninstall)

@@ -13,8 +13,9 @@
 #   maintenance        no frontend; SSH and Wi-Fi only (default: Select)
 #   frontend <entry>   start <entry> on the card instead of the first match above
 #
-# With no card, the waiting screen watches the same map: a mapped button held for a second there
-# does its maintenance or stock action, without a restart.
+# The screens that wait (no card; a card with no frontend; a frontend that keeps failing) watch
+# the same map: a mapped button held for a second there does its maintenance or stock action,
+# without a restart.
 #
 # Safeguards:
 #   - A frontend that exits within 15 s, five times in a row, is not restarted again until
@@ -34,11 +35,54 @@ basedos_network() {
 	/etc/init.d/sshd
 }
 
-# A frontend that keeps failing: stop, and bring up Wi-Fi and SSH so it can be looked at.
+# now_cs: the uptime in hundredths of a second.
+now_cs() { read -r _u _ < /proc/uptime; _s=${_u%.*} _f=${_u#*.}; echo $(( _s * 100 + 1$_f - 100 )); }
+
+# waiting_screen: no card: what to do, and the buttons that work here (key_watch).
+waiting_screen() {
+	_hints=$(boot_key_hints maintenance stock)
+	{
+		echo "!NO SD CARD"
+		echo "Insert your SD card."
+		[ -n "$_hints" ] && echo "Or hold a labelled button."
+		[ -n "$_hints" ] && echo "$_hints"
+	} > "$SPLASH_INFO"
+	say "Waiting for an SD card..." "no card in the slot (waiting for one)"
+}
+
+# key_watch: about a second of watching the boot-key map; a mapped button held for a second does
+# its maintenance or stock action (the frontend action needs a card with it: not here). For the
+# screens that wait (no card, no frontend on the card, a frontend that keeps failing).
+_kw="" _kw_t=0
+key_watch() {
+	_end=$(( $(now_cs) + 100 ))
+	while [ "$(now_cs)" -lt $_end ]; do
+		set -- $(boot_key_action)
+		if [ -z "${1:-}" ] || [ "$1 $2" != "$_kw" ]; then
+			_kw=${1:+$1 $2} _kw_t=$(now_cs)
+		elif [ $(( $(now_cs) - _kw_t )) -ge 100 ]; then
+			case "$2" in
+			maintenance)
+				touch $STATE/maintenance
+				log "$(button_label "$1") held while waiting: maintenance mode"
+				exit 1 ;;
+			stock)
+				log "$(button_label "$1") held while waiting: stock for this boot"
+				basedos-boot stock-once --reboot ||
+					stay_down "Couldn't start stock. Restart to try again." "couldn't hand over to stock (basedos-boot stock-once failed)"
+				while :; do sleep 3600; done ;;
+			esac
+		fi
+		usleep 100000
+	done
+}
+
+# A frontend that keeps failing: stop, and bring up Wi-Fi and SSH so it can be looked at. The
+# boot screen's buttons (maintenance, stock) still work.
 stay_down() {
 	say "$1" "${2:-$1}"
 	basedos_network
-	while :; do sleep 3600; done
+	while :; do key_watch; done
 }
 
 # run_frontend <entry>: exec one of the card's frontends, the way its kind is started.
@@ -108,47 +152,6 @@ if [ -f $STATE/session-start ]; then
 		stay_down "The frontend keeps closing. Restart to try again." "the frontend exited within 15 s 5 times in a row; not restarting it"
 fi
 
-# now_cs: the uptime in hundredths of a second.
-now_cs() { read -r _u _ < /proc/uptime; _s=${_u%.*} _f=${_u#*.}; echo $(( _s * 100 + 1$_f - 100 )); }
-
-# waiting_screen: no card: what to do, and the buttons that work here.
-waiting_screen() {
-	_hints=$(boot_key_hints maintenance stock)
-	{
-		echo "!NO SD CARD"
-		echo "Insert your SD card."
-		[ -n "$_hints" ] && echo "Or hold a labelled button."
-		[ -n "$_hints" ] && echo "$_hints"
-	} > "$SPLASH_INFO"
-	say "Waiting for an SD card..." "no card in the slot (waiting for one)"
-}
-
-# key_watch: about a second of watching the boot-key map; a mapped button held for a second does
-# its maintenance or stock action (the frontend action needs a card: not here).
-_kw="" _kw_t=0
-key_watch() {
-	_end=$(( $(now_cs) + 100 ))
-	while [ "$(now_cs)" -lt $_end ]; do
-		set -- $(boot_key_action)
-		if [ -z "${1:-}" ] || [ "$1 $2" != "$_kw" ]; then
-			_kw=${1:+$1 $2} _kw_t=$(now_cs)
-		elif [ $(( $(now_cs) - _kw_t )) -ge 100 ]; then
-			case "$2" in
-			maintenance)
-				touch $STATE/maintenance
-				log "$(button_label "$1") held with no card: maintenance mode"
-				exit 1 ;;
-			stock)
-				log "$(button_label "$1") held with no card: stock for this boot"
-				basedos-boot stock-once --reboot ||
-					stay_down "Couldn't start stock. Restart to try again." "couldn't hand over to stock (basedos-boot stock-once failed)"
-				while :; do sleep 3600; done ;;
-			esac
-		fi
-		usleep 100000
-	done
-}
-
 # Quiet retries; one message per session, and only after 15 s without a card (at boot the card is
 # usually a few tens of ms from being probed, so the first 2 s are polled every 50 ms). From then
 # on the waiting screen stays up and the boot-key map is watched while the card is polled.
@@ -198,6 +201,20 @@ fi
 for entry in System/frontend System/launch_frontend.sh spruce/scripts/runtime.sh .tmp_update/updater; do
 	[ -f "$entry" ] && run_frontend "$entry"
 done
-say "No frontend found on the SD card." "no frontend on the card; retrying in 5 s"
-sleep 5
-exit 1
+# None: a card that isn't a frontend's (a setup card, say). Wait, watching the boot keys, until
+# one is there or the card is taken out (the next session waits for a card).
+_hints=$(boot_key_hints maintenance stock)
+{
+	echo "!NO FRONTEND ON THE SD CARD"
+	echo "Insert your spruce card."
+	[ -n "$_hints" ] && echo "Or hold a labelled button."
+	[ -n "$_hints" ] && echo "$_hints"
+} > "$SPLASH_INFO"
+say "Waiting for a card with a frontend..." "no frontend on the card (waiting for one)"
+while :; do
+	key_watch
+	QUIET=1 /usr/sbin/mount-frontend 2>/dev/null || exit 1
+	for entry in System/frontend System/launch_frontend.sh spruce/scripts/runtime.sh .tmp_update/updater; do
+		[ -f "$SD/$entry" ] && exit 1
+	done
+done

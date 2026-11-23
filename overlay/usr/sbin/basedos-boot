@@ -1,13 +1,12 @@
 #!/bin/sh
 # basedos-boot: leave BasedOS for stock, for one boot, until enabled again, or for good.
 #
-#   basedos-boot stock-once     reboot into stock once; the boot after is BasedOS again ("Disable
-#                               BasedOS" and "Uninstall BasedOS" are in stock's Ports meanwhile)
-#   basedos-boot disable        stock's boot script back, and an "Enable BasedOS" script in
-#                               stock's Ports, which puts BasedOS's back and reboots into it
-#                               ("Uninstall BasedOS" is there too). BasedOS's files stay, for
-#                               that. (Formerly switch-to-stock, still accepted.) Stock's Ports
-#                               has its own "Disable BasedOS", which does the same from stock.
+#   basedos-boot stock-once     reboot into stock once; the boot after is BasedOS again
+#   basedos-boot disable        stock's boot script back; Enable BasedOS in BasedOS's menu in
+#                               stock's Ports puts BasedOS's back and reboots into it. BasedOS's
+#                               files stay, for that. (Formerly switch-to-stock, still accepted.)
+#                               The menu's Disable BasedOS does the same from stock.
+# Both put BasedOS's menu in stock's Ports (BasedOS.sh: Disable or Enable, Uninstall).
 #   basedos-boot uninstall      stock's boot script back and BasedOS removed: its folder on p1
 #                               (basedos/) and its data on p2 (basedos-data/, with the return
 #                               script if there is one). Stock is as it was before the install.
@@ -36,10 +35,9 @@ export PATH=/usr/bin:/usr/sbin
 
 B=/boot/basedos
 P2=/run/p2
-ENABLE_NAME="Enable BasedOS.sh"
-DISABLE_NAME="Disable BasedOS.sh"
-UNINSTALL_NAME="Uninstall BasedOS.sh"
-OLD_RETURN_NAME="Return to BasedOS.sh"
+# BasedOS's menu in stock's Ports (Disable or Enable, Uninstall), and the entries before it.
+ENTRY_NAME="BasedOS.sh"
+OLD_NAMES="Enable BasedOS.sh|Disable BasedOS.sh|Uninstall BasedOS.sh|Return to BasedOS.sh"
 KNOWN_STOCK=/usr/share/basedos/stock-boot-scr.sha256
 # Stock's own boot script, kept beside its place (outside BasedOS's folder) while BasedOS's is there.
 SS=/boot/boot.scr.stock
@@ -101,36 +99,30 @@ STOCK_PORTS="$P2/games-internal/roms/ports $P2/roms/ports"
 # Older places BasedOS put its entries, cleaned up wherever they go.
 OLD_PLACES="$P2/.config/modules"
 
-# stock_entries <name>...: those of "Enable BasedOS", "Disable BasedOS" and "Uninstall BasedOS"
-# (/usr/share/basedos/stock/) into stock's Ports (both places), each written, read back and
-# renamed; BasedOS's other entries there go (they'd do the wrong thing now), and the older "Return
-# to BasedOS". 0 if all are written.
+# stock_entry: BasedOS's menu (/usr/share/basedos/stock/BasedOS.sh: Disable or Enable, by what
+# boots, and Uninstall) into stock's Ports (both places), written, read back and renamed; the
+# entries from before it go. 0 if it's written.
 STOCK_FILES=/usr/share/basedos/stock
-stock_entries() {
-	for _d in $STOCK_PORTS; do
-		mkdir -p "$_d" || return 1
-		for _f in "$ENABLE_NAME" "$DISABLE_NAME" "$UNINSTALL_NAME" "$OLD_RETURN_NAME"; do
-			case " $* " in *" $_f "*) ;; *) rm -f "$_d/$_f" ;; esac
-		done
-		for _f in "$@"; do
-			cp "$STOCK_FILES/$_f" "$_d/$_f.new" && chmod 755 "$_d/$_f.new" && sync &&
-				cmp -s "$STOCK_FILES/$_f" "$_d/$_f.new" && mv "$_d/$_f.new" "$_d/$_f" && sync ||
-				{ rm -f "$_d/$_f.new"; return 1; }
-		done
+stock_entry() {
+	for _d in $STOCK_PORTS $OLD_PLACES; do
+		(IFS='|'; for _n in $OLD_NAMES; do rm -f "$_d/$_n"; done)
 	done
-	for _o in $OLD_PLACES; do rm -f "$_o/$OLD_RETURN_NAME" "$_o/$ENABLE_NAME"; done
+	for _d in $STOCK_PORTS; do
+		mkdir -p "$_d" &&
+			cp "$STOCK_FILES/$ENTRY_NAME" "$_d/$ENTRY_NAME.new" && chmod 755 "$_d/$ENTRY_NAME.new" && sync &&
+			cmp -s "$STOCK_FILES/$ENTRY_NAME" "$_d/$ENTRY_NAME.new" && mv "$_d/$ENTRY_NAME.new" "$_d/$ENTRY_NAME" && sync ||
+			{ rm -f "$_d/$ENTRY_NAME.new"; return 1; }
+	done
 }
-# no_entry <name>: that entry gone from stock's Ports.
-no_entry() { for _d in $STOCK_PORTS; do rm -f "$_d/$1"; done; sync; }
 
 stock_once() {
 	# The flag must be on p2: /data in RAM (p2 unusable this boot) would lose it.
 	grep -q "^$BOOT_P2 /data " /proc/mounts || die "/data isn't on the boot disk this boot; can't leave the flag"
 	: > /data/boot-stock-once && sync && [ -f /data/boot-stock-once ] || die "couldn't write /data/boot-stock-once"
-	# Stock's Ports gets "Disable BasedOS" and "Uninstall BasedOS" (the second for an install made
-	# before setup put it there).
-	grep -q "^$BOOT_P2 $P2 " /proc/mounts && stock_entries "$DISABLE_NAME" "$UNINSTALL_NAME" ||
-		log "boot: couldn't put '$DISABLE_NAME' and '$UNINSTALL_NAME' in stock's Ports"
+	# Stock's Ports gets BasedOS's menu (for an install made before setup put it there, or BasedOS
+	# updated since).
+	grep -q "^$BOOT_P2 $P2 " /proc/mounts && stock_entry ||
+		log "boot: couldn't put BasedOS's menu in stock's Ports"
 	log "boot: stock for the next boot"
 }
 
@@ -138,22 +130,21 @@ disable() {
 	check_places
 	[ "$(scr_kind /boot/boot.scr)" = basedos ] || die "/boot/boot.scr isn't BasedOS's; nothing to disable"
 	check_stock $SS || die "$SS isn't a stock boot script; not disabling"
-	# 1. The way back (and "Uninstall BasedOS"), written and read back before anything that boots
-	# changes.
-	stock_entries "$ENABLE_NAME" "$UNINSTALL_NAME" || die "couldn't write '$ENABLE_NAME' in stock's Ports; not disabling"
-	undo_return() { no_entry "$ENABLE_NAME"; }
+	# 1. The way back (BasedOS's menu in stock's Ports: Enable), written and read back before
+	# anything that boots changes. It stays either way (it offers Disable while BasedOS is on).
+	stock_entry || die "couldn't put BasedOS's menu in stock's Ports; not disabling"
 	rw
 	put /boot/boot.scr $B/boot.scr.basedos && [ "$(scr_kind $B/boot.scr.basedos)" = basedos ] ||
-		{ ro; undo_return; die "couldn't save BasedOS's boot script; not disabling"; }
+		{ ro; die "couldn't save BasedOS's boot script; not disabling"; }
 	# 2. The switch. On a failure, BasedOS's script goes back (put keeps the old file whole until
 	# the rename, so boot.scr is one or the other either way).
 	put $SS /boot/boot.scr && cmp -s $SS /boot/boot.scr || {
 		cmp -s $B/boot.scr.basedos /boot/boot.scr || put $B/boot.scr.basedos /boot/boot.scr
-		rm -f $B/boot.scr.basedos; ro; undo_return
+		rm -f $B/boot.scr.basedos; ro
 		die "couldn't write stock's boot script; still BasedOS"
 	}
 	ro
-	log "boot: BasedOS disabled (its files stay; '$ENABLE_NAME' in stock's Ports enables it)"
+	log "boot: BasedOS disabled (its files stay; Ports > BasedOS > Enable BasedOS in stock enables it)"
 }
 
 uninstall() {
@@ -177,7 +168,7 @@ status() {
 	basedos)
 		if [ -f /data/uninstall ]; then echo "next boot: BasedOS UNINSTALLS itself, then stock"
 		else echo "next boot: BasedOS$( [ -f /data/boot-stock-once ] && echo ", except: stock once")"; fi ;;
-	stock) echo "next boot: stock (BasedOS disabled; '$ENABLE_NAME' in stock's Ports enables it)" ;;
+	stock) echo "next boot: stock (BasedOS disabled; Ports > BasedOS > Enable BasedOS in stock enables it)" ;;
 	*) echo "next boot: /boot/boot.scr DOESN'T LOOK LIKE A BOOT SCRIPT" ;;
 	esac
 	if check_stock $SS; then echo "stock's boot script: saved"; else echo "stock's boot script: NOT saved or not valid"; fi

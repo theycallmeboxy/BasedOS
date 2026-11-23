@@ -1,20 +1,23 @@
 #!/bin/bash
-# Enable BasedOS: in stock's Ports while BasedOS is disabled ("Disable BasedOS" in BasedOS's
-# maintenance menu or in stock's Ports; basedos-boot disable). Puts BasedOS's boot script back and
-# restarts into BasedOS. Runs on stock (bash and BusyBox; no
-# cmp, so it checks with md5sum and od). Stock runs a Ports script with its output going to a log,
-# so what it has to say goes on screen through stock's own text_viewer.
+# enable: "Enable BasedOS" in BasedOS's menu on stock (Ports > BasedOS: menu, or a setup card's
+# basedos-setup.sh --screen), while BasedOS is disabled ("Disable BasedOS" in BasedOS's maintenance
+# menu or its menu on stock; basedos-boot disable), from BasedOS's system layer, with BasedOS's
+# screens (screen.sh). Puts BasedOS's boot script back and restarts into BasedOS. Runs on stock (bash and BusyBox; no cmp, so it checks with md5sum and
+# od).
 #
 # Nothing changes unless BasedOS can start on this stock: one of its system layers must be made for
 # this stock build (its needs-stock against stock's BUILD_ID), or BasedOS's initrd would refuse it
-# and start stock anyway, with this entry gone.
+# and start stock anyway.
+. "$UI/screen.sh"
 P1=/flash
 SAVED=$P1/basedos/boot.scr.basedos
-NAME="Enable BasedOS.sh"
-show() { /usr/bin/text_viewer "$@" >/dev/null 2>&1; }
+# The entries before the menu (BasedOS.sh, which stays).
+OLD_ENTRIES="Enable BasedOS.sh|Disable BasedOS.sh|Uninstall BasedOS.sh|Return to BasedOS.sh"
+# fail <screen text> [<log text>]
 fail() {
 	echo "Enable BasedOS: ${2:-$1}" >&2
-	show -e -w -t "Enable BasedOS" -m "$1 Nothing was changed."
+	message "A: back to stock" "!Enable BasedOS" "$1" "" "Nothing was changed."
+	screen_off
 	exit 1
 }
 # scr_ok <file>: a whole U-Boot script image: its magic, the type "script", and the size its header
@@ -38,6 +41,8 @@ layer_fits() {
 	[ "$_want" = "$STOCK_ID" ]
 }
 
+screen_on
+screen "Enabling BasedOS..." "!Enable BasedOS"
 [ -f "$SAVED" ] || fail "BasedOS's files are missing or damaged." "BasedOS's boot script isn't there ($SAVED)"
 scr_ok "$SAVED" || fail "BasedOS's files are missing or damaged." "$SAVED isn't a whole boot script"
 dd if="$SAVED" bs=64 skip=1 2>/dev/null | grep -q "rdinit=/basedos/init" || fail "BasedOS's files are missing or damaged." "$SAVED isn't BasedOS's"
@@ -52,13 +57,14 @@ if cp "$SAVED" $P1/boot.scr.new && sync && echo 3 > /proc/sys/vm/drop_caches &&
 	[ "$(md5sum < "$SAVED")" = "$(md5sum < $P1/boot.scr)" ]; then
 	rm -f "$SAVED"
 	mount -o remount,ro $P1
-	# Itself (and its older name), wherever BasedOS has put it (Ports as stock reads it, and
-	# older places).
-	for d in /storage/games-internal/roms/ports /storage/roms/ports /storage/.config/modules; do
-		rm -f "$d/$NAME" "$d/Return to BasedOS.sh"
+	# The entries from before the menu, wherever BasedOS put them.
+	for d in /storage/games-internal/roms/ports $(grep -q " /storage/roms " /proc/mounts || echo /storage/roms/ports) /storage/.config/modules; do
+		(IFS='|'; for n in $OLD_ENTRIES; do rm -f "$d/$n"; done)
 	done
 	sync
 	echo "BasedOS enabled: restarting."
+	screen "Restarting..." "!BasedOS is enabled"
+	unlisten
 	reboot
 else
 	rm -f $P1/boot.scr.new

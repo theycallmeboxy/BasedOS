@@ -1,22 +1,21 @@
 #!/bin/bash
-# Uninstall BasedOS: in stock's Ports while BasedOS is installed (setup puts it there; BasedOS puts
-# it back whenever it hands over to stock). Asks first, on screen, with stock's own text_viewer
-# (Stock runs a Ports script with its output going to a log). Then, with BasedOS not running and
-# none of its files in use: stock's boot script back if BasedOS's is the active one (checked and
-# read back), BasedOS's folder on the boot partition and its data on the data partition removed,
-# and both Ports entries removed. Stock's own files are never touched; nor is the frontend card.
+# uninstall: "Uninstall BasedOS" in BasedOS's menu on stock (Ports > BasedOS: menu), while BasedOS is
+# installed, from BasedOS's system layer, with BasedOS's screens (screen.sh); it runs from that
+# copy, in memory, so removing the layer doesn't touch it. Confirmed as in BasedOS's maintenance menu (A, B, X, Y). Then, with
+# BasedOS not running and none of its files in use: stock's boot script back if BasedOS's is the
+# active one (checked and read back), BasedOS's folder on the boot partition and its data on the
+# data partition removed, and its Ports entry removed. Stock's own files are never touched; nor
+# is the frontend card.
+. "$UI/screen.sh"
 P1=/flash
 B=$P1/basedos
 DATA=/storage/basedos-data
 LOG=/storage/basedos-uninstall.log
-# text_viewer -y: "shows a yes button with different exit code". The code for Yes, as found on the
-# device; anything else is no, so a wrong value here only means nothing is removed (the code
-# text_viewer gave is logged).
-YES=21
-show() { /usr/bin/text_viewer "$@" >/dev/null 2>&1; }
+# fail <screen text> [<log text>]
 fail() {
 	echo "$(date) uninstall: ${2:-$1}" >> $LOG
-	show -e -w -t "Uninstall BasedOS" -m "$1 BasedOS is still installed."
+	message "A: back to stock" "!Uninstall BasedOS" "$1" "" "BasedOS is still installed."
+	screen_off
 	exit 1
 }
 # scr_ok <file>: a whole U-Boot script image: its magic, the type "script", and the size its header
@@ -30,11 +29,14 @@ scr_ok() {
 }
 is_basedos() { dd if="$1" bs=64 skip=1 2>/dev/null | grep -q "rdinit=/basedos/init"; }
 
-[ -d $B ] || { show -w -t "Uninstall BasedOS" -m "BasedOS isn't installed."; exit 0; }
-show -y -t "Uninstall BasedOS?" -m "Removes BasedOS and its settings. Stock and your SD card aren't touched. This can't be undone."
-rc=$?
-echo "$(date) uninstall: text_viewer answered $rc (yes is $YES)" >> $LOG
-[ "$rc" -eq $YES ] || exit 0
+screen_on
+if ! confirm "Uninstall BasedOS?" "Removes BasedOS and its settings." "Stock and your SD card aren't touched." \
+	"Its Ports entry goes too: to install it" "again, use a setup card." "" "This can't be undone."; then
+	screen_off
+	exit 0
+fi
+screen "Uninstalling BasedOS..." "!Uninstall BasedOS"
+echo "$(date) uninstall: confirmed" >> $LOG
 
 # Stock's boot script, if BasedOS's is the active one: the saved copy must be a whole stock script.
 if is_basedos $P1/boot.scr; then
@@ -66,11 +68,13 @@ rm -rf $DATA
 # of /storage, which shows p2 without what's mounted over /storage/roms), and older ones.
 r=/tmp/basedos-uninstall-p2
 mkdir -p $r && mount --bind /storage $r || r=""
-for d in /storage/games-internal/roms/ports ${r:+$r/roms/ports} /storage/roms/ports /storage/.config/modules; do
-	rm -f "$d/Enable BasedOS.sh" "$d/Disable BasedOS.sh" "$d/Return to BasedOS.sh" "$d/Uninstall BasedOS.sh"
+for d in /storage/games-internal/roms/ports ${r:+$r/roms/ports} /storage/.config/modules; do
+	rm -f "$d/BasedOS.sh" "$d/Enable BasedOS.sh" "$d/Disable BasedOS.sh" "$d/Return to BasedOS.sh" "$d/Uninstall BasedOS.sh"
 done
 [ -n "$r" ] && umount $r; rmdir /tmp/basedos-uninstall-p2 2>/dev/null
 sync
 echo "$(date) uninstall: done" >> $LOG
-show -t "Uninstall BasedOS" -m "BasedOS is uninstalled."
+message "A: back to stock" "!BasedOS is uninstalled" "Stock is as it was before BasedOS." "" \
+	"To install it again, use a setup card:" "Ports > BasedOS > Install BasedOS."
+screen_off
 exit 0

@@ -3,6 +3,7 @@
  * display, so the boot shows BasedOS instead of console text.
  *
  *   basedos-splash [-r 0|90|270] [status text...]
+ *   basedos-splash --console graphics|text
  *
  * Every call redraws the whole screen (about 9 MB, a few ms). The layout is a grid on the screen
  * as held (landscape):
@@ -17,7 +18,8 @@
  *                    edge (start and select; another button's label is listed as a line)
  *       (empty)      a half-line gap
  *       text         plain text
- *   - the status text, if any, along the bottom under a rule.
+ *   - the status text, if any, along the bottom (no rule above it: one would move as the
+ *     status wraps to more lines).
  * Every line wraps at spaces to the room it has (beside a button label, up to it), so nothing is
  * cut off; the status block grows upwards for as many lines as it needs.
  *
@@ -28,10 +30,17 @@
  * there): landscape pixel (x, y) goes to native (y, H-1-x). -r 90 turns the other way, -r 0
  * not at all (a landscape framebuffer is never turned).
  *
+ * --console: the text console's mode, for BasedOS's screens on stock (usr/share/basedos/stock/
+ * screen.sh), where a frontend gives the display up first. Its seat manager hands the console back
+ * in text mode a moment after the frontend exits, and the text console clears the screen then;
+ * "graphics" waits for that (up to 5 s), then puts the console in graphics mode, where the text
+ * console draws nothing (as boot splash programs do). "text" puts it back.
+ *
  * Font: converted from Terminus Font (tools/boot-ui/font.h, OFL-Terminus.txt).
  */
 #include <fcntl.h>
 #include <linux/fb.h>
+#include <linux/kd.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -186,6 +195,28 @@ static int button_permille(const char *name, int len)
 	return -1;
 }
 
+static int console_mode(const char *mode)
+{
+	int fd = open("/dev/tty0", O_RDWR | O_NOCTTY), m = -1, r;
+
+	if (fd < 0)
+		return 1;
+	if (!strcmp(mode, "graphics")) {
+		for (int i = 0; i < 100; i++) {
+			if (ioctl(fd, KDGETMODE, &m) == 0 && m == KD_TEXT)
+				break;
+			usleep(50000);
+		}
+		r = ioctl(fd, KDSETMODE, KD_GRAPHICS);
+	} else if (!strcmp(mode, "text")) {
+		r = ioctl(fd, KDSETMODE, KD_TEXT);
+	} else {
+		r = -1;
+	}
+	close(fd);
+	return r != 0;
+}
+
 int main(int argc, char **argv)
 {
 	int fd, i = 1, n = 0, req = -1;
@@ -195,6 +226,8 @@ int main(int argc, char **argv)
 	size_t size;
 	uint8_t *map;
 
+	if (argc == 3 && strcmp(argv[1], "--console") == 0)
+		return console_mode(argv[2]);
 	if (argc > 2 && strcmp(argv[1], "-r") == 0) {
 		req = atoi(argv[2]);
 		i = 3;
@@ -336,8 +369,8 @@ int main(int argc, char **argv)
 		}
 	}
 
-	/* The status, bottom-anchored: as many lines as it takes, under a rule, all of one width (up
-	 * to a button label beside any of them). */
+	/* The status, bottom-anchored: as many lines as it takes, all of one width (up to a button
+	 * label beside any of them). */
 	if (status[0]) {
 		int k, sy = bottom - pitch, right = lw - margin;
 
@@ -347,7 +380,6 @@ int main(int argc, char **argv)
 			if (wrap_to(margin, sy, status, bright, 0, right) <= bottom)
 				break;
 		}
-		fill(margin, sy - pitch / 2, right - margin, ts, rule);
 		wrap_to(margin, sy, status, bright, 1, right);
 	}
 

@@ -10,7 +10,7 @@
 # licence (for recovery cards), the update payload (.bosupd: an install updates itself from it,
 # from the card root or through spruce's updater), and SHA256SUMS. Nothing of stock's
 # (BasedOS uses the device's own stock files in place). Refuses a build from a tree with
-# uncommitted changes, so a release is always a commit.
+# uncommitted changes, so a release is always a commit. Beside them, the setup card's zip (below).
 set -eu
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 TAG=${1:?usage: release.sh <tag>}
@@ -45,5 +45,18 @@ for f in $FILES; do
 	cp "$OUT/$f" "$R/$f"
 done
 (cd "$R" && sha256sum basedos-setup.sh $FILES > SHA256SUMS)
+# The setup card, for setup with no PC and no network: unpacked onto an SD card, BasedOS's menu in
+# stock's Ports (the same file setup puts on the built-in storage) and the release beside it (all
+# but the update payload, which setup doesn't use). Not in SHA256SUMS: it holds that file itself.
+CARD_ZIP=basedos-setup-card-$TAG.zip
+S=$OUT/setup-card-$TAG
+rm -rf "$S"; mkdir -p "$S/roms/ports" "$S/basedos-setup"
+git -C "$REPO" show "$TAG:overlay/usr/share/basedos/stock/BasedOS.sh" > "$S/roms/ports/BasedOS.sh"
+for f in basedos-setup.sh SHA256SUMS $FILES; do
+	case "$f" in *.bosupd) continue ;; esac
+	cp "$R/$f" "$S/basedos-setup/$f"
+done
+(cd "$S" && python3 -m zipfile -c "$R/$CARD_ZIP" roms basedos-setup) || { echo "couldn't make $CARD_ZIP" >&2; exit 1; }
+rm -rf "$S"
 echo "release $TAG (build $BUILD) in $R:"
 ls -l "$R"

@@ -1,0 +1,37 @@
+#!/bin/bash
+# menu: BasedOS's menu on stock (Ports > BasedOS with no setup card in: BasedOS.sh), from BasedOS's
+# system layer, with BasedOS's screens (screen.sh): Disable BasedOS or Enable BasedOS, by what boots
+# now, and Uninstall BasedOS, each the script of that name beside this one. A setup card's menu
+# (basedos-setup.sh --screen) has these and setup's own.
+. "$UI/screen.sh"
+P1=/flash
+VERSION=$(sed -n 's/^BASEOS_VERSION=//p' "$UI/baseos-release" | tr -d '"')
+# Stock's build as setup shows it: 20260613-c8ed06c.
+. /etc/os-release
+STOCK="$OS_VERSION-$(echo "$BUILD_ID" | cut -c1-7)"
+# Power: the battery, or the charger in.
+PCT="" CHG=""
+for _p in /sys/class/power_supply/*; do
+	case "$(cat $_p/type 2>/dev/null)" in
+	Battery)
+		PCT=$(cat $_p/capacity 2>/dev/null)
+		case "$(cat $_p/status 2>/dev/null)" in Charging|Full) CHG=1 ;; esac ;;
+	*) [ "$(cat $_p/online 2>/dev/null)" = 1 ] && CHG=1 ;;
+	esac
+done
+if [ -n "$CHG" ]; then PW="charger in"; else PW="${PCT:-?} % battery"; fi
+if dd if=$P1/boot.scr bs=64 skip=1 2>/dev/null | grep -q "rdinit=/basedos/init"; then
+	NOW="BasedOS is installed." TOGGLE=disable LABEL="Disable BasedOS"
+else
+	NOW="BasedOS is installed, and disabled (stock starts)." TOGGLE=enable LABEL="Enable BasedOS"
+fi
+
+screen_on
+if ! pick "BasedOS $VERSION" "Stock:${TAB}$STOCK" "Power:${TAB}$PW" "" "$NOW" "" - "$LABEL" "Uninstall BasedOS"; then
+	screen_off
+	exit 0
+fi
+case $PICKED in 1) a=$TOGGLE ;; *) a=uninstall ;; esac
+# It shows its own screens; the frontend is stopped already, so it leaves restarting it to this.
+/bin/bash "$UI/$a"
+screen_off

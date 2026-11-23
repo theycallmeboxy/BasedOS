@@ -385,6 +385,8 @@ kbd {
   .keys .btn { width: 8px; height: 18px; border-radius: 4px; }
   .keys a:hover .btn { width: 8px; }
   .bezel::after { margin-right: 0; }
+  .hero { grid-template-columns: 1fr; }
+  .device { max-width: 560px; margin-bottom: 40px; }
   .screen { padding-right: var(--margin); grid-template-columns: minmax(160px, 220px) minmax(0, 1fr); }
 }
 

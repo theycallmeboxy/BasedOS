@@ -28,6 +28,7 @@ for bionic's `libc.so`, `liblog.so`; gmloader supplies those) are not counted.
 | Needing a library BasedOS alone lacks | 392 | 18 |
 | ... counting spruce's own libraries too (what ports see on spruce) | 75 | 18 |
 | ... after the additions below (build of 2026-11-19) | **41** | **14** |
+| ... and FLAC 1.3 (2026-11-23) | **28** | **14** |
 
 **spruce supplies most of it.** spruce puts its `spruce/flip/lib` (and PortMaster's `lib`) on
 every port's library path on this platform (`BasedOSCommon.cfg`); it has SDL2_mixer, OpenAL,
@@ -48,8 +49,12 @@ Checked on the device: Meritous didn't start (libgmodule, then libbsd) and now l
 (it then aborts with "buffer overflow detected" in the game itself, not looked into); Apricots
 runs with its music library loaded.
 
-**What's left** (64-bit, 41 ports): old ABI versions Buildroot can't build, most of them in stock's
-compat folder: FLAC 1.3 (`libFLAC.so.8`, 13 ports), OpenSSL 1.1 (`libcrypto.so.1.1`, 7 including
+**FLAC 1.3** (`libFLAC.so.8`, 13 ports, 2026-11-23): built from source by BasedOS's own Buildroot
+package `flac13` (`buildroot/package/flac13`), the library alone, beside Buildroot's FLAC 1.4
+(`libFLAC.so.12`). A7Xpg needed it (its `SDL_mixer`) and runs with it.
+
+**What's left** (64-bit, 28 ports): old ABI versions Buildroot can't build, most of them in stock's
+compat folder: OpenSSL 1.1 (`libcrypto.so.1.1`, 7 including
 the Python runtimes; spruce's own `libssl.so.1.1` and `libzip.so.5` need it too), `libxml2.so.2`
 (7), readline 7 and 8, desktop GL and X11 test libraries (Half-Life, Quake 2, Bugdom, the Java
 runtimes), and single cases. 32-bit (14 ports): mostly OpenSSL 1.1 (`libcrypto.so.1.1`: Climb,
@@ -64,8 +69,8 @@ folder reaches ports only through ROCKNIX's own `get_controls`.
 
 ## Next
 
-The old-ABI set (FLAC 1.3, OpenSSL 1.1, libxml2.so.2, ...) only if particular ports are wanted,
-as a separate compat folder rather than on the normal library path. A frontend other than spruce
+The rest of the old-ABI set (OpenSSL 1.1, libxml2.so.2, ...) only if particular ports are wanted,
+built from source as FLAC 1.3 was where Buildroot can't, or as a separate compat folder rather than on the normal library path. A frontend other than spruce
 would need the libraries spruce supplies (rerun the scan without its list to see them).
 To rerun: the scan with spruce's library list (`ls spruce/flip/lib Persistent/portmaster/lib`
 on the card) as the last argument, and `lib-closure.py` on the device after any change to

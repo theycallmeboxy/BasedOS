@@ -1,1 +1,2 @@
-# BasedOS packages of its own (none yet).
+# BasedOS packages of its own.
+source "$BR2_EXTERNAL_BASEDOS_PATH/package/flac13/Config.in"

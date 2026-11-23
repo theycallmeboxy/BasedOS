@@ -1,0 +1,31 @@
+--- a/src/video/kmsdrm/SDL_kmsdrmvideo.c	2026-11-23 18:06:49.388248423 -0500
++++ b/src/video/kmsdrm/SDL_kmsdrmvideo.c	2026-11-23 18:06:49.392217655 -0500
+@@ -1254,16 +1254,24 @@
+     SDL_WindowData *windata = (SDL_WindowData *)window->driverdata;
+     drmModeModeInfo mode;
+ 
+-    /* Can't recreate EGL surfaces right now, need to wait until SwapWindow
+-       so the correct thread-local surface and context state are available */
+-    windata->egl_surface_dirty = SDL_TRUE;
+-
+     /* The app may be waiting for the resize event after calling SetWindowSize
+        or SetWindowFullscreen, send a fake event for now since the actual
+        recreation is deferred */
+     KMSDRM_GetModeToSet(window, &mode);
+     {
+         SDL_DisplayData *dispdata = (SDL_DisplayData *)SDL_GetDisplayForWindow(window)->driverdata;
++
++        /* Can't recreate EGL surfaces right now, need to wait until SwapWindow
++           so the correct thread-local surface and context state are available.
++           BasedOS: only when the mode changes. The surfaces are always made at
++           the mode's size, so recreating them for the same mode only throws
++           away what the app has drawn: an SDL 1.2 game that calls
++           SDL_SetVideoMode every frame (A7Xpg, re-applying a stale
++           SDL_VIDEORESIZE) never had a frame shown. */
++        if (!windata->gs || SDL_memcmp(&mode, &dispdata->mode, sizeof(mode)) != 0) {
++            windata->egl_surface_dirty = SDL_TRUE;
++        }
++
+         if (dispdata->connector->connector_type == DRM_MODE_CONNECTOR_DSI) {
+             SDL_SendWindowEvent(window, SDL_WINDOWEVENT_RESIZED, mode.vdisplay, mode.hdisplay);
+         } else {

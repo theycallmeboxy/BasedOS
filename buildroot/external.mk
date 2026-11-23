@@ -1,4 +1,4 @@
-# BasedOS packages of its own go in package/<name>/ (none yet).
+# BasedOS packages of its own go in package/<name>/.
 include $(sort $(wildcard $(BR2_EXTERNAL_BASEDOS_PATH)/package/*/*.mk))
 
 # ncurses with its terminfo library apart (libtinfo.so.6), as ROCKNIX and most distributions

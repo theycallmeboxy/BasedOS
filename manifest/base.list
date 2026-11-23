@@ -138,3 +138,6 @@
 # ports' bundled libmikmod and libfluidsynth load; libtheora's encoder for its FFmpeg 4.
 /usr/lib/libbsd.so.0
 /usr/lib/libtheoraenc.so.1
+# FLAC 1.3's library (libFLAC.so.8, BasedOS's flac13 package, beside FLAC 1.4's .so.12): the old ABI
+# that 13 ports link, A7Xpg's SDL_mixer among them.
+/usr/lib/libFLAC.so.8

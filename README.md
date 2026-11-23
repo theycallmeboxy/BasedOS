@@ -76,6 +76,7 @@ PortMaster's 32-bit ports (docs/lib32.md); BasedOS's own programs are all 64-bit
 | [docs/vendor-minimal.md](docs/vendor-minimal.md) | what BasedOS takes from stock (the closed drivers, firmware and kernel modules, linked in place) and what it builds itself: inventory |
 | [docs/lib32.md](docs/lib32.md) | the 32-bit libraries in `/usr/lib32`, for PortMaster's 32-bit ports |
 | [docs/portmaster-libs.md](docs/portmaster-libs.md), [docs/portmaster-libscan.md](docs/portmaster-libscan.md) | what PortMaster's ports load from the system: a scan of the whole catalogue, and what BasedOS adds |
+| [docs/port-issues.md](docs/port-issues.md) | ports with known problems on the 350H Ultra: cause, whose fix, status |
 | [docs/boot-time.md](docs/boot-time.md), [docs/power.md](docs/power.md) | measurements |
 | [docs/recovery.md](docs/recovery.md) | eMMC backup, rescue SD card, USB disk mode, maskrom, full restore (all tested) |
 | [docs/recon.md](docs/recon.md) | hardware and stock-firmware notes |

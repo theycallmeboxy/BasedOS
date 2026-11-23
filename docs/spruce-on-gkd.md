@@ -27,6 +27,8 @@ or hooking them. Which files and functions it owns, where each came from and why
 
 ## Status (2026-11-19)
 
+Ports with known problems (cause, and whose fix it is): [port-issues.md](port-issues.md).
+
 | Area | State |
 |---|---|
 | Detection, platform files | done. Two layers, as oakMOSS stacks its base: `basedos/BasedOSCommon.{cfg,sh}` for what is BasedOS's (SSH, Wi-Fi, sleep, power, firmware, the library path, no udev) and `basedos/GKD350HUltra.{cfg,sh}` for the board, which takes the dArkMoss RK3566 files first for the hardware they share (spruce `platform/README.md`) |

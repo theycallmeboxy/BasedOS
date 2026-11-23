@@ -108,6 +108,10 @@ ln -sf "$SDL" usr/lib/libSDL2-2.0.so.0
 # its path before a versioned one, so without it PortMaster's own SDL2, which doesn't turn the
 # panel, won over this one.
 ln -sf libSDL2-2.0.so.0 usr/lib/libSDL2-2.0.so
+# And the development name, libSDL2.so: SoLoud's SDL2 back end (in Apotris, for one) doesn't link
+# SDL but dlopens "SDL2.so", then "libSDL2.so". Without either it runs with no audio and its
+# voice tables never made, and the game crashes on the first sound it stops (a game's start).
+ln -sf libSDL2-2.0.so.0 usr/lib/libSDL2.so
 ln -sf "$RGA" usr/lib/librga.so.1
 python3 - "$REPO/tools" "$SYS/usr/lib" "$VEN/usr/lib" "$SDL" "$RGA" <<'EOF'
 import os, sys
@@ -131,6 +135,7 @@ SDL32=$(cd "$S32" && ls libSDL2-2.0.so.0.*.*) RGA32=$(cd "$S32" && ls librga.so.
 install -m 755 "$S32/$SDL32" "$S32/$RGA32" usr/lib32/
 ln -sf "$SDL32" usr/lib32/libSDL2-2.0.so.0
 ln -sf libSDL2-2.0.so.0 usr/lib32/libSDL2-2.0.so
+ln -sf libSDL2-2.0.so.0 usr/lib32/libSDL2.so
 ln -sf "$RGA32" usr/lib32/librga.so.1
 python3 - "$REPO/tools" "$SYS/usr/lib32" "$VEN/usr/lib32" "$SDL32" "$RGA32" <<'EOF'
 import os, sys

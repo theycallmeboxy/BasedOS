@@ -1,0 +1,420 @@
+/* BasedOS's web docs: the boot screen's look (tools/boot-ui/basedos-splash.c), made for reading.
+ *
+ * Black, as the panel. The green is the wordmark's only; text is neutral, headings and what's
+ * selected are amber; one rule under the wordmark. Square corners everywhere but the hardware
+ * buttons. The pixel font ("BasedOS Boot", from the boot screen's Terminus) is used only at
+ * whole multiples of its 32 px cell, where every pixel lands on one: 32 and 64 px. */
+
+@font-face {
+  font-family: "BasedOS Boot";
+  src: url("fonts/BasedOS-Boot.ttf") format("truetype");
+  font-display: swap;
+}
+
+:root {
+  --bg: #000;
+  --fg: #d6d6d6;
+  --muted: #8e8e8e;
+  --bright: #f2f2f2;
+  --hi: #ffc857;
+  --green: #39ff7a;
+  --dim: #1f7f3a;
+  --rule: #303030;
+  --faint: #161616;
+  --panel: #0a0a0a;
+  --px: "BasedOS Boot", ui-monospace, monospace;
+  --mono: ui-monospace, "Cascadia Mono", "SF Mono", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --margin: clamp(16px, 7vw, 120px);   /* the boot screen's: 7 % of the width */
+  --rail: 168px;                       /* the page keys on the right edge */
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html {
+  background: var(--bg);
+  scroll-padding-top: 24px;
+  scrollbar-color: var(--rule) var(--bg);
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.72 var(--mono);
+  -webkit-text-size-adjust: 100%;
+}
+
+::selection { background: var(--green); color: #000; }
+
+:focus-visible { outline: 2px solid var(--hi); outline-offset: 3px; }
+
+.skip {
+  position: absolute; left: -9999px; top: 8px;
+  background: var(--hi); color: #000; padding: 6px 12px; z-index: 10;
+}
+.skip:focus { left: 8px; }
+
+/* --- The wordmark and its rule ------------------------------------------------------------ */
+
+.bezel {
+  padding: max(24px, 5vh) var(--margin) 0;
+}
+.bezel::after {                         /* the rule under the wordmark */
+  content: "";
+  display: block;
+  height: 2px;
+  margin-top: 20px;
+  margin-right: calc(var(--rail) - var(--margin) + 24px);
+  background: var(--rule);
+}
+.homelink { display: inline-block; line-height: 0; }
+.homelink:hover { background: none; }
+.wordmark { height: clamp(36px, 5.2vw, 64px); width: auto; display: block; }
+.wordmark .c { fill: var(--dim); }
+.wordmark .w { fill: var(--green); }
+.wordmark .k { fill: var(--green); animation: blink 1.06s steps(1, end) infinite; }
+
+@keyframes blink { 50% { opacity: 0; } }
+
+/* --- The page keys: labels on the right edge, each beside a button on the bezel ------------- */
+
+.keys {
+  position: fixed;
+  right: 0;
+  top: 26vh;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 22px;
+  z-index: 5;
+}
+.keys a {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--muted);
+  text-decoration: none;
+  font: 15px/1 var(--mono);
+  letter-spacing: 0.02em;
+}
+.keys .btn {                            /* the hardware button, half in the bezel */
+  width: 14px;
+  height: 34px;
+  border-radius: 7px 0 0 7px;
+  background: var(--rule);
+  box-shadow: inset 2px 0 0 #3c3c3c;
+  transition: width 120ms ease, background 120ms ease;
+}
+.keys a:hover { color: var(--bright); background: none; }
+.keys a:hover .btn { width: 20px; background: var(--dim); }
+.keys a[aria-current="page"] { color: var(--hi); }
+.keys a[aria-current="page"] .btn { background: var(--green); box-shadow: none; }
+
+/* --- The screen: the menu and the text ---------------------------------------------------- */
+
+.screen {
+  display: grid;
+  grid-template-columns: minmax(180px, 250px) minmax(0, 76ch);
+  gap: clamp(32px, 4vw, 64px);
+  padding: 40px calc(var(--rail) + 24px) 120px var(--margin);
+}
+body.home .screen { grid-template-columns: minmax(0, 1fr); }
+
+/* The menu: the boot screen's list, "> " before what's selected. */
+.menu { position: sticky; top: 24px; align-self: start; font-size: 13.5px; line-height: 1.5; }
+.menu summary {
+  color: var(--hi);
+  list-style: none;
+  cursor: default;
+  margin-bottom: 12px;
+}
+.menu summary::-webkit-details-marker { display: none; }
+.menu ol { list-style: none; margin: 0; padding: 0; }
+.menu li { margin: 0 0 7px; padding-left: 0; }
+.menu li::before { content: none; }
+.menu a {
+  display: block;
+  color: var(--fg);
+  text-decoration: none;
+  padding-left: 2ch;
+  position: relative;
+}
+.menu a::before { content: ">"; position: absolute; left: 0; color: var(--hi); visibility: hidden; }
+.menu a:hover { color: var(--bright); background: none; }
+.menu li.on a { color: var(--hi); }
+.menu li.on a::before { visibility: visible; }
+
+/* --- Text --------------------------------------------------------------------------------- */
+
+main { min-width: 0; }
+main > :first-child { margin-top: 0; }
+
+h1, h2 {
+  font-family: var(--px);
+  font-weight: normal;
+  color: var(--hi);
+  line-height: 1.12;
+  letter-spacing: 0;
+  text-rendering: optimizeSpeed;
+  -webkit-font-smoothing: none;
+}
+h1 { font-size: 64px; margin: 0 0 32px; }
+h2 {
+  font-size: 32px;
+  margin: 72px 0 20px;
+  padding-top: 28px;
+  border-top: 2px solid var(--rule);
+}
+h3 { font-size: 15px; color: var(--bright); margin: 36px 0 8px; letter-spacing: 0.02em; }
+h1, h2, h3 { position: relative; }
+.anchor {
+  position: absolute;
+  left: -1.4em;
+  color: var(--dim);
+  text-decoration: none;
+  opacity: 0;
+  font-family: var(--mono);
+  font-size: 15px;
+}
+h2 .anchor { top: 36px; }
+h1:hover .anchor, h2:hover .anchor, h3:hover .anchor { opacity: 1; }
+
+p { margin: 0 0 18px; max-width: 76ch; }
+strong, b { color: var(--bright); font-weight: 600; }
+
+a {
+  color: var(--green);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--dim);
+}
+a:hover { background: var(--green); color: #000; text-decoration: none; }
+a:hover code { color: #000; background: transparent; border-color: transparent; }
+
+code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  color: var(--bright);
+  background: var(--faint);
+  border: 1px solid var(--rule);
+  padding: 0 4px;
+  overflow-wrap: anywhere;
+}
+pre {
+  margin: 0 0 22px;
+  padding: 16px 20px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--dim);
+  overflow-x: auto;
+  line-height: 1.55;
+}
+pre code { background: none; border: 0; padding: 0; font-size: 13.5px; overflow-wrap: normal; white-space: pre; }
+
+/* Lists: a pixel for a bullet; numbers in amber, as setup numbers its summary. */
+ul, ol { margin: 0 0 20px; padding: 0; list-style: none; max-width: 76ch; }
+li { position: relative; margin: 0 0 9px; padding-left: 2.6ch; }
+ul > li::before {
+  content: "";
+  position: absolute;
+  left: 0.4ch;
+  top: 0.72em;
+  width: 6px;
+  height: 6px;
+  background: var(--dim);
+}
+ol { counter-reset: n; }
+ol > li { counter-increment: n; padding-left: 3.4ch; }
+ol > li::before { content: counter(n) "."; position: absolute; left: 0; color: var(--hi); }
+li > ul, li > ol { margin: 9px 0 0; }
+
+/* Tables: key and value, as the boot screen lines them up. */
+.table { overflow-x: auto; margin: 4px 0 26px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; line-height: 1.6; }
+th {
+  text-align: left;
+  font-weight: normal;
+  color: var(--hi);
+  padding: 0 20px 10px 0;
+  border-bottom: 2px solid var(--rule);
+  white-space: nowrap;
+}
+td { vertical-align: top; padding: 12px 20px 12px 0; border-bottom: 1px solid var(--faint); }
+td:first-child { color: var(--bright); min-width: 14ch; }
+tr:hover td { background: #070707; }
+
+/* A note: the boot screen's "!" heading. */
+.note {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 18px;
+  align-items: start;
+  margin: 0 0 26px;
+  padding: 18px 22px;
+  border: 1px solid #3a2f12;
+  background: #0e0b03;
+  max-width: 76ch;
+}
+.note .bang { font: 32px/1 var(--px); color: var(--hi); }
+.note p:last-child { margin-bottom: 0; }
+
+.source { margin-top: 64px; color: var(--muted); font-size: 13px; }
+
+/* --- The status line ---------------------------------------------------------------------- */
+
+.status {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 26px var(--margin) 14px;
+  background: linear-gradient(to bottom, transparent, #000 55%);
+  font-size: 13px;
+  color: var(--fg);
+  pointer-events: none;
+  z-index: 4;
+}
+.status .read b { color: var(--bright); font-weight: normal; display: inline-block; min-width: 3ch; text-align: right; }
+kbd {
+  font: inherit;
+  color: var(--bright);
+  border: 1px solid var(--rule);
+  padding: 0 5px;
+}
+
+/* --- Home --------------------------------------------------------------------------------- */
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(280px, 560px) minmax(0, 1fr);
+  gap: clamp(32px, 5vw, 80px);
+  align-items: center;
+  margin: 8px 0 24px;
+}
+.pitch h1 { font-size: 64px; margin-bottom: 28px; }
+.lede { font-size: 17px; line-height: 1.7; color: var(--fg); }
+.go { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 30px; }
+.cta {
+  display: inline-block;
+  padding: 10px 18px;
+  background: var(--green);
+  color: #000;
+  text-decoration: none;
+  font-weight: 600;
+}
+.cta:hover { background: var(--bright); color: #000; }
+.cta.quiet { background: transparent; color: var(--green); box-shadow: inset 0 0 0 1px var(--dim); }
+.cta.quiet:hover { background: var(--green); color: #000; }
+
+/* The device: the boot screen (1600x1440 as held) in a bezel, its two buttons beside it. */
+.device {
+  position: relative;
+  margin: 0;
+  padding: 18px 34px 18px 18px;
+  background: #0d0d0d;
+  border-radius: 22px;
+  box-shadow: inset 0 0 0 1px #1c1c1c;
+}
+.glass {
+  position: relative;
+  aspect-ratio: 1600 / 1440;
+  background: #000;
+  box-shadow: inset 0 0 0 1px #1a1a1a;
+  container-type: inline-size;
+  overflow: hidden;
+}
+.g-mark { position: absolute; left: 7%; top: 5%; width: 30%; }
+.g-mark .wordmark { width: 100%; height: auto; }
+.g-rule { position: absolute; left: 7%; right: 7%; top: 16.5%; height: 0.4cqw; background: var(--rule); }
+.g-key, .g-status {
+  position: absolute;
+  font-family: var(--px);
+  font-size: 4cqw;
+  line-height: 1;
+  color: var(--fg);
+  white-space: nowrap;
+}
+.g-key { right: 3%; }
+.g-select { top: 62%; }
+.g-start { top: 72%; }
+.g-status { left: 7%; bottom: 6%; }
+.hw {
+  position: absolute;
+  right: 0;
+  width: 10px;
+  height: 7%;
+  border-radius: 5px 0 0 5px;
+  background: #2a2a2a;
+}
+.hw-select { top: calc(18px + 62% * 0.86); }
+.hw-start { top: calc(18px + 72% * 0.86); }
+.device figcaption {
+  position: absolute;
+  left: 0; right: 0; top: 100%;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.checks li { padding-left: 4.4ch; }
+.checks li::before {
+  content: "[x]";
+  width: auto; height: auto;
+  background: none;
+  left: 0; top: 0;
+  color: var(--green);
+}
+.steps li { padding-left: 4ch; }
+
+/* --- Narrow screens ----------------------------------------------------------------------- */
+
+@media (max-width: 1100px) {
+  :root { --rail: 0px; }
+  .keys {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 18px;
+    padding: 14px var(--margin) 0;
+  }
+  .keys a { flex-direction: row-reverse; gap: 8px; }
+  .keys .btn { width: 8px; height: 18px; border-radius: 4px; }
+  .keys a:hover .btn { width: 8px; }
+  .bezel::after { margin-right: 0; }
+  .screen { padding-right: var(--margin); grid-template-columns: minmax(160px, 220px) minmax(0, 1fr); }
+}
+
+@media (max-width: 820px) {
+  body { font-size: 14.5px; }
+  .screen { display: block; padding-top: 24px; }
+  .menu { position: static; margin-bottom: 28px; border: 1px solid var(--rule); padding: 12px 16px; }
+  .menu details:not([open]) summary { margin-bottom: 0; }
+  .menu summary { cursor: pointer; }
+  .menu summary::after { content: "  (A: open)"; color: var(--muted); }
+  .menu details[open] summary::after { content: "  (B: close)"; }
+  h1, .pitch h1 { font-size: 32px; }
+  h2 { font-size: 32px; margin-top: 56px; }
+  .anchor { display: none; }
+  .hero { grid-template-columns: 1fr; }
+  .device { margin-bottom: 40px; }
+  .status .hints { display: none; }
+  .status { justify-content: flex-end; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wordmark .k { animation: none; }
+  .keys .btn { transition: none; }
+}
+
+@media print {
+  .keys, .status, .menu, .skip { display: none; }
+  body, html { background: #fff; color: #000; }
+  .screen { display: block; padding: 0; }
+  h1, h2 { color: #000; }
+  a { color: #000; }
+  .wordmark .c, .wordmark .w, .wordmark .k { fill: #000; }
+}

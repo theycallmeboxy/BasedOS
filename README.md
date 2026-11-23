@@ -86,6 +86,7 @@ PortMaster's 32-bit ports (docs/lib32.md); BasedOS's own programs are all 64-bit
 | `tools/` | prepare-stock, harvest, rootfs and boot-file builders (`wsl/build.sh` runs them all), dev install, the 32-bit gap report (`lib32-gaps.py`) and the PortMaster library scan (`pm-libscan.py`) |
 | `tools/basedos-setup.sh` | setup, run on the device under stock: install, repair, uninstall, the recovery card |
 | `tools/recovery/` | the recovery card's own system: it restores the eMMC from the card's backup |
+| `tools/site/`, `site/` | the web docs: `python tools/site/build.py` makes `site/` (a static site, ready to host) from the user guide, recovery.md and spruce-on-gkd.md, in the boot screen's look and its own font |
 | `tools/dev/` | SSH helper, rootfs update, recon, power and screenshot probes, eMMC backup, `lib-closure.py` (what a frontend's libraries need from the base) |
 | `tools/rescue/` | rescue SD card built on the device from its own files |
 | `tools/maskrom/` | builds the RK3576 maskrom USB loader from Rockchip's `rkbin` |

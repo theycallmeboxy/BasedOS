@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<meta name="description" content="{{description}}">
+<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/BasedOS-Boot.ttf" as="font" type="font/ttf" crossorigin>
+<link rel="stylesheet" href="basedos.css">
+</head>
+<body class="{{kind}}">
+<a class="skip" href="#main">Skip to the text</a>
+<header class="bezel">
+  <a class="homelink" href="index.html">{{wordmark}}</a>
+</header>
+<nav class="keys" aria-label="Pages">{{keys}}</nav>
+<div class="screen">
+{{menu}}
+<main id="main">
+{{main}}
+</main>
+</div>
+<footer class="status">
+  <span class="hints" aria-hidden="true"><kbd>J</kbd>/<kbd>K</kbd>: next section&emsp;<kbd>T</kbd>: top</span>
+  <span class="read" aria-hidden="true">Reading: <b>0</b> %</span>
+</footer>
+<script src="basedos.js" defer></script>
+</body>
+</html>

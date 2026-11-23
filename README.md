@@ -71,7 +71,7 @@ PortMaster's 32-bit ports (docs/lib32.md); BasedOS's own programs are all 64-bit
 | Path | What |
 |---|---|
 | [docs/user-guide.md](docs/user-guide.md) | **start here**: install, everyday use, safeguards, recovery |
-| [docs/spruce-on-gkd.md](docs/spruce-on-gkd.md) | spruce support: the kit, status, what's left |
+| [docs/spruce-on-gkd.md](docs/spruce-on-gkd.md) | spruce support: full builds and the kit, status, what's left |
 | [docs/plan.md](docs/plan.md) | design, conventions, status |
 | [docs/vendor-minimal.md](docs/vendor-minimal.md) | what BasedOS takes from stock (the closed drivers, firmware and kernel modules, linked in place) and what it builds itself: inventory |
 | [docs/lib32.md](docs/lib32.md) | the 32-bit libraries in `/usr/lib32`, for PortMaster's 32-bit ports |

@@ -6,7 +6,22 @@ branch `gkd350h-ultra`, until it is merged upstream. It is a normal spruce platf
 
 ## Getting it on a card
 
-Build the kit: `python tools/spruce-kit.py <spruce repo> out/spruce-kit`. It makes:
+> **Unofficial builds:** they are not made or supported by the spruce team. Report problems with them
+> [here](https://github.com/theycallmeboxy/BasedOS/issues), not to spruce.
+
+**Full builds** (the easy way): each spruce nightly is built again with the 350H Ultra branch merged
+in, by the fork's `gkd350hultra-nightly.yml` workflow, and published on the fork's
+[releases page](https://github.com/theycallmeboxy/spruceOS/releases/latest) as
+`spruceV<nightly>-gkd350hultra.7z`. It checks spruce's nightly feed every two hours, and builds
+again after a change to the branch too. Install it as any spruce release: extract it to the root
+of a FAT32 card. The card stays a normal spruce card for your other devices. These builds are made
+automatically and aren't tried on the device first.
+
+Update from that page, not from spruce's own updater: that one offers official spruce, which has
+no 350H Ultra support yet. After an official update spruce no longer starts on the 350H Ultra until
+a build from the fork's page is copied over it.
+
+**The kit**, to add the 350H Ultra to a spruce card you already have. Build it: `python tools/spruce-kit.py <spruce repo> out/spruce-kit`. It makes:
 
 - `spruce-<version>-gkd350hultra-<commit>-overlay.zip`: the changed files. Unzip over a spruce
   nightly at the root of the card.

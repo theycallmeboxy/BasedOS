@@ -5,12 +5,15 @@
 . /usr/lib/basedos/functions
 SD=/mnt/SDCARD
 
-# Already mounted: fine if its device still exists. A pulled card leaves a stale mount behind,
-# which is dropped so a reinserted card can be mounted again.
+# Already mounted: fine if it's still the same card (its device there, with the ID it was mounted
+# with). A pulled card leaves a stale mount behind, which is dropped so a card put in can be
+# mounted; another card swapped in quickly gets the same device name, so the ID is what tells.
+MOUNTED_CID=/run/basedos/sd-cid
 cur=$(awk -v m="$SD" '$2 == m { print $1; exit }' /proc/mounts)
 if [ -n "$cur" ]; then
-	[ -b "$cur" ] && exit 0
-	log "card $cur is gone; dropping its mount"
+	_d=${cur#/dev/}; _d=${_d%p[0-9]*}
+	[ -b "$cur" ] && [ "$(cat /sys/block/$_d/device/cid 2>/dev/null)" = "$(cat $MOUNTED_CID 2>/dev/null)" ] && exit 0
+	log "card $cur is gone or another is in its place; dropping its mount"
 	umount -l "$SD" 2>/dev/null
 fi
 
@@ -52,10 +55,11 @@ repair() {
 		exfat) say "Checking the SD card..." "checking the card ($1)"; fsck.exfat -y "$dev" > "$checked" 2>&1 & ;;
 		*) log "card $dev is ${type:-unformatted}: not vfat or exFAT"; return 1 ;;
 	esac
-	_p=$! _s=0
-	while sleep 1; kill -0 $_p 2>/dev/null; do
-		_s=$((_s + 1))
-		splash "Checking the SD card... $_s s"
+	_p=$! _t=0
+	while kill -0 $_p 2>/dev/null; do
+		sleep 0.25
+		_t=$((_t + 1))
+		[ $((_t % 4)) -eq 0 ] && kill -0 $_p 2>/dev/null && splash "Checking the SD card... $((_t / 4)) s"
 	done
 	wait $_p
 	log "card check ($type) exit $?: $(tail -1 "$checked")"
@@ -73,6 +77,7 @@ try() {
 if ! try; then
 	repair "it would not mount" && try || { log "can't mount $dev (${type:-no filesystem})"; exit 1; }
 fi
+echo "$cid" > $MOUNTED_CID
 say "SD card ready" "card $dev on $SD ($type)"
 mark card
 exit 0

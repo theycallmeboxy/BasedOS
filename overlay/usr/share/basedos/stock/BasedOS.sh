@@ -37,7 +37,9 @@ while read -r _dev mp _rest; do
 done < /proc/mounts
 if [ -n "$src" ]; then
 	# The screens straight from the card's system layer, only to show the copy and the check
-	# (load); setup runs with the checked copy's.
+	# (load); setup runs with the checked copy's. They run before the check, so the screen is up
+	# at once: a damaged layer mostly fails to mount or read, and nothing is written until the
+	# release in memory has checked out (load) and setup has been confirmed.
 	ui_from "$src/rootfs.squashfs" && [ -f $UI/load ] ||
 		stop "The setup files on the SD card are damaged, or older than this entry: unpack the setup card zip onto it again."
 	set -- /bin/bash $UI/load "$src"

@@ -8,4 +8,6 @@ done
 for f in overlay/usr/share/basedos/stock/*; do
 	bash -n "$f" || { echo "SYNTAX: $f"; rc=1; }
 done
+# screen.sh is also sourced by basedos-setup.sh, under stock's /bin/sh (BusyBox ash).
+dash -n overlay/usr/share/basedos/stock/screen.sh || { echo "SYNTAX (sh): screen.sh"; rc=1; }
 exit $rc

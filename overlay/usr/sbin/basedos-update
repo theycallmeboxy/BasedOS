@@ -138,16 +138,21 @@ member() {
 	_all=$(size_of "$1")
 	[ "${_all:-0}" -gt 0 ] || _all=1
 	tar -xOf "$1" "$2" > "$3.new" 2>/dev/null & _p=$!
-	while sleep 1; kill -0 $_p 2>/dev/null; do
-		splash "$5 $(( $(size_of "$3.new") * 50 / _all )) %"
+	_was=""
+	while kill -0 $_p 2>/dev/null; do
+		_pc=$(( $(size_of "$3.new") * 50 / _all ))
+		[ "$_pc" = "$_was" ] || { splash "$5 $_pc %"; _was=$_pc; }
+		sleep 0.25
 	done
 	wait $_p || { rm -f "$3.new"; return 1; }
 	sync
 	echo 3 > /proc/sys/vm/drop_caches
 	sha256sum < "$3.new" > /tmp/basedos-update.sum & _p=$!
-	while sleep 1; kill -0 $_p 2>/dev/null; do
+	while kill -0 $_p 2>/dev/null; do
 		_pos=$(awk '$1 == "pos:" { print $2 }' /proc/$_p/fdinfo/0 2>/dev/null)
-		splash "$5 $(( 50 + ${_pos:-0} * 50 / _all )) %"
+		_pc=$(( 50 + ${_pos:-0} * 50 / _all ))
+		[ "$_pc" = "$_was" ] || { splash "$5 $_pc %"; _was=$_pc; }
+		sleep 0.25
 	done
 	wait $_p
 	[ "$(cut -d' ' -f1 /tmp/basedos-update.sum)" = "$4" ] || { rm -f "$3.new" /tmp/basedos-update.sum; return 1; }

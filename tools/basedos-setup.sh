@@ -484,6 +484,7 @@ if [ "$REC" = yes ] && [ -n "$SCREEN" ]; then
 	# The setup card released first, so it comes out clean: synced and unmounted (stock's
 	# automount has it read-write), or read-only if something still has it open. Only when setup
 	# runs from memory (its Ports file copied it there), never from the card itself.
+	_free="Setup has copied what it needs: the setup card can come out now, or be used itself."
 	case $HERE in /tmp/*)
 		_sd=$(disk_of $SDC)
 		if [ -n "$_sd" ]; then
@@ -491,6 +492,9 @@ if [ "$REC" = yes ] && [ -n "$SCREEN" ]; then
 			for m in $(awk -v d="/dev/$_sd" 'index($1, d) == 1 { print $2 }' /proc/mounts | sort -r); do
 				umount "$m" 2>/dev/null || mount -o remount,ro "$m" 2>/dev/null
 			done
+			# Still written to (neither worked): it isn't safe to take out while stock runs.
+			awk -v d="/dev/$_sd" 'index($1, d) == 1 && $4 ~ /^rw/ { f = 1 } END { exit !f }' /proc/mounts &&
+				_free="The setup card is still in use: use it itself, or power off before taking it out."
 		fi ;;
 	esac
 	listen
@@ -503,7 +507,7 @@ if [ "$REC" = yes ] && [ -n "$SCREEN" ]; then
 			else _c=$CARD_DESC _st="A: use this card    B: back to stock"; fi
 		fi
 		screen "$_st" "!Recovery card" "It needs an SD card of at least $NEED_GB GB ($(a_card $REC_MIB) will do). Everything on it is lost." \
-			"Setup has copied what it needs: the setup card can come out now, or be used itself." "" "$_c"
+			"$_free" "" "$_c"
 		case "$(key 1)" in
 		"$UI_A") [ -n "$CARD" ] && [ -z "$problem" ] && break ;;
 		"$UI_B") quit ;;

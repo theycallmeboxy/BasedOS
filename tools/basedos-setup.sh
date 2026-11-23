@@ -192,13 +192,13 @@ disk_of() {
 kib_used() { df -k "$1" | awk 'NR == 2 { print $3 }'; }
 mib_up() { echo $(( ($1 + 1023) / 1024 )); }                         # KiB -> MiB, rounded up
 gb() { echo $(( ($1 * 1048576 + 999999999) / 1000000000 )); }        # MiB -> GB (as cards are sold)
-# a_card <MiB>: "a 16 GB card", "an 8 GB card": the smallest common size that holds it (a card
-# holds about 93 % of its label).
-a_card() {
+# card_gb <MiB>: the smallest card size sold (8, 16, 32 GB ...) that holds it (a card holds about
+# 93 % of its label). What the screens ask for: "8 GB or bigger".
+card_gb() {
 	for _c in 8 16 32 64 128 256; do
 		[ $(( _c * 1000000000 * 93 / 100 / 1048576 )) -ge "$1" ] && break
 	done
-	case $_c in 8) echo "an $_c GB card" ;; *) echo "a $_c GB card" ;; esac
+	echo $_c
 }
 fetch() { curl -fsSL --retry 3 -o "$2" "$1"; }  # fetch <url> <file>
 # release_file <name>: the release's file in $HERE, downloaded from the release into RAM when it
@@ -311,8 +311,7 @@ say "  - Stock ROCKNIX $(echo "$STOCK_BUILD" | sed 's/^rocknix-//'): this device
 if [ -n "$CHG" ]; then say "  - Power: the charger is in."
 else say "  - Power: at least 30 % battery, or the charger plugged in (now ${PCT:-?} %)."; fi
 say "  - Wi-Fi: setup downloads BasedOS (about 35 MB)."
-say "  - For a recovery card: an SD card you can erase, of at least $(gb $REC_MIB) GB ($(a_card $REC_MIB) will do)."
-say "    Everything on it is lost."
+say "  - For a recovery card: an SD card of $(card_gb $REC_MIB) GB or bigger. Everything on it is erased."
 say "  - About 5 to 25 minutes. Don't power off or take the card out while it runs."
 }
 [ -n "$CHG" ] || [ -z "$PCT" ] || [ "$PCT" -ge 30 ] || die "the battery is at $PCT %: charge it, or plug the charger in, then run setup again"
@@ -462,17 +461,20 @@ else
 	REC=yes
 fi
 
-# card_info: CARD's size (SIZE_MIB, SIZE_GB), CARD_DESC, and the problem with it if it won't do.
+# card_info: CARD's size (SIZE_MIB, SIZE_GB), CARD_DESC (the card in the slot, in a line), and
+# the problem with it if it won't do. The setup card is named as such (SETUP_CID: its card ID).
 card_info() {
 	SIZE_MIB=$(( $(cat /sys/block/$CARD/size) / 2048 ))
 	SIZE_GB=$(( $(cat /sys/block/$CARD/size) * 512 / 1000000000 ))
 	_n=$(ls -d /sys/block/$CARD/${CARD}p* 2>/dev/null | wc -l)
 	_l=$(blkid -s LABEL -o value /dev/${CARD}p* 2>/dev/null | tr '\n' ',' | sed 's/,$//; s/,/, /g')
-	if [ "$_n" -eq 0 ]; then CARD_DESC="Card: ${C_B}$SIZE_GB GB SD card${C_0}, empty."
-	else CARD_DESC="Card: ${C_B}$SIZE_GB GB SD card${C_0}, with $_n partition$([ "$_n" -gt 1 ] && echo s)${_l:+ ($_l)}: it will be erased."; fi
+	if [ -n "${SETUP_CID:-}" ] && [ "$(cat /sys/block/$CARD/device/cid 2>/dev/null)" = "$SETUP_CID" ]; then
+		CARD_DESC="In the slot: ${C_B}the setup card${C_0} ($SIZE_GB GB)."
+	elif [ "$_n" -eq 0 ]; then CARD_DESC="In the slot: ${C_B}$SIZE_GB GB SD card${C_0}, empty."
+	else CARD_DESC="In the slot: ${C_B}$SIZE_GB GB SD card${C_0}${_l:+ ($_l)}."; fi
 	problem=""
 	[ "$(cat /sys/block/$CARD/device/type 2>/dev/null)" != SD ] && problem="it isn't an SD card"
-	[ -z "$problem" ] && [ "$SIZE_MIB" -lt "$REC_MIB" ] && problem="it's $SIZE_GB GB; at least $NEED_GB GB is needed"
+	[ -z "$problem" ] && [ "$SIZE_MIB" -lt "$REC_MIB" ] && problem="it's too small"
 }
 
 # The card, if there's to be one. It's erased first.
@@ -480,34 +482,41 @@ CARD=""
 if [ "$REC" = yes ] && [ -n "$SCREEN" ]; then
 	# The slot as it is, every second, until A takes a card that will do. The setup card itself
 	# will do: what setup needs is in memory.
-	NEED_GB=$(gb $REC_MIB)
+	REC_GB=$(card_gb $REC_MIB)
 	# The setup card released first, so it comes out clean: synced and unmounted (stock's
 	# automount has it read-write), or read-only if something still has it open. Only when setup
-	# runs from memory (its Ports file copied it there), never from the card itself.
-	_free="Setup has copied what it needs: the setup card can come out now, or be used itself."
-	case $HERE in /tmp/*)
-		_sd=$(disk_of $SDC)
-		if [ -n "$_sd" ]; then
-			sync
-			for m in $(awk -v d="/dev/$_sd" 'index($1, d) == 1 { print $2 }' /proc/mounts | sort -r); do
-				umount "$m" 2>/dev/null || mount -o remount,ro "$m" 2>/dev/null
-			done
-			# Still written to (neither worked): it isn't safe to take out while stock runs.
-			awk -v d="/dev/$_sd" 'index($1, d) == 1 && $4 ~ /^rw/ { f = 1 } END { exit !f }' /proc/mounts &&
-				_free="The setup card is still in use: use it itself, or power off before taking it out."
-		fi ;;
-	esac
+	# runs from memory (its Ports file copied it there), never from the card itself. If something
+	# is still writing to it, it's tried again every second, and the screen says so until then.
+	_sd="" _busy=""
+	case $HERE in /tmp/*) _sd=$(disk_of $SDC) ;; esac
+	[ -n "$_sd" ] && SETUP_CID=$(cat /sys/block/$_sd/device/cid 2>/dev/null)
+	release_setup() {
+		sync
+		for m in $(awk -v d="/dev/$_sd" 'index($1, d) == 1 { print $2 }' /proc/mounts | sort -r); do
+			umount "$m" 2>/dev/null || mount -o remount,ro "$m" 2>/dev/null
+		done
+		# Still written to (neither worked): not safe to take out while stock runs.
+		_busy=""
+		awk -v d="/dev/$_sd" 'index($1, d) == 1 && $4 ~ /^rw/ { f = 1 } END { exit !f }' /proc/mounts && _busy=1
+	}
+	[ -n "$_sd" ] && release_setup
 	listen
 	while :; do
+		[ -n "$_busy" ] && [ "$(disk_of $SDC)" = "$_sd" ] && release_setup
+		if [ -n "$_busy" ]; then
+			_free="Something is still using the setup card: leave it in for now. You can also make it the recovery card."
+		else
+			_free="You can swap the setup card for another card now, or make the setup card itself the recovery card."
+		fi
 		CARD=$(disk_of $SDC)
-		if [ -z "$CARD" ]; then _c="No card in: insert one." _st="B: back to stock"
+		if [ -z "$CARD" ]; then _c="The slot is empty." _st="B: back to stock"
 		else
 			card_info
-			if [ -n "$problem" ]; then _c="This card won't do: $problem. Insert another." _st="B: back to stock"
+			if [ -n "$problem" ]; then _c="$CARD_DESC It won't do: $problem." _st="B: back to stock"
 			else _c=$CARD_DESC _st="A: use this card    B: back to stock"; fi
 		fi
-		screen "$_st" "!Recovery card" "It needs an SD card of at least $NEED_GB GB ($(a_card $REC_MIB) will do). Everything on it is lost." \
-			"$_free" "" "$_c"
+		screen "$_st" "!Recovery card" "Put in an SD card of $REC_GB GB or bigger. Everything on it is erased." \
+			"" "$_free" "" "$_c"
 		case "$(key 1)" in
 		"$UI_A") [ -n "$CARD" ] && [ -z "$problem" ] && break ;;
 		"$UI_B") quit ;;
@@ -515,9 +524,9 @@ if [ "$REC" = yes ] && [ -n "$SCREEN" ]; then
 	done
 	unlisten
 elif [ "$REC" = yes ]; then
-	NEED_GB=$(gb $REC_MIB)
+	REC_GB=$(card_gb $REC_MIB)
 	say ""
-	say "The recovery card needs an SD card of at least $NEED_GB GB ($(a_card $REC_MIB) will do). ${C_B}Everything on it is lost.${C_0}"
+	say "The recovery card needs an SD card of $REC_GB GB or bigger. ${C_B}Everything on it is erased.${C_0}"
 	while :; do
 		CARD=$(disk_of $SDC)
 		if [ -z "$CARD" ]; then
@@ -530,7 +539,7 @@ elif [ "$REC" = yes ]; then
 		say ""
 		say "$CARD_DESC"
 		[ -z "$problem" ] && break
-		warn "This card won't do: $problem."
+		warn "It won't do: $problem (it needs $REC_GB GB or bigger)."
 		say "Take it out and insert another (Ctrl-C to stop)."
 		while [ -n "$(disk_of $SDC)" ]; do sleep 1; done
 	done

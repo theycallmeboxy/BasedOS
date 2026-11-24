@@ -3,6 +3,7 @@
  * display, so the boot shows BasedOS instead of console text.
  *
  *   basedos-splash [-r 0|90|270] [status text...]
+ *   basedos-splash [-r 0|90|270] --centre text...
  *   basedos-splash --console graphics|text
  *
  * Every call redraws the whole screen (about 9 MB, a few ms). The layout is a grid on the screen
@@ -29,6 +30,11 @@
  * framebuffer the drawing is turned the way BasedOS's SDL turns frames (-r 270, the default
  * there): landscape pixel (x, y) goes to native (y, H-1-x). -r 90 turns the other way, -r 0
  * not at all (a landscape framebuffer is never turned).
+ *
+ * --centre: nothing but the text, in the middle of a black screen, at the wordmark's size (one line;
+ * it wraps at spaces if it doesn't fit). frontend-session leaves this on the framebuffer when it
+ * hands the display to a frontend ("Intermission..."): the panel shows the framebuffer again
+ * whenever the frontend lets go of the display, until the frontend draws over it or clears it.
  *
  * --console: the text console's mode, for BasedOS's screens on stock (usr/share/basedos/stock/
  * screen.sh), where a frontend gives the display up first. Its seat manager hands the console back
@@ -219,7 +225,7 @@ static int console_mode(const char *mode)
 
 int main(int argc, char **argv)
 {
-	int fd, i = 1, n = 0, req = -1;
+	int fd, i = 1, n = 0, req = -1, centre = 0;
 	static char lines[MAX_LINES][LINE_LEN];
 	char status[512] = "";
 	FILE *f;
@@ -231,6 +237,10 @@ int main(int argc, char **argv)
 	if (argc > 2 && strcmp(argv[1], "-r") == 0) {
 		req = atoi(argv[2]);
 		i = 3;
+	}
+	if (i < argc && strcmp(argv[i], "--centre") == 0) {
+		centre = 1;
+		i++;
 	}
 	for (; i < argc; i++) {
 		if (status[0])
@@ -298,6 +308,18 @@ int main(int argc, char **argv)
 	/* The background is black, all-zero in every pixel format: one memset per line. */
 	for (int y = 0; y < (int)vi.yres; y++)
 		memset(fb + (size_t)y * fi.line_length, 0, (size_t)vi.xres * (vi.bits_per_pixel / 8));
+
+	if (centre) {
+		/* At the wordmark's scale, or the text's if that doesn't fit on one line. */
+		int sc = (int)strlen(status) * FONT_W * logo <= lw - 2 * margin ? logo : ts;
+		int w = (int)strlen(status) * FONT_W * sc;
+
+		if (w <= lw - 2 * margin)
+			text((lw - w) / 2, (lh - FONT_H * sc) / 2, status, sc, bright);
+		else
+			wrap(margin, (lh - ch) / 2, status, bright, 1);
+		goto out;
+	}
 
 	/* The wordmark, top left, and a rule under it. */
 	text(margin, logo_y, ">", logo, dim);
@@ -383,6 +405,7 @@ int main(int argc, char **argv)
 		wrap_to(margin, sy, status, bright, 1, right);
 	}
 
+out:
 	if (preview) {
 		FILE *o = fopen(preview, "wb");
 

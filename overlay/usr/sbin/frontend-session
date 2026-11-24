@@ -87,19 +87,23 @@ stay_down() {
 }
 
 # run_frontend <entry>: exec one of the card's frontends, the way its kind is started.
+# The last screen BasedOS draws is "Intermission..." alone in the middle: the panel shows the
+# framebuffer again whenever the frontend lets go of the display (between its menu and an app,
+# say) until the frontend draws over it or clears it, so what shows through looks meant.
 run_frontend() {
+	splash --centre "Intermission..."
 	case "$1" in
 	System/frontend)
-		say "Starting frontend..." "starting System/frontend"
+		log "starting System/frontend"
 		exec /lib/ld-linux-aarch64.so.1 "$SD/System/frontend" > /tmp/frontend.log 2>&1 ;;
 	spruce/scripts/runtime.sh)
-		say "Starting spruce..." "starting spruce"
+		log "starting spruce"
 		exec /bin/sh "$SD/$1" ;;
 	*.sh|.tmp_update/updater)
-		say "Starting frontend..." "starting $1"
+		log "starting $1"
 		exec /bin/sh "$SD/$1" ;;
 	*)
-		say "Starting frontend..." "starting $1"
+		log "starting $1"
 		exec "$SD/$1" ;;
 	esac
 }

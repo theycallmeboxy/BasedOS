@@ -141,3 +141,7 @@
 # FLAC 1.3's library (libFLAC.so.8, BasedOS's flac13 package, beside FLAC 1.4's .so.12): the old ABI
 # that 13 ports link, A7Xpg's SDL_mixer among them.
 /usr/lib/libFLAC.so.8
+# OpenAL Soft (as /usr/lib32 has it): spruce's flip/lib has one too, but ports on PortMaster's Weston
+# pack don't see flip/lib (westonwrap.sh sets its own library path), so for them it must be the
+# system's. build-rootfs.sh adds the unversioned libopenal.so that LWJGL 2 looks for.
+/usr/lib/libopenal.so.1

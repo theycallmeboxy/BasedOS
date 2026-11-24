@@ -21,6 +21,7 @@ What ports load from the system in general, and which libraries are still missin
 | Port | Was | Fix |
 |---|---|---|
 | A7Xpg | didn't start, then only black | FLAC 1.3's `libFLAC.so.8` (BasedOS's `flac13` package), and SDL2 patch 0007: the game sets its video mode every frame, and SDL recreated its surfaces each time, discarding the frame (BasedOS 30c1689, 2026-11-23) |
+| Slay the Spire | silent ("Could not locate OpenAL library") | 64-bit OpenAL Soft and its `libopenal.so` name, which LWJGL 2 looks for on Java's library path; under the Weston pack spruce's own OpenAL isn't on the path (BasedOS, 2026-11-24) |
 | Apotris | silent, crashed when a game or the title demo started | the `libSDL2.so` development link, which its audio library (SoLoud) loads by name (BasedOS 2e6656d, 2026-11-23) |
 | Weston ports | wouldn't start or spun forever | the unversioned `libudev.so`, `CRUSTY_LIBSDL`, and udev's database for libinput while a Weston port runs (`basedos-udev`), 2026-11-19 ([spruce-on-gkd.md](spruce-on-gkd.md)) |
 | Weston ports, quitting | the game could be left running after Select+Start | `run_basedos_port` ends what's left of the port's process group 3 s after it and unmounts the pack (spruce fork, 2026-11-19) |

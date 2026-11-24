@@ -53,6 +53,15 @@ runs with its music library loaded.
 package `flac13` (`buildroot/package/flac13`), the library alone, beside Buildroot's FLAC 1.4
 (`libFLAC.so.12`). A7Xpg needed it (its `SDL_mixer`) and runs with it.
 
+**OpenAL Soft, 64-bit, and `libopenal.so`** (2026-11-24): ports on PortMaster's Weston pack never
+see spruce's `flip/lib` (the pack's `westonwrap.sh` sets the library path to its own folders and
+the game's), so for them OpenAL has to be the system's. LWJGL 2 (libGDX games on Java) also finds
+it only by the unversioned `libopenal.so` (or `libopenal64.so`) on Java's library path, which ends
+in `/lib` and `/usr/lib`. BasedOS now builds OpenAL Soft 1.22 for 64-bit as it did for 32-bit, with
+the `libopenal.so` link in both folders. Slay the Spire (Weston pack, Java) ran silent ("Could not
+locate OpenAL library") and now has sound. Other 64-bit ports now get BasedOS's OpenAL before
+`flip/lib`'s, as `/usr/lib` comes first on their path.
+
 **What's left** (64-bit, 28 ports): old ABI versions Buildroot can't build, most of them in stock's
 compat folder: OpenSSL 1.1 (`libcrypto.so.1.1`, 7 including
 the Python runtimes; spruce's own `libssl.so.1.1` and `libzip.so.5` need it too), `libxml2.so.2`

@@ -153,6 +153,15 @@ EOF
 # The loader where armhf programs ask for it (their PT_INTERP is /lib/ld-linux-armhf.so.3), as
 # stock links it. PortMaster offers its 32-bit ports when it finds this or /usr/lib32.
 ln -sf /usr/lib32/ld-linux-armhf.so.3 usr/lib/ld-linux-armhf.so.3
+# OpenAL's unversioned name, in both folders: LWJGL 2 (libGDX games on Java, Slay the Spire for one)
+# loads OpenAL by looking for libopenal64.so or libopenal.so on Java's library path, which ends in
+# /lib and /usr/lib. Under PortMaster's Weston pack that's all there is besides the pack (its
+# westonwrap.sh sets the library path), so without the name the game ran silent ("Could not
+# locate OpenAL library").
+for d in usr/lib usr/lib32; do
+	[ -e "$d/libopenal.so.1" ] || { echo "no $d/libopenal.so.1 for the libopenal.so link" >&2; exit 1; }
+	ln -sf libopenal.so.1 "$d/libopenal.so"
+done
 
 echo "--- system: GL library names"
 # The Mali package's unversioned names, as stock's /usr/lib/mali/ carries them beside each library:

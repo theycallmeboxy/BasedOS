@@ -1,6 +1,6 @@
 #!/bin/sh
-# Unpack a prepared stock SYSTEM squashfs into WSL's own filesystem (case
-# sensitive, keeps symlinks and modes). Usage: unpack-stock.sh <SYSTEM> <dest>
+# Unpack a prepared stock SYSTEM squashfs into a Linux filesystem (WSL's own, or the build
+# container's work folder: case sensitive, keeps symlinks and modes). Usage: unpack-stock.sh <SYSTEM> <dest>
 # Unpacked to <dest>.partial and renamed only once whole: an interrupted unpack is never taken for
 # a finished one. As a normal user, unsquashfs can't make stock's device nodes and says so (those
 # messages are left out); any other message is shown, and a tree without stock's os-release and

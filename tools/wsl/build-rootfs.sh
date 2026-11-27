@@ -1,6 +1,6 @@
 #!/bin/sh
-# Build BasedOS's root image, the system layer. Runs in WSL (needs real symlinks, python3,
-# mksquashfs).
+# Build BasedOS's root image, the system layer. Runs in WSL or the build container (needs real
+# symlinks, python3, mksquashfs).
 # Usage: build-rootfs.sh <repo> <work dir> <busybox.static> <busybox.list>
 #   <work>/stock-root must hold the unpacked stock SYSTEM (tools/wsl/unpack-stock.sh), and
 #   $BR_TARGET (default ~/basedos-br/out/target) BasedOS's own Buildroot root

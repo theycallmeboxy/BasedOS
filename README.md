@@ -84,7 +84,7 @@ PortMaster's 32-bit ports (docs/lib32.md); BasedOS's own programs are all 64-bit
 | `overlay/`, `initrd/` | BasedOS's own init, scripts and config |
 | `buildroot/` | BasedOS's Buildroot tree: the 64-bit and 32-bit (armhf) configurations |
 | `manifest/` | what each layer takes: `base.list` and `base32.list` from BasedOS's Buildroot roots, `harvest.list`, the stock files the system layer links to in `/stock`; known stock-build fingerprints |
-| `tools/` | prepare-stock, harvest, rootfs and boot-file builders (`wsl/build.sh` runs them all), dev install, the 32-bit gap report (`lib32-gaps.py`) and the PortMaster library scan (`pm-libscan.py`) |
+| `tools/` | prepare-stock, harvest, rootfs and boot-file builders (`wsl/build.sh` runs them all, in WSL or in the build container `container/run.sh` makes on any Linux host), dev install, the 32-bit gap report (`lib32-gaps.py`) and the PortMaster library scan (`pm-libscan.py`) |
 | `tools/basedos-setup.sh` | setup, run on the device under stock: install, repair, uninstall, the recovery card |
 | `tools/recovery/` | the recovery card's own system: it restores the eMMC from the card's backup |
 | `tools/site/`, `site/` | the web docs: `python tools/site/build.py` makes `site/` (a static site, ready to host) from the user guide, recovery.md and spruce-on-gkd.md, in the boot screen's look and its own font |

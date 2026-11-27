@@ -56,8 +56,8 @@ SteamWorld Dig and Heist on the Weston pack, ...) need the buyer's own game file
 
 ## Not there
 
-- **No 32-bit LuaJIT.** Buildroot builds it only with a 32-bit host compiler (`gcc-multilib` in
-  WSL). LÖVE ports bring their own.
+- **No 32-bit LuaJIT.** Buildroot builds it only with a 32-bit host compiler (`gcc-multilib` on
+  the build host). LÖVE ports bring their own.
 - **No 32-bit Vulkan.** Stock's armhf Vulkan is Mesa's PanVK, not Mali's.
 - **No 32-bit RetroArch** (spruce's `DEVICE_HAS_32_BIT_RA`): not needed for ports.
 

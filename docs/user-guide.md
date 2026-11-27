@@ -222,7 +222,9 @@ Setup (above) is the way to install. To install a build of your own instead:
 1. Prepare your stock files from a backup of your eMMC (recovery.md):
    `python tools/prepare_stock.py <backup>/mmcblk0.img prepared`. The build makes BasedOS's links
    into stock's files against them; nothing of stock's goes into BasedOS.
-2. In WSL: build (`tools/wsl/build.sh`; it unpacks your stock image the first time). It writes
+2. Build: in WSL (Ubuntu 24.04) with `tools/wsl/build.sh`, or on any Linux host with podman or docker
+   with `tools/container/run.sh tools/wsl/build.sh` (an Ubuntu 24.04 container; its work folders go
+   to `~/basedos-host`, about 30 GB). It unpacks your stock image the first time. It writes
    `out/`: the system layer (`rootfs.squashfs`), the initrd, BasedOS's boot script, the recovery
    card's files and an update payload (`.bosupd`).
 3. With the 350H Ultra running stock and reachable over SSH, copy `out/` to `/tmp` on the device and run

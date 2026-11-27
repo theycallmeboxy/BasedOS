@@ -1,6 +1,7 @@
 #!/bin/bash
 # BasedOS's userland from Buildroot (docs/vendor-minimal.md): the pinned LTS release and this
-# repo's external tree (buildroot/, defconfig basedos_gkd350hultra_defconfig), built in WSL.
+# repo's external tree (buildroot/, defconfig basedos_gkd350hultra_defconfig), built in WSL or in the build container
+# (tools/container/run.sh, any Linux host).
 #
 #   build.sh config     fetch and check Buildroot, apply the defconfig, check every option took
 #   build.sh sources    config, then list each package source Buildroot would download
@@ -9,7 +10,7 @@
 #                       in $BR32_OUT, default $BR_WORK/out-armhf): the libraries 32-bit ports need
 #                       ($BR_OUT, default $BR_WORK/out, is the 64-bit root's alone)
 #
-# Needs (Ubuntu in WSL): build-essential file wget cpio unzip rsync bc python3 perl
+# Needs (Ubuntu 24.04, in WSL or the build container): build-essential file wget cpio unzip rsync bc python3 perl
 # Downloads go to ~/basedos-br-dl (BR2_DL_DIR) and are checked against Buildroot's own hashes.
 set -euo pipefail
 # WSL appends Windows' PATH (folders with spaces), which Buildroot refuses.

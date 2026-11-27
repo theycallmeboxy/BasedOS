@@ -155,8 +155,8 @@ same way, with Disable and Enable in its menu too.
 
 ## Rootfs
 
-The root is one squashfs, the system layer, built on the PC (`tools/wsl/build-rootfs.sh`; WSL has
-`mksquashfs`), with stock's `SYSTEM` mounted at its `/stock` on the device:
+The root is one squashfs, the system layer, built on the PC (`tools/wsl/build-rootfs.sh`, in WSL or
+in the build container on any Linux host, `tools/container/`; both have `mksquashfs`), with stock's `SYSTEM` mounted at its `/stock` on the device:
 
 1. **A skeleton and BusyBox:** Alpine's `busybox-static` (aarch64), the same as my355.
 2. **BasedOS's userland:** built from source by Buildroot (`manifest/base.list`; vendor-minimal.md), plus SDL2 with librga, bash and the 32-bit libraries for PortMaster's ports.
@@ -168,7 +168,7 @@ The build fails if a stock file is in the system layer. `prepare-stock` checks t
 ## Install paths
 
 - **Users:** `tools/basedos-setup.sh`, run on the device under stock over SSH (user-guide.md, "Setup on the device"); it downloads its release from GitHub. What it offers depends on what it finds: install BasedOS on the eMMC, or repair or uninstall it, or remove what an unfinished install or uninstall left (a recovery card first is recommended and offered), and always making a recovery card (recovery.md). Nothing of stock's is published or copied.
-- **Developer:** build on the PC (`tools/wsl/build.sh`), then run `tools/install-dev.sh` on the device under stock, over SSH. Later builds go in with `tools/dev/update-basedos.sh` from BasedOS, or as a `.bosupd`.
+- **Developer:** build on the PC (`tools/wsl/build.sh` in WSL, or `tools/container/run.sh tools/wsl/build.sh` on any Linux host), then run `tools/install-dev.sh` on the device under stock, over SSH. Later builds go in with `tools/dev/update-basedos.sh` from BasedOS, or as a `.bosupd`.
 
 ## Versions
 

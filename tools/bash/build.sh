@@ -6,7 +6,7 @@
 # (the vendor layer's 2.40; this cross toolchain's is older, which glibc allows), not static: a
 # static glibc loads the NSS modules for user lookups (~user, getpwuid) at run time, and those must
 # be from the glibc it was linked with.
-#   build.sh <out dir>          (WSL; needs gcc-aarch64-linux-gnu, make, curl)
+#   build.sh <out dir>          (WSL or the build container; needs gcc-aarch64-linux-gnu, make, curl)
 set -euo pipefail
 OUT=$1
 W=${BASH_WORK:-$HOME/basedos-bash}

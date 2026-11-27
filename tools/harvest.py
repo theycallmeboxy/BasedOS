@@ -14,7 +14,7 @@ libraries build-rootfs.sh then moves to /usr/lib32). 64-bit ones are looked for 
 --sources: also write, for each regular file copied, "<staging path> TAB <source path>" (the
 source path with its links followed): where build-rootfs.sh points each link into /stock.
 
-Run it on a filesystem with real symlinks (WSL's ext4, not /mnt/c).
+Run it on a filesystem with real symlinks (WSL's ext4 or a Linux host's, not /mnt/c).
 Fails if any DT_NEEDED can't be found, like baseos-my355's prepare_stock.py.
 Writes <staging>/../harvest-report.txt listing what was copied and why.
 """

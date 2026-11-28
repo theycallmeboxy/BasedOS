@@ -90,7 +90,7 @@ BR2_PACKAGE_BZIP2=y
 BR2_PACKAGE_LIBPNG=y
 
 # For PortMaster's ports (2026-11-19 list).
-BR2_PACKAGE_LUAJIT=y
+BR2_PACKAGE_LUAJIT_LIB=y
 BR2_PACKAGE_ENET=y
 BR2_PACKAGE_JSON_C=y
 BR2_PACKAGE_LIBEVDEV=y
@@ -113,3 +113,20 @@ BR2_PACKAGE_ZSTD=y
 # which ports' music libraries load), libtheora's encoder for its FFmpeg.
 BR2_PACKAGE_LIBBSD=y
 BR2_PACKAGE_LIBTHEORA=y
+
+# Audio and Bluetooth for frontends that want a sound server (plorpOS): PipeWire with its
+# PulseAudio server and ALSA plugin, WirePlumber (Lua 5.4: luajit-lib keeps ports' LuaJIT
+# beside it), bluez5 with A2DP/AVRCP through PipeWire, the HCI attach tools, and pactl.
+# Nothing starts them yet.
+BR2_PACKAGE_PIPEWIRE=y
+BR2_PACKAGE_LUA=y
+BR2_PACKAGE_LUA_5_4=y
+BR2_PACKAGE_WIREPLUMBER=y
+BR2_PACKAGE_SBC=y
+BR2_PACKAGE_BLUEZ5_UTILS=y
+BR2_PACKAGE_BLUEZ5_UTILS_CLIENT=y
+BR2_PACKAGE_BLUEZ5_UTILS_DEPRECATED=y
+BR2_PACKAGE_BLUEZ5_UTILS_TOOLS=y
+BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_AUDIO=y
+BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_HID=y
+BR2_PACKAGE_PULSEAUDIO=y
